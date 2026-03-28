@@ -39,11 +39,11 @@ curl -s https://api.perplexity.ai/chat/completions \
   -H "Authorization: Bearer $PERPLEXITY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "sonar-pro",
+    "model": "sonar-reasoning-pro",
     "messages": [{"role": "user", "content": "YOUR RESEARCH QUESTION"}]
   }'
 ```
-Best for: synthesized answers with citations, market analysis, competitive research.
+Uses chain-of-thought reasoning — best for competitive analysis, market sizing, and multi-source synthesis. For simple factual lookups, use `sonar-pro` instead (faster, cheaper).
 
 ### Brave Search (web search, recent results)
 ```bash
