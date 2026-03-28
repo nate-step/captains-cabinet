@@ -23,6 +23,11 @@ TODAY=$(date -u +%Y-%m-%d)
 OFFICER="${OFFICER_NAME:-unknown}"
 
 # ============================================================
+# 0. HEARTBEAT — proves this Officer is alive
+# ============================================================
+redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:heartbeat:$OFFICER" "$TIMESTAMP" EX 900 > /dev/null 2>&1
+
+# ============================================================
 # 1. STRUCTURED LOG ENTRY
 # ============================================================
 LOG_FILE="$LOG_DIR/${TODAY}.jsonl"

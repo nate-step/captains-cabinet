@@ -1,8 +1,8 @@
 #!/bin/bash
-# health-check.sh — Runs every 5 min via cron
+# health-check.sh — Runs every 5 min via cron (in Watchdog container)
 [ -f /etc/environment.cabinet ] && source /etc/environment.cabinet
-# Checks each Officer's tmux window is alive and Telegram bot is responding.
-# Alerts Captain if anything is down for > 5 min.
+# Checks each Officer's Redis heartbeat (set by post-tool-use hook in Officers container).
+# Alerts Captain if an Officer's heartbeat is stale (>15 min).
 
 REDIS_URL="${REDIS_URL:-redis://redis:6379}"
 REDIS_HOST=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f1)
@@ -10,7 +10,6 @@ REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
 TELEGRAM_COS_TOKEN="${TELEGRAM_COS_TOKEN:?not set}"
 CAPTAIN_TELEGRAM_ID="${CAPTAIN_TELEGRAM_ID:?not set}"
-TELEGRAM_HQ_CHAT_ID="${TELEGRAM_HQ_CHAT_ID:?not set}"
 
 OFFICERS=("cos" "cto" "cro" "cpo")
 TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
@@ -27,26 +26,28 @@ $message" \
 
 check_officer() {
   local officer="$1"
-  local window_name="officer-$officer"
-  local redis_key="cabinet:health:$officer"
+  local redis_key="cabinet:heartbeat:$officer"
 
-  # Check if tmux window exists
-  if tmux list-windows -t cabinet 2>/dev/null | grep -q "$window_name"; then
-    # Window exists — mark healthy
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$redis_key" "healthy" EX 600 > /dev/null 2>&1
+  # Check if heartbeat exists (TTL of 900s = 15 min, set by post-tool-use hook)
+  local heartbeat
+  heartbeat=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$redis_key" 2>/dev/null)
+
+  if [ -n "$heartbeat" ] && [ "$heartbeat" != "" ]; then
+    # Heartbeat exists and hasn't expired — Officer is alive
+    echo "[$TIMESTAMP] Officer $officer: healthy (last heartbeat: $heartbeat)"
     return 0
   else
-    # Window missing — check if it was already flagged
-    local prev_state
-    prev_state=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$redis_key" 2>/dev/null)
+    # No heartbeat — check if we already flagged this
+    local flag_key="cabinet:health:alert-sent:$officer"
+    local already_alerted
+    already_alerted=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$flag_key" 2>/dev/null)
 
-    if [ "$prev_state" = "down" ]; then
-      # Already flagged — alert escalation
-      send_alert "🔴 *$officer* has been down for >5 min. Tmux window \`$window_name\` not found. Manual intervention may be needed."
+    if [ "$already_alerted" = "yes" ]; then
+      echo "[$TIMESTAMP] Officer $officer: still down (alert already sent)"
     else
-      # First detection — flag it, alert on next check if still down
-      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$redis_key" "down" EX 600 > /dev/null 2>&1
-      echo "[$TIMESTAMP] Officer $officer window missing — flagged, will alert on next check"
+      send_alert "🔴 *$officer* has no heartbeat. The Officer may have crashed or stalled. Check tmux in the Officers container."
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$flag_key" "yes" EX 3600 > /dev/null 2>&1
+      echo "[$TIMESTAMP] Officer $officer: DOWN — alert sent to Captain"
     fi
     return 1
   fi
@@ -59,7 +60,7 @@ echo "[$TIMESTAMP] Running health checks..."
 
 DOWN_COUNT=0
 for officer in "${OFFICERS[@]}"; do
-  # Only check Officers that should be running (check Redis for "expected" flag)
+  # Only check Officers that should be running
   EXPECTED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:officer:expected:$officer" 2>/dev/null)
   if [ "$EXPECTED" = "active" ]; then
     if ! check_officer "$officer"; then
