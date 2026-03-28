@@ -123,6 +123,20 @@ bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <cos|cto|cro|cpo> "
 
 This pushes to Redis — delivered via the target's post-tool-use hook.
 
+## Experience Records
+
+After completing any significant task (research sweep, competitive brief, market analysis), write an experience record:
+
+```bash
+bash /opt/founders-cabinet/cabinet/scripts/record-experience.sh cro <outcome> "task summary" "what happened" "lessons learned" "tag1,tag2"
+```
+
+Outcomes: `success`, `failure`, `partial`, `escalated`. This feeds the Cabinet's self-improvement loop — CoS reviews records to find patterns and propose improvements.
+
+## Skills
+
+Before starting a task, check `memory/skills/` for relevant validated procedures. If you develop a procedure that works well and could be reused, write a draft skill using the template at `memory/skills/TEMPLATE.md`.
+
 ## Session Start Checklist
 
 1. Read the Constitution and Safety Boundaries

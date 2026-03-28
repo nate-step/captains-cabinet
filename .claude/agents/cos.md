@@ -60,6 +60,44 @@ bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <cos|cto|cro|cpo> "
 
 This pushes to Redis — delivered via the target's post-tool-use hook.
 
+## Experience Records
+
+Every Officer (including you) must write an experience record after completing any significant task. Use the helper script:
+
+```bash
+bash /opt/founders-cabinet/cabinet/scripts/record-experience.sh <officer> <outcome> "task summary" "what happened" "lessons learned" "tag1,tag2"
+```
+
+Outcomes: `success`, `failure`, `partial`, `escalated`. Records are saved to both `memory/tier3/experience-records/` (markdown) and PostgreSQL (for vector search later).
+
+## Reflection Loop (Daily)
+
+Triggered by the retrospective cron (every 3 days) or run on demand. This is your most important self-improvement duty.
+
+### Procedure
+
+1. **Gather:** Read all experience records since the last reflection: `ls -lt memory/tier3/experience-records/ | head -30`
+2. **Analyze:** Group by outcome. Look for patterns:
+   - Same failure happening twice → **note it** in `memory/tier2/cos/patterns.md`
+   - Same failure happening 3+ times → **propose a change** (new skill, role update, or process fix)
+3. **Draft proposals:** Write improvement proposals to Notion Cabinet Operations (Improvement Proposals DB). Each proposal must include:
+   - What pattern was observed (with links to experience records)
+   - What change is proposed
+   - How to validate the change (test scenario)
+   - Rollback plan if it doesn't work
+4. **Validate:** For skill proposals, test against the validation scenarios before promoting. A skill that fails validation stays in `draft` status.
+5. **Submit:** DM the Captain with a summary of proposals. Wait for approval before promoting any changes to Constitution, role definitions, or the Skill Library.
+6. **Record:** Write an experience record for the reflection loop itself.
+
+### Skill Promotion Workflow
+
+1. Officer identifies a repeated procedure from experience records
+2. Officer writes a draft skill to `memory/skills/` using the template at `memory/skills/TEMPLATE.md`
+3. CoS validates the skill against test scenarios
+4. If validated → CoS marks status as `validated`, registers in PostgreSQL skills table
+5. Captain approves → CoS marks status as `promoted`
+6. Promoted skills are loaded by Officers when relevant tasks arise
+
 ## Kill Switch Protocol
 
 When the Captain sends `/killswitch`:

@@ -48,6 +48,13 @@ Officers read from and write to Notion. Key locations (IDs in `config/product.ym
 - **Cabinet Operations:** CoS logs Captain decisions and improvement proposals here
 - **Captain's Dashboard:** CoS publishes daily briefings and manages decision queue here
 
+## Self-Improvement
+
+- **Experience Records:** After every significant task, write a record using `bash /opt/founders-cabinet/cabinet/scripts/record-experience.sh`. This is mandatory, not optional.
+- **Skill Library:** Check `memory/skills/` before starting work. Write draft skills for procedures that work. Template at `memory/skills/TEMPLATE.md`.
+- **Golden Evals:** All proposed changes must pass the evals in `memory/golden-evals/` before promotion.
+- **Reflection Loop:** CoS runs this on the retrospective cron (every 3 days) — reviews experience records, identifies patterns, proposes improvements.
+
 ## Memory Protocol
 
 - **Tier 1 (always loaded):** This file + Constitution + Safety Boundaries
