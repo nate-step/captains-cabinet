@@ -45,13 +45,19 @@ curl -s https://api.perplexity.ai/chat/completions \
 ```
 Uses chain-of-thought reasoning — best for competitive analysis, market sizing, and multi-source synthesis. For simple factual lookups, use `sonar-pro` instead (faster, cheaper).
 
-### Brave Search (web search, recent results)
+### Brave Search (web search + LLM-optimized context)
 ```bash
+# Standard web search — URLs, snippets, news
 curl -s "https://api.search.brave.com/res/v1/web/search?q=YOUR+QUERY&count=10" \
   -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
   -H "Accept: application/json"
+
+# LLM Context API — smart chunks optimized for AI consumption (preferred)
+curl -s "https://api.search.brave.com/res/v1/web/search?q=YOUR+QUERY&result_filter=query&extra_snippets=true&summary=true" \
+  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "Accept: application/json"
 ```
-Best for: finding specific companies, recent news, product launches, pricing pages.
+Best for: finding specific companies, recent news, product launches, pricing pages. Use the LLM Context variant for richer results.
 
 ### Exa (semantic search, finding similar content)
 ```bash
@@ -60,11 +66,12 @@ curl -s https://api.exa.ai/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "YOUR SEMANTIC QUERY",
-    "type": "neural",
+    "type": "auto",
     "numResults": 10,
     "contents": {"text": true}
   }'
 ```
+Use `"type": "auto"` (default, highest quality — combines neural + keyword). Use `"type": "deep"` for complex multi-step research queries. Use `"type": "fast"` when speed matters more than depth.
 Best for: finding similar products, discovering niche competitors, semantic concept search.
 
 ### When to use which
