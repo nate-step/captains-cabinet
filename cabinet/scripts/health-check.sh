@@ -1,5 +1,6 @@
 #!/bin/bash
 # health-check.sh — Runs every 5 min via cron
+[ -f /etc/environment.cabinet ] && source /etc/environment.cabinet
 # Checks each Officer's tmux window is alive and Telegram bot is responding.
 # Alerts Captain if anything is down for > 5 min.
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 # backlog-refine.sh — Triggers CPO to refine the backlog
 # Runs every 12 hours via cron
+[ -f /etc/environment.cabinet ] && source /etc/environment.cabinet
 
 TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
@@ -13,10 +14,5 @@ TRIGGER_MSG="[$TIMESTAMP] Scheduled backlog refinement. Review Linear issues, in
 # PRIMARY: Push to Redis
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cpo" "$TRIGGER_MSG" > /dev/null 2>&1
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cpo" 21600 > /dev/null 2>&1
-
-
-echo "" >> "$TRIGGER_FILE"
-echo "---" >> "$TRIGGER_FILE"
-echo "**[SYSTEM TRIGGER — $TIMESTAMP]** Scheduled backlog refinement." >> "$TRIGGER_FILE"
 
 echo "[$TIMESTAMP] Backlog refinement trigger pushed"

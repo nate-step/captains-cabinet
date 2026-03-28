@@ -1,5 +1,6 @@
 #!/bin/bash
 # token-refresh-watch.sh — Runs every 15 min via cron
+[ -f /etc/environment.cabinet ] && source /etc/environment.cabinet
 # Monitors Officer logs for authentication failures and alerts Captain.
 # With subscription auth, token refresh is manual — this is the early warning system.
 

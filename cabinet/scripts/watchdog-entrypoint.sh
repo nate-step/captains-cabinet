@@ -10,9 +10,8 @@ echo "============================================"
 # so we dump them to a file that scripts can source
 printenv | grep -E '^(TELEGRAM_|CAPTAIN_|REDIS_|DATABASE_|POSTGRES_)' > /etc/environment.cabinet
 
-# Make it sourceable from cron scripts
-# Prefix each cron script with source
-sed -i 's|^#!/bin/bash|#!/bin/bash\nsource /etc/environment.cabinet|' /opt/watchdog/*.sh 2>/dev/null || true
+# Scripts source this file themselves — no sed injection needed
+chmod 644 /etc/environment.cabinet
 
 echo "Cron schedule:"
 echo "  Health check:     every 5 min"

@@ -1,6 +1,7 @@
 #!/bin/bash
 # research-sweep.sh — Triggers CRO to run a research sweep
 # Runs every 4 hours via cron
+[ -f /etc/environment.cabinet ] && source /etc/environment.cabinet
 
 TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
@@ -13,10 +14,5 @@ TRIGGER_MSG="[$TIMESTAMP] Scheduled research sweep. Review current product prior
 # PRIMARY: Push to Redis
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cro" "$TRIGGER_MSG" > /dev/null 2>&1
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cro" 21600 > /dev/null 2>&1
-
-
-echo "" >> "$TRIGGER_FILE"
-echo "---" >> "$TRIGGER_FILE"
-echo "**[SYSTEM TRIGGER — $TIMESTAMP]** Scheduled research sweep." >> "$TRIGGER_FILE"
 
 echo "[$TIMESTAMP] Research sweep trigger pushed"

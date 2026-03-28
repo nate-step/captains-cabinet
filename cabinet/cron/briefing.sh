@@ -1,6 +1,7 @@
 #!/bin/bash
 # briefing.sh — Triggers CoS to produce a daily briefing
 # Runs at 07:00 and 19:00 CET via cron
+[ -f /etc/environment.cabinet ] && source /etc/environment.cabinet
 #
 # Delivery mechanism:
 #   1. Redis RPUSH → post-tool-use hook surfaces it to Officer (RELIABLE)
@@ -18,10 +19,5 @@ TRIGGER_MSG="[$TIMESTAMP] Daily $BRIEFING_TYPE briefing due. Compile status from
 # PRIMARY: Push to Redis — will be surfaced by post-tool-use hook
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cos" "$TRIGGER_MSG" > /dev/null 2>&1
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cos" 21600 > /dev/null 2>&1
-
-
-echo "" >> "$TRIGGER_FILE"
-echo "---" >> "$TRIGGER_FILE"
-echo "**[SYSTEM TRIGGER — $TIMESTAMP]** Daily $BRIEFING_TYPE briefing due." >> "$TRIGGER_FILE"
 
 echo "[$TIMESTAMP] Briefing trigger pushed ($BRIEFING_TYPE)"

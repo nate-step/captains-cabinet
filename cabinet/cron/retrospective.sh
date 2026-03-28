@@ -1,6 +1,7 @@
 #!/bin/bash
 # retrospective.sh — Triggers CoS to run a Cabinet retrospective
 # Runs every 3 days via cron
+[ -f /etc/environment.cabinet ] && source /etc/environment.cabinet
 
 TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
@@ -13,10 +14,5 @@ TRIGGER_MSG="[$TIMESTAMP] Scheduled Cabinet retrospective. Run the Reflection Lo
 # PRIMARY: Push to Redis
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cos" "$TRIGGER_MSG" > /dev/null 2>&1
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cos" 21600 > /dev/null 2>&1
-
-
-echo "" >> "$TRIGGER_FILE"
-echo "---" >> "$TRIGGER_FILE"
-echo "**[SYSTEM TRIGGER — $TIMESTAMP]** Scheduled Cabinet retrospective." >> "$TRIGGER_FILE"
 
 echo "[$TIMESTAMP] Retrospective trigger pushed"
