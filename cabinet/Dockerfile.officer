@@ -1,0 +1,59 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TERM=xterm-256color
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    tmux \
+    jq \
+    redis-tools \
+    postgresql-client \
+    ca-certificates \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bun (required by Channels plugin)
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+# Create non-root user for Claude Code
+RUN useradd -m -s /bin/bash cabinet
+USER cabinet
+WORKDIR /home/cabinet
+
+# Install Bun for cabinet user
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/home/cabinet/.bun/bin:/home/cabinet/.local/bin:${PATH}"
+
+# Install Claude Code
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Create directories for Channels state (one per Officer)
+RUN mkdir -p \
+    /home/cabinet/.claude-channels/cos \
+    /home/cabinet/.claude-channels/cto \
+    /home/cabinet/.claude-channels/cro \
+    /home/cabinet/.claude-channels/cpo
+
+# Copy tmux config for nicer multi-pane experience
+COPY --chown=cabinet:cabinet tmux.conf /home/cabinet/.tmux.conf
+
+# Copy the officer start script
+COPY --chown=cabinet:cabinet scripts/start-officer.sh /home/cabinet/start-officer.sh
+RUN chmod +x /home/cabinet/start-officer.sh
+
+# Copy the entrypoint
+COPY --chown=cabinet:cabinet scripts/entrypoint.sh /home/cabinet/entrypoint.sh
+RUN chmod +x /home/cabinet/entrypoint.sh
+
+WORKDIR /opt/founders-cabinet
+
+ENTRYPOINT ["/home/cabinet/entrypoint.sh"]

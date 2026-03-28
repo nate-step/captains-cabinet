@@ -1,0 +1,138 @@
+# The Founder's Cabinet
+
+An autonomous AI organization that builds, ships, and improves your product — while you steer from Telegram.
+
+## What This Is
+
+The Founder's Cabinet is a framework for running a 24/7 AI development organization. You are the Captain. AI Officers own domains (product, engineering, research). They coordinate, execute, learn, and improve — continuously.
+
+This repo is the **infrastructure**. It contains the organizational framework, memory system, safety boundaries, and Docker configuration. Your product repo is separate — the Cabinet mounts it as a workspace.
+
+## How It Works
+
+```
+You (Captain)
+  ↕ Telegram
+Cabinet (this repo)
+├── CoS — orchestration, briefings, self-improvement
+├── CTO — engineering, code, deploys
+├── CPO — product specs, backlog, prioritization
+└── CRO — market research, competitive intel, trends
+  ↕ reads/writes
+Your Product Repo (mounted at /workspace/product)
+```
+
+Each Officer runs as a persistent Claude Code session with Telegram Channels. They read strategy from Notion, execute tasks from Linear, write code in your repo, and report back via Telegram.
+
+## Quick Start
+
+### 1. Fork This Repo
+
+```bash
+git clone https://github.com/YOUR-USERNAME/founders-cabinet.git
+cd founders-cabinet
+```
+
+### 2. Set Up Notion
+
+The bootstrap script creates the entire Cabinet HQ workspace structure automatically:
+
+```bash
+export NOTION_API_KEY="your-notion-internal-integration-token"
+bash cabinet/scripts/bootstrap-notion.sh "YourProductName"
+```
+
+This creates all pages and databases and writes the IDs to `config/product.yml`. Then add your strategy docs (vision, brand guidelines, etc.) to the Business Brain section.
+
+### 3. Configure Your Product
+
+Edit `config/product.yml` — point it at your repo, Notion workspace, Linear team, and Neon project.
+
+### 4. Set Up Telegram Bots
+
+Create 4 bots via @BotFather (CoS, CTO, CRO, CPO) and a "YourProduct HQ" group.
+
+### 5. Fill In Credentials
+
+```bash
+cp cabinet/.env.example cabinet/.env
+# Fill in all API keys and tokens
+```
+
+### 6. Deploy
+
+```bash
+# On your server (Hetzner/DO/AWS, Ubuntu 24.04)
+cd /opt/founders-cabinet/cabinet
+docker compose build
+docker compose up -d postgres redis
+docker compose up -d officers watchdog
+```
+
+### 7. Start Your First Officer
+
+```bash
+docker exec -it cabinet-officers bash
+./start-officer.sh cos
+# Authenticate with claude /login (one-time)
+# Pair Telegram bot
+# Send: "Read the Constitution and report for duty"
+```
+
+## Architecture
+
+| Component | Purpose |
+|-----------|---------|
+| **Officers** | Persistent Claude Code CLI sessions in tmux, one per domain |
+| **Crew** | Agent Teams spawned by Officers for parallel execution |
+| **Notion** | Business brain — strategy, research, decisions (required) |
+| **Linear** | Execution backlog — what to build |
+| **PostgreSQL + pgvector** | Episodic memory with semantic search |
+| **Redis** | Kill switch, rate limits, state flags |
+| **Watchdog** | Health checks, cost tracking, cron triggers, alerts |
+| **Telegram** | Captain's command interface |
+
+## The Five Pillars
+
+1. **Dynamic Roles** — Officers are markdown files, not code. Restructure the org in one message.
+2. **The Founder as Captain** — You set direction. The Cabinet figures out how.
+3. **Memory That Compounds** — Three tiers: always-loaded constitution, working notes, episodic recall.
+4. **Self-Improvement Loops** — The Cabinet proposes its own improvements, validates them, and promotes what works.
+5. **Safety Boundaries** — Hard limits enforced by hooks and Redis. Read-only constitution. Kill switch.
+
+## Repo Structure
+
+```
+founders-cabinet/
+├── .claude/agents/          # Officer role definitions
+├── cabinet/                 # Docker, scripts, hooks, cron
+├── config/product.yml       # Product-specific configuration
+├── constitution/            # Governance (read-only at runtime)
+├── memory/                  # Tier 2 (working notes) + Tier 3 (episodic)
+├── shared/                  # Inter-Officer interfaces
+├── CLAUDE.md                # Root context loaded every session
+└── founders-cabinet-guide.md # The theory document
+```
+
+## Requirements
+
+- **Server:** Ubuntu 24.04 with Docker (Hetzner CPX31 recommended)
+- **Claude:** Max 20x subscription ($200/mo) for 4 Officers
+- **Notion:** Business plan (for MCP integration)
+- **Telegram:** 4 bot tokens + group chat
+- **APIs:** Linear, Neon, Voyage AI, Perplexity, Brave Search, Exa
+
+## Safety
+
+- Kill switch halts all operations instantly via Telegram or Redis
+- Constitution and safety boundaries are read-only mounts
+- Pre-tool-use hooks block prohibited actions programmatically
+- Spending caps enforced per-session, per-day, per-month via Redis
+- Permission inheritance: Crew never exceed Officer boundaries
+- Escalation chain: Crew → Officer → CoS → Captain
+
+## License
+
+© 2026 Nathaniel Refslund. All rights reserved.
+
+See `founders-cabinet-guide.md` for the full framework theory.

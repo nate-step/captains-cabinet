@@ -1,0 +1,50 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    jq \
+    redis-tools \
+    postgresql-client \
+    cron \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create watchdog user
+RUN useradd -m -s /bin/bash watchdog
+
+# Copy scripts
+COPY scripts/health-check.sh /opt/watchdog/health-check.sh
+COPY scripts/token-refresh-watch.sh /opt/watchdog/token-refresh-watch.sh
+COPY scripts/kill-switch.sh /opt/watchdog/kill-switch.sh
+COPY cron/briefing.sh /opt/watchdog/briefing.sh
+COPY cron/research-sweep.sh /opt/watchdog/research-sweep.sh
+COPY cron/backlog-refine.sh /opt/watchdog/backlog-refine.sh
+COPY cron/retrospective.sh /opt/watchdog/retrospective.sh
+
+RUN chmod +x /opt/watchdog/*.sh
+
+# Cron schedule (all times UTC — CET = UTC+1 in winter, UTC+2 in summer)
+# Adjust for CEST: 07:00 CET = 05:00 UTC (summer) or 06:00 UTC (winter)
+RUN echo '# Cabinet Watchdog Cron Schedule\n\
+*/5 * * * * /opt/watchdog/health-check.sh >> /var/log/watchdog/health.log 2>&1\n\
+*/15 * * * * /opt/watchdog/token-refresh-watch.sh >> /var/log/watchdog/auth.log 2>&1\n\
+0 6 * * * /opt/watchdog/briefing.sh morning >> /var/log/watchdog/cron.log 2>&1\n\
+0 18 * * * /opt/watchdog/briefing.sh evening >> /var/log/watchdog/cron.log 2>&1\n\
+0 */4 * * * /opt/watchdog/research-sweep.sh >> /var/log/watchdog/cron.log 2>&1\n\
+0 */12 * * * /opt/watchdog/backlog-refine.sh >> /var/log/watchdog/cron.log 2>&1\n\
+0 6 */3 * * /opt/watchdog/retrospective.sh >> /var/log/watchdog/cron.log 2>&1\n' \
+  > /etc/cron.d/cabinet-watchdog
+
+RUN chmod 0644 /etc/cron.d/cabinet-watchdog
+RUN crontab /etc/cron.d/cabinet-watchdog
+
+# Log directory
+RUN mkdir -p /var/log/watchdog && chown watchdog:watchdog /var/log/watchdog
+
+# Entrypoint: inject env vars into cron environment, then start cron
+COPY scripts/watchdog-entrypoint.sh /opt/watchdog/entrypoint.sh
+RUN chmod +x /opt/watchdog/entrypoint.sh
+
+CMD ["/opt/watchdog/entrypoint.sh"]

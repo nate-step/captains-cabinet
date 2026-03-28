@@ -1,0 +1,114 @@
+version: "3.8"
+
+services:
+  # ============================================================
+  # Officers Container — runs all Officer sessions in tmux
+  # ============================================================
+  officers:
+    build:
+      context: .
+      dockerfile: Dockerfile.officer
+    container_name: ${CABINET_PREFIX:-cabinet}-officers
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cabinet:${POSTGRES_PASSWORD}@postgres:5432/cabinet_memory
+    volumes:
+      # Mount the Cabinet framework repo
+      - /opt/founders-cabinet:/opt/founders-cabinet
+      # Mount the product repo as a separate workspace
+      - /opt/Sensed:/workspace/product
+      # Persist Claude Code auth across container restarts
+      - claude-auth:/home/cabinet/.claude
+      # Persist Channels plugin state
+      - channels-state:/home/cabinet/.claude-channels
+    working_dir: /opt/founders-cabinet
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cabinet-net
+
+  # ============================================================
+  # PostgreSQL + pgvector — episodic memory & structured logs
+  # ============================================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ${CABINET_PREFIX:-cabinet}-postgres
+    environment:
+      POSTGRES_USER: cabinet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: cabinet_memory
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "127.0.0.1:5433:5432"  # localhost only, non-standard port
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cabinet -d cabinet_memory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cabinet-net
+
+  # ============================================================
+  # Redis — kill switch, rate limits, state flags, pub/sub
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ${CABINET_PREFIX:-cabinet}-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    ports:
+      - "127.0.0.1:6380:6379"  # localhost only, non-standard port
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cabinet-net
+
+  # ============================================================
+  # Watchdog — health checks, log ingestion, alerts
+  # ============================================================
+  watchdog:
+    build:
+      context: .
+      dockerfile: Dockerfile.watchdog
+    container_name: ${CABINET_PREFIX:-cabinet}-watchdog
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cabinet:${POSTGRES_PASSWORD}@postgres:5432/cabinet_memory
+    volumes:
+      - /opt/founders-cabinet:/opt/founders-cabinet:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - officers
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - cabinet-net
+
+volumes:
+  pgdata:
+  redisdata:
+  claude-auth:
+  channels-state:
+
+networks:
+  cabinet-net:
+    driver: bridge

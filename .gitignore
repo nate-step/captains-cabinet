@@ -1,0 +1,19 @@
+# Secrets
+cabinet/.env
+
+# Runtime logs
+memory/logs/*.jsonl
+
+# Tier 3 raw files (stored in PostgreSQL, local copies are ephemeral)
+memory/tier3/research-archive/*.json
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (managed by Docker, not git)
+pgdata/
+redisdata/
