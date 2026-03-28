@@ -18,6 +18,8 @@ RUN useradd -m -s /bin/bash watchdog
 COPY scripts/health-check.sh /opt/watchdog/health-check.sh
 COPY scripts/token-refresh-watch.sh /opt/watchdog/token-refresh-watch.sh
 COPY scripts/kill-switch.sh /opt/watchdog/kill-switch.sh
+COPY scripts/cost-dashboard.sh /opt/watchdog/cost-dashboard.sh
+COPY scripts/test-escalation.sh /opt/watchdog/test-escalation.sh
 COPY cron/briefing.sh /opt/watchdog/briefing.sh
 COPY cron/research-sweep.sh /opt/watchdog/research-sweep.sh
 COPY cron/backlog-refine.sh /opt/watchdog/backlog-refine.sh
@@ -37,7 +39,8 @@ RUN echo '# Cabinet Watchdog Cron Schedule\n\
 0 19 * * * /opt/watchdog/briefing.sh evening >> /var/log/watchdog/cron.log 2>&1\n\
 0 */4 * * * /opt/watchdog/research-sweep.sh >> /var/log/watchdog/cron.log 2>&1\n\
 0 */12 * * * /opt/watchdog/backlog-refine.sh >> /var/log/watchdog/cron.log 2>&1\n\
-0 7 */3 * * /opt/watchdog/retrospective.sh >> /var/log/watchdog/cron.log 2>&1\n' \
+0 7 */3 * * /opt/watchdog/retrospective.sh >> /var/log/watchdog/cron.log 2>&1\n\
+0 20 * * * /opt/watchdog/cost-dashboard.sh >> /var/log/watchdog/cost.log 2>&1\n' \
   > /etc/cron.d/cabinet-watchdog
 
 RUN chmod 0644 /etc/cron.d/cabinet-watchdog

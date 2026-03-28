@@ -28,6 +28,11 @@ exec su cabinet -s /bin/bash -c '
   echo "  /home/cabinet/start-officer.sh cpo"
   echo ""
 
+  # Start the officer supervisor (auto-restart on crash)
+  nohup bash /opt/founders-cabinet/cabinet/scripts/officer-supervisor.sh \
+    >> /opt/founders-cabinet/memory/logs/supervisor.log 2>&1 &
+  echo "Officer supervisor started (PID $!)."
+
   # Keep container alive
   exec tail -f /dev/null
 '
