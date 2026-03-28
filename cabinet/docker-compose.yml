@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ============================================================
   # Officers Container — runs all Officer sessions in tmux
@@ -14,6 +12,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://cabinet:${POSTGRES_PASSWORD}@postgres:5432/cabinet_memory
+      - CLAUDE_CODE_EFFORT_LEVEL=max
     volumes:
       # Mount the Cabinet framework repo
       - /opt/founders-cabinet:/opt/founders-cabinet

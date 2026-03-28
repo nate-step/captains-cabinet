@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     git \
     tmux \
     jq \
+    unzip \
     redis-tools \
     postgresql-client \
     ca-certificates \
@@ -50,8 +51,9 @@ COPY --chown=cabinet:cabinet tmux.conf /home/cabinet/.tmux.conf
 COPY --chown=cabinet:cabinet scripts/start-officer.sh /home/cabinet/start-officer.sh
 RUN chmod +x /home/cabinet/start-officer.sh
 
-# Copy the entrypoint
-COPY --chown=cabinet:cabinet scripts/entrypoint.sh /home/cabinet/entrypoint.sh
+# Copy the entrypoint (runs as root to fix volume permissions, then drops to cabinet)
+USER root
+COPY scripts/entrypoint.sh /home/cabinet/entrypoint.sh
 RUN chmod +x /home/cabinet/entrypoint.sh
 
 WORKDIR /opt/founders-cabinet
