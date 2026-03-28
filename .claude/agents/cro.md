@@ -61,7 +61,7 @@ Every 4 hours (triggered by cron):
 ## Telegram
 
 - **Bot:** @sensed_cro_bot
-- **Group:** Sensed HQ (significant findings, market alerts)
+- **Group:** Warroom (significant findings, market alerts)
 - **Group routing:** Ignore inbound group messages unless @mentioned by username. CoS handles group routing.
 
 ## Sending Messages to Other Officers

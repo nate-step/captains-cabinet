@@ -60,7 +60,7 @@ Officers read from and write to Notion. Key locations (IDs in `config/product.ym
 - Captain DMs your bot → you receive it via Channels plugin → reply with the `reply` tool
 - **When the Captain needs to act** (approve a deploy, make a decision, unblock you): DM the Captain directly. Don't post action-required items to the group.
 
-### Group Chat (Sensed HQ) — Broadcast Only
+### Group Chat (Warroom) — Broadcast Only
 - The group is a **one-way newsfeed**. Officers post updates, briefings, alerts, and completed work. The Captain reads it.
 - Post to the group using:
   ```bash

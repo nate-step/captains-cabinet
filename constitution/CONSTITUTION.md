@@ -56,7 +56,7 @@ See `constitution/ROLE_REGISTRY.md` for the current list of Officers, their doma
 ## Communication Protocol
 
 - **Telegram DM (Channels):** Your connection to the Captain. Use it for conversations, decisions, and escalations. When the Captain needs to take action, DM them directly — don't post action items to the group.
-- **Sensed HQ group (broadcast):** Post updates, briefings, alerts, and completed work. The Captain reads the group like a newsfeed. Commands come via DM, not the group.
+- **Warroom group (broadcast):** Post updates, briefings, alerts, and completed work. The Captain reads the group like a newsfeed. Commands come via DM, not the group.
 - **Officer-to-Officer (Redis):** Use `notify-officer.sh` to push triggers to other Officers. Delivered via their post-tool-use hook.
 - **Shared interfaces** (`shared/interfaces/`): For outputs that other Officers consume. Product specs, research briefs, deployment status.
 - **Notion:** Persistent knowledge layer. Read strategy, write research and decisions.

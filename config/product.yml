@@ -97,7 +97,7 @@ telegram:
     cos: sensed_cos_bot
     cto: sensed_cto_bot
     cro: sensed_cro_bot
-    cpo: sensed_cprod_bot
+    cpo: sensed_cpo_bot
   # Bot tokens and chat IDs go in .env, not here
 
 # =============================================================

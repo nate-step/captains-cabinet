@@ -14,7 +14,7 @@ REDIS_URL="${REDIS_URL:-redis://redis:6379}"
 REDIS_HOST=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f1)
 REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
-TRIGGER_MSG="[$TIMESTAMP] Daily $BRIEFING_TYPE briefing due. Compile status from all Officers and send briefing to Sensed HQ Telegram group. Include: progress since last briefing, current blockers, upcoming priorities, decisions needed from Captain."
+TRIGGER_MSG="[$TIMESTAMP] Daily $BRIEFING_TYPE briefing due. Compile status from all Officers and send briefing to Warroom Telegram group. Include: progress since last briefing, current blockers, upcoming priorities, decisions needed from Captain."
 
 # PRIMARY: Push to Redis — will be surfaced by post-tool-use hook
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cos" "$TRIGGER_MSG" > /dev/null 2>&1

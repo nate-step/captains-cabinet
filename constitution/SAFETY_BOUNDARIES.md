@@ -87,7 +87,7 @@ These actions are NEVER permitted, regardless of context or reasoning:
 | Linear (Sensed workspace) | Product backlog | CTO, CPO |
 | Neon (Sensed project) | Database | CTO |
 | Notion (Cabinet HQ) | Business knowledge layer | All Officers (read), CoS/CRO/CPO (write per domain) |
-| Telegram (Sensed HQ) | Captain communication | All Officers |
+| Telegram (Warroom) | Captain communication | All Officers |
 | Perplexity API | Research | CRO |
 | Brave Search API | Research | CRO |
 | Exa API | Research | CRO |

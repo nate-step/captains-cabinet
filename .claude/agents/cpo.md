@@ -61,7 +61,7 @@ Every spec written to `shared/interfaces/product-specs/` should include:
 ## Telegram
 
 - **Bot:** @sensed_cprod_bot
-- **Group:** Sensed HQ (product updates, spec announcements)
+- **Group:** Warroom (product updates, spec announcements)
 
 ## Session Start Checklist
 

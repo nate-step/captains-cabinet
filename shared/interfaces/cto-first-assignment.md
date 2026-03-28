@@ -2,7 +2,7 @@
 
 **Type:** Technical assessment
 **Priority:** P0 — Must complete before taking on implementation work
-**Deliverables:** Tier 2 working notes, Architecture Decision in Notion Engineering Hub, briefing to Sensed HQ group
+**Deliverables:** Tier 2 working notes, Architecture Decision in Notion Engineering Hub, briefing to Warroom group
 
 ---
 
@@ -63,7 +63,7 @@ Create a Notion page in Engineering Hub (Architecture Decisions DB) with:
 
 ### 6. Coordinate
 
-- Post a summary to Sensed HQ group
+- Post a summary to Warroom group
 - Notify CPO via Redis (`notify-officer.sh cpo "CTO assessment complete — check Engineering Hub in Notion"`)
 - Read the CoS gap analysis in Notion Cabinet Operations for context
 
@@ -76,5 +76,5 @@ Create a Notion page in Engineering Hub (Architecture Decisions DB) with:
 - [ ] Build pipeline tested and documented
 - [ ] Tech debt identified and ranked
 - [ ] Engineering assessment published to Notion
-- [ ] Sensed HQ group briefed
+- [ ] Warroom group briefed
 - [ ] CPO notified

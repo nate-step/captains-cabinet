@@ -10,7 +10,7 @@
 1. CoS sets Redis key `cabinet:killswitch` to `"active"`
 2. All Officers' pre-tool-use hooks detect the key
 3. All tool executions are blocked with message: "KILL SWITCH ACTIVE — all operations halted by Captain"
-4. Officers send confirmation to Sensed HQ: "[Officer] halted"
+4. Officers send confirmation to Warroom: "[Officer] halted"
 5. No further work occurs until the Captain sends `/resume`
 
 ## Manual Kill (Emergency)

@@ -1,5 +1,5 @@
 #!/bin/bash
-# send-to-group.sh — Send a message to the Sensed HQ Telegram group
+# send-to-group.sh — Send a message to the Warroom Telegram group
 # Called by Officers via bash when they need to broadcast.
 #
 # Usage: send-to-group.sh "Your message here"
@@ -17,7 +17,7 @@ RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/se
 # Check success
 OK=$(echo "$RESPONSE" | jq -r '.ok' 2>/dev/null)
 if [ "$OK" = "true" ]; then
-  echo "Message sent to Sensed HQ group"
+  echo "Message sent to Warroom group"
 else
   echo "Failed to send: $RESPONSE" >&2
   exit 1

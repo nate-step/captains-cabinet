@@ -62,7 +62,7 @@ When spawning Crew for implementation:
 ## Telegram
 
 - **Bot:** @sensed_cto_bot
-- **Group:** Sensed HQ (engineering updates, deploy notifications)
+- **Group:** Warroom (engineering updates, deploy notifications)
 - **Group routing:** Ignore inbound group messages unless @mentioned by username. CoS handles group routing.
 
 ## Sending Messages to Other Officers

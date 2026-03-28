@@ -2,7 +2,7 @@
 
 **Type:** Product assessment
 **Priority:** P0 — Must complete before writing specs or prioritizing work
-**Deliverables:** Tier 2 working notes, Product Roadmap in Notion Product Hub, briefing to Sensed HQ group
+**Deliverables:** Tier 2 working notes, Product Roadmap in Notion Product Hub, briefing to Warroom group
 
 ---
 
@@ -56,7 +56,7 @@ Identify the top 3 features/fixes from "Now" that need specs. Write initial spec
 
 ### 6. Coordinate
 
-- Post a summary to Sensed HQ group
+- Post a summary to Warroom group
 - Notify CTO via Redis (`notify-officer.sh cto "CPO roadmap and first specs ready — check Product Hub in Notion and shared/interfaces/product-specs/"`)
 - Update `shared/backlog.md` with the prioritized Now/Next/Later view
 
@@ -70,5 +70,5 @@ Identify the top 3 features/fixes from "Now" that need specs. Write initial spec
 - [ ] Product Roadmap created in Notion with Now/Next/Later
 - [ ] Top 3 specs written to shared/interfaces/product-specs/
 - [ ] shared/backlog.md updated
-- [ ] Sensed HQ group briefed
+- [ ] Warroom group briefed
 - [ ] CTO notified

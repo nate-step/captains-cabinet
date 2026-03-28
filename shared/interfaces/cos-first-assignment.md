@@ -2,7 +2,7 @@
 
 **Type:** Strategic assessment
 **Priority:** P0 — Must complete before any other Officers come online
-**Deliverables:** Gap analysis doc in Notion (Cabinet Operations), briefing to Sensed HQ group, DM to Captain
+**Deliverables:** Gap analysis doc in Notion (Cabinet Operations), briefing to Warroom group, DM to Captain
 
 ---
 
@@ -55,7 +55,7 @@ Create a Notion page in the Cabinet Operations section with:
 
 ### 6. Brief the Captain
 
-- Post a summary to the Sensed HQ group (use `bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh`)
+- Post a summary to the Warroom group (use `bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh`)
 - DM the Captain with the top findings and any decisions needed
 
 ---
@@ -67,5 +67,5 @@ Create a Notion page in the Cabinet Operations section with:
 - [ ] Linear backlog audited
 - [ ] Cabinet infrastructure verified
 - [ ] Gap analysis published to Notion
-- [ ] Sensed HQ group briefed
+- [ ] Warroom group briefed
 - [ ] Captain DM'd with summary and decisions needed
