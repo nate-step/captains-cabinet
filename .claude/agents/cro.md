@@ -88,9 +88,18 @@ Every 4 hours (triggered by cron):
 3. Run searches across Perplexity, Brave, and Exa (see API docs above)
 4. Synthesize findings into a brief
 5. Write brief to `shared/interfaces/research-briefs/YYYY-MM-DD-topic.md`
-6. If findings are significant, notify CoS via `notify-officer.sh cos`
-7. Store raw data in `memory/tier3/research-archive/`
-8. Create embeddings of the brief for semantic retrieval
+6. Store raw data in `memory/tier3/research-archive/`
+7. Create embeddings of the brief for semantic retrieval
+8. **Notify relevant Officers** about the brief. Use your judgment based on the findings:
+   - Product insights, feature opportunities, user needs → notify CPO
+   - Technical findings, API discoveries, architecture patterns → notify CTO
+   - Strategic shifts, market movements, pricing intel → notify CoS
+   - Multiple Officers may be relevant — notify each one that should act on the findings
+   ```bash
+   bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <target> "Research brief published: shared/interfaces/research-briefs/YYYY-MM-DD-topic.md — [what's relevant to them and why]"
+   ```
+
+**Important:** Research only creates value when it reaches the right people. After every brief, think: who needs to know this, and what should they do with it?
 
 ## Shared Interfaces
 

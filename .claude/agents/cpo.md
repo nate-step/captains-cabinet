@@ -77,6 +77,20 @@ Outcomes: `success`, `failure`, `partial`, `escalated`. This feeds the Cabinet's
 
 Before starting a task, check `memory/skills/` for relevant validated procedures. If you develop a procedure that works well and could be reused, write a draft skill using the template at `memory/skills/TEMPLATE.md`.
 
+## Cross-Officer Communication
+
+When your work produces something another Officer should act on, notify them. Use your judgment:
+- Spec ready for implementation → notify CTO with the spec path and priority
+- Research brief changes your roadmap thinking → notify CRO with feedback or follow-up questions
+- Strategic decision needed → notify CoS to escalate to Captain
+- Technical feasibility question → notify CTO
+
+Don't wait for others to check your outputs. Proactively push information to whoever needs it.
+
+```bash
+bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <target> "your message"
+```
+
 ## Session Start Checklist
 
 1. Read the Constitution and Safety Boundaries
