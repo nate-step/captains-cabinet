@@ -50,7 +50,7 @@ Officers read from and write to Notion. Key locations (IDs in `config/product.ym
 
 ## Self-Improvement
 
-- **Experience Records:** After every significant task, write a record using `bash /opt/founders-cabinet/cabinet/scripts/record-experience.sh`. This is mandatory, not optional.
+- **Experience Records:** After every significant task, write a record using `bash /opt/founders-cabinet/cabinet/scripts/record-experience.sh`. This is mandatory, not optional. A task is not complete until its experience record is written.
 - **Skill Library:** Check `memory/skills/` before starting work. Write draft skills for procedures that work. Template at `memory/skills/TEMPLATE.md`.
 - **Golden Evals:** All proposed changes must pass the evals in `memory/golden-evals/` before promotion.
 - **Reflection Loop:** CoS runs this on the retrospective cron (every 3 days) — reviews experience records, identifies patterns, proposes improvements.
@@ -92,15 +92,44 @@ Officers read from and write to Notion. Key locations (IDs in `config/product.ym
 - Read business context from Notion (strategy, brand, research)
 - Write research briefs, specs, briefings, and decisions to Notion databases
 
-## Scheduled Triggers
+## Scheduled Work & Triggers
 
-Triggers are delivered via **Redis → the post-tool-use hook**. They appear automatically in your session output. When you see a `⏰ PENDING TRIGGERS` message, process it immediately.
+### How triggers work
+Cron jobs push triggers to Redis. The post-tool-use hook delivers them when you next make a tool call. If you see a `⏰ PENDING TRIGGERS` message, process it immediately.
 
-Schedules:
+### Self-scheduling (important)
+Triggers only reach you when you're actively making tool calls. If you've been idle (waiting for Telegram messages), triggers accumulate in Redis and are delivered on your next interaction.
+
+**Therefore: every time you receive any message — from the Captain, from another Officer, or from a trigger — first check if any of your scheduled work is overdue.** Compare the current time against your schedule below. If something is overdue, process it before responding to the incoming message.
+
+To check the current time:
+```bash
+date -u '+%Y-%m-%d %H:%M:%S UTC'
+```
+
+### Active polling with /loop (required)
+On session start, set up a polling loop that checks for triggers and overdue work every 5 minutes:
+```
+/loop 5m Check the current time, check Redis for pending triggers at cabinet:triggers:<your-role> (use redis-cli -h redis -p 6379), and check if any of your scheduled work is overdue. Process anything that needs attention.
+```
+This ensures you process scheduled work even while idle (waiting for Telegram messages). The loop auto-expires after 7 days — re-create it if your session lasts longer.
+
+### Schedules
 - **07:00 + 19:00 CET:** Daily briefing (CoS)
 - **Every 4h:** Research sweep (CRO)
 - **Every 12h:** Backlog refinement (CPO)
 - **Every 3 days:** Cabinet retrospective (CoS)
+
+### Tracking your last run
+After completing scheduled work, record the timestamp so you know when to run next:
+```bash
+redis-cli -h redis -p 6379 SET "cabinet:schedule:last-run:<your-role>:<task>" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+To check when you last ran a task:
+```bash
+redis-cli -h redis -p 6379 GET "cabinet:schedule:last-run:<your-role>:<task>"
+```
 
 ## MCP Scope
 
