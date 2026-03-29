@@ -3,7 +3,7 @@
 *A framework for building autonomous AI organizations that ship, learn, and evolve.*
 
 **By Nathaniel Refslund**
-**Version 1.0 - March 2026**
+**Version 1.1 - March 2026**
 
 ---
 
@@ -69,6 +69,8 @@ Every Officer in the Cabinet has a clearly defined domain of ownership - what it
 
 **Roles define ownership, not workflows.** How Officers interact with each other - who feeds whom, who requests what - emerges organically and evolves over time. The Cabinet does not prescribe communication patterns between roles. It trusts that Officers with clear ownership and shared interfaces will find effective ways to collaborate.
 
+**Organic does not mean passive.** Officers are responsible for proactively pushing their outputs to whichever peers need to act on them. Shared interfaces are for artifacts - the durable outputs of work. But an artifact that sits unread creates no value. When an Officer completes work that another Officer should evaluate, build on, or respond to, the producing Officer must notify them directly. Which Officers to notify, and why, is a judgment call that belongs to the producing Officer - not a prescribed routing rule.
+
 A role definition must include:
 - **Name and identity**: what the Officer is
 - **Domain of ownership**: what it is responsible for
@@ -97,6 +99,10 @@ The Captain communicates inward through:
 - **Restructuring**: creating, modifying, or retiring Officers
 
 The Cabinet must minimize Captain interrupts. Every message to the Captain should either deliver value (briefings, completed work) or be genuinely blocked without Captain input (decisions that exceed autonomy boundaries). If the Cabinet messages the Captain too often, the autonomy boundaries are drawn too tightly. If it never messages the Captain, the safety boundaries are drawn too loosely.
+
+**Alert discipline.** A single issue must not produce repeated alerts. Alerts to the Captain must be deduplicated - once the Captain has been informed of a problem, subsequent notifications about the same problem are noise, not signal. An implementation that alerts every five minutes about a known issue will train the Captain to ignore alerts entirely, which defeats their purpose.
+
+**Cost visibility.** The Captain needs ongoing visibility into resource consumption - not just hard limits that halt operations when exceeded. Spending limits prevent runaway costs, but a dashboard that shows where resources are going allows the Captain to make informed allocation decisions before limits are hit.
 
 ### 3. Memory That Compounds
 
@@ -149,6 +155,8 @@ Safety boundaries are defined in a protected document that no agent can modify. 
 Safety boundaries are not suggestions. They are enforced programmatically - through tool-level intercepts that block prohibited actions before they execute, not through instructions that ask agents to please be careful.
 
 The Cabinet also maintains a self-healing escalation chain: when an agent fails, it retries, then self-diagnoses, then escalates to a more capable Officer, and finally escalates to the Captain. The Captain is always the last resort, never the first responder.
+
+**Liveness monitoring must distinguish idle from dead.** A Cabinet that runs continuously will have agents in a waiting state - awaiting input, awaiting a scheduled trigger, awaiting a peer's output. These agents are alive but inactive. Any liveness system that relies solely on activity signals will misidentify waiting agents as failed agents, producing false alerts that erode trust in the monitoring system. The health layer must account for the fact that an agent doing nothing may be doing exactly what it should.
 
 ---
 
@@ -203,6 +211,8 @@ The most common failure modes:
 **Improvement drift.** The Cabinet changes its own instructions without validating the changes, gradually drifting from effective to confidently wrong. Mitigated by the iron rule: every change is validated against known-good scenarios before promotion.
 
 **Cost runaway.** Parallel agent sessions consume resources multiplicatively. Mitigated by per-session and per-day spending limits enforced at the infrastructure level, not by agent self-restraint.
+
+**Communication isolation.** Officers produce outputs but do not notify the peers who need to act on them. Work accumulates in shared interfaces but never reaches the right people, and the pipeline stalls despite every Officer being individually productive. Mitigated by making proactive notification an explicit responsibility of every Officer - not a prescribed workflow, but a cultural norm embedded in role definitions.
 
 **Safety erosion.** An improvement loop weakens safety boundaries to remove friction. Mitigated by making safety boundaries physically unmodifiable by any agent, including the improvement agent.
 
