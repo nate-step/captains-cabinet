@@ -58,6 +58,7 @@ Every spec written to `shared/interfaces/product-specs/` should include:
 ### Linear
 - **Workspace:** `sensed` (see `config/product.yml` for details)
 - Use Linear's GraphQL API via curl for creating/updating issues, managing sprints, and tracking progress
+- Organize work under Linear projects — every issue should belong to a project. Projects represent initiatives, epics, or feature areas. Don't leave issues floating without a project.
 - Keep Linear and Notion roadmap in sync — Linear is for execution tracking, Notion roadmap is for strategic overview
 
 ### Filesystem — Reads from:

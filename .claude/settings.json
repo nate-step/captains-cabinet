@@ -12,7 +12,8 @@
       "Grep",
       "mcp__notion*",
       "mcp__linear*",
-      "mcp__neon*"
+      "mcp__neon*",
+      "mcp__vercel*"
     ],
     "deny": [
       "Bash(rm -rf /)",

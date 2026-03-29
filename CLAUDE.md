@@ -102,6 +102,17 @@ Schedules:
 - **Every 12h:** Backlog refinement (CPO)
 - **Every 3 days:** Cabinet retrospective (CoS)
 
+## MCP Scope
+
+Only the following MCP servers are used by the Cabinet. Do NOT use any other MCP servers that may be available on the Captain's profile (e.g., monday.com, make.com, custom servers). Those are personal tools, not Cabinet tools.
+
+- **Notion** — Business brain (strategy, brand, research, decisions)
+- **Linear** — Execution backlog (issues, sprints, project tracking)
+- **Neon** — Product database (schema, queries, migrations)
+- **Vercel** — Hosting and deployment (preview, production)
+
+If a task seems to require a tool outside this list, escalate to the Captain rather than using an unauthorized MCP.
+
 ## Model Routing
 
 - **Officers:** Opus 4.6 for strategic thinking and complex decisions

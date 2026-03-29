@@ -126,6 +126,31 @@ while true; do
     if [ "$OFFICER_ALIVE" = true ]; then
       TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
       redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:heartbeat:$officer" "$TIMESTAMP" EX 900 > /dev/null 2>&1
+
+      # Deliver pending triggers to idle officers by injecting them into the
+      # officer's tmux window as terminal input. The post-tool-use hook normally
+      # delivers triggers, but idle officers (waiting for Telegram) never make
+      # tool calls. The supervisor bridges this gap by typing the trigger content
+      # directly into the officer's claude session via tmux send-keys.
+      #
+      # This works because Claude Code accepts terminal input alongside
+      # Channels plugin input (proven by Captain interacting via tmux attach).
+      PENDING=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$officer" 2>/dev/null)
+      if [ -n "$PENDING" ] && [ "$PENDING" -gt 0 ]; then
+        # Pop one trigger at a time (don't flood with all at once)
+        TRIGGER=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LPOP "cabinet:triggers:$officer" 2>/dev/null)
+        if [ -n "$TRIGGER" ] && [ "$TRIGGER" != "" ]; then
+          # Sanitize: remove newlines, truncate to 500 chars
+          CLEAN_TRIGGER=$(echo "$TRIGGER" | tr '\n' ' ' | head -c 500)
+          TRIGGER_MSG="SCHEDULED TRIGGER: ${CLEAN_TRIGGER}"
+
+          # Use -l for literal mode (prevents tmux interpreting special chars)
+          tmux send-keys -l -t "cabinet:$WINDOW" "$TRIGGER_MSG"
+          tmux send-keys -t "cabinet:$WINDOW" Enter
+
+          log "Delivered trigger to $officer via tmux: ${CLEAN_TRIGGER:0:80}..."
+        fi
+      fi
     fi
   done
 done
