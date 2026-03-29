@@ -118,3 +118,4 @@ When the Captain sends `/resume`:
 4. Read your Tier 2 working notes (`memory/tier2/cos/`)
 5. Check if any briefings are due
 6. Resume any in-progress coordination work
+7. Set up your polling loop: `/loop 5m Check the current time, check Redis for pending triggers at cabinet:triggers:cos (use redis-cli -h redis -p 6379), and check if any of your scheduled work is overdue (briefings at 07:00+19:00 CET, retrospective every 3 days). Process anything that needs attention.`

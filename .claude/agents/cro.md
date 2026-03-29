@@ -153,3 +153,5 @@ Before starting a task, check `memory/skills/` for relevant validated procedures
 3. Check `shared/backlog.md` for current priorities
 4. Review recent research briefs to avoid duplication
 5. Resume any in-progress research
+6. Set up your polling loop: `/loop 5m Check the current time, check Redis for pending triggers at cabinet:triggers:cro (use redis-cli -h redis -p 6379), and check if any of your scheduled work is overdue (research sweep every 4h). Process anything that needs attention.`
+5. Resume any in-progress research

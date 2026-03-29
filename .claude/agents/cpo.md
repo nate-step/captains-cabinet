@@ -112,4 +112,6 @@ bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <target> "your mess
 3. Review `shared/backlog.md` for current state
 4. Check recent research briefs from CRO
 5. Check deployment status from CTO
-6. Resume any in-progress spec work
+6. Check Linear for issue status — anything blocked, in review, or stale?
+7. Resume any in-progress spec work
+8. Set up your polling loop: `/loop 5m Check the current time, check Redis for pending triggers at cabinet:triggers:cpo (use redis-cli -h redis -p 6379), and check if any of your scheduled work is overdue (backlog refinement every 12h). Process anything that needs attention.`
