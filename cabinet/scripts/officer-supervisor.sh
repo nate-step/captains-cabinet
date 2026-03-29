@@ -96,6 +96,7 @@ while true; do
     fi
 
     # Check if the process in the window is still alive (not just a dead shell)
+    OFFICER_ALIVE=false
     PANE_PID=$(tmux list-panes -t "cabinet:$WINDOW" -F '#{pane_pid}' 2>/dev/null | head -1)
     if [ -n "$PANE_PID" ]; then
       # Check if the pane has child processes (claude should be running)
@@ -114,7 +115,17 @@ while true; do
           send_restart_alert "$officer" "claude process exited"
           continue
         fi
+      else
+        OFFICER_ALIVE=true
       fi
+    fi
+
+    # Refresh heartbeat for alive officers — prevents false health alerts
+    # when an officer is idle (waiting for Telegram messages, no tool calls).
+    # The post-tool-use hook also sets this, but idle officers need coverage too.
+    if [ "$OFFICER_ALIVE" = true ]; then
+      TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:heartbeat:$officer" "$TIMESTAMP" EX 900 > /dev/null 2>&1
     fi
   done
 done

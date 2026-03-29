@@ -46,7 +46,7 @@ check_officer() {
       echo "[$TIMESTAMP] Officer $officer: still down (alert already sent)"
     else
       send_alert "🔴 *$officer* has no heartbeat. The Officer may have crashed or stalled. Check tmux in the Officers container."
-      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$flag_key" "yes" EX 3600 > /dev/null 2>&1
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$flag_key" "yes" EX 21600 > /dev/null 2>&1  # 6h dedup
       echo "[$TIMESTAMP] Officer $officer: DOWN — alert sent to Captain"
     fi
     return 1
