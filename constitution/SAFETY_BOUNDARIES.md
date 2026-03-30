@@ -83,9 +83,9 @@ These actions are NEVER permitted, regardless of context or reasoning:
 
 | Service | Purpose | Officer Access |
 |---------|---------|---------------|
-| GitHub (nate-step/Sensed) | Code repository | CTO |
-| Linear (Sensed workspace) | Product backlog | CTO, CPO |
-| Neon (Sensed project) | Database | CTO |
+| GitHub (see `config/product.yml`) | Code repository | CTO |
+| Linear (see `config/product.yml`) | Product backlog | CTO, CPO |
+| Neon (see `config/product.yml`) | Database | CTO |
 | Notion (Cabinet HQ) | Business knowledge layer | All Officers (read), CoS/CRO/CPO (write per domain) |
 | Telegram (Warroom) | Captain communication | All Officers |
 | Perplexity API | Research | CRO |

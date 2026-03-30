@@ -66,7 +66,33 @@ redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCRBY "cabinet:cost:monthly:$MONTH"
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:monthly:$MONTH" 2764800 > /dev/null 2>&1
 
 # ============================================================
-# 3. TRIGGER DELIVERY NOTE
+# 3. EXPERIENCE RECORD NUDGE
+# ============================================================
+# After significant actions (git push, PR creation, spec publish, research brief),
+# set a Redis flag. The officer's /loop picks it up as a reminder.
+# We don't block because hook stdout isn't reliably injected into context.
+
+SIGNIFICANT_ACTION=false
+
+case "$TOOL_NAME" in
+  Bash)
+    if echo "$TOOL_INPUT" | grep -qiE '(git push|gh pr create|gh pr merge)'; then
+      SIGNIFICANT_ACTION=true
+    fi
+    ;;
+  Write)
+    if echo "$TOOL_INPUT" | grep -qiE '(product-specs/|research-briefs/|deployment-status)'; then
+      SIGNIFICANT_ACTION=true
+    fi
+    ;;
+esac
+
+if [ "$SIGNIFICANT_ACTION" = true ]; then
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:nudge:experience-record:$OFFICER" "$TIMESTAMP" EX 3600 > /dev/null 2>&1
+fi
+
+# ============================================================
+# 4. TRIGGER DELIVERY NOTE
 # ============================================================
 # Triggers are stored in cabinet:triggers:<officer> by notify-officer.sh and cron jobs.
 # Officers read their own triggers via /loop polling (every 5m).

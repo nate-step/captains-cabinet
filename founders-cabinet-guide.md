@@ -127,16 +127,22 @@ The critical design rule: **only Tier 1 is always loaded.** Everything else is p
 
 The Cabinet gets measurably better at its job over time - not through model improvements, but through better instructions, better tools, better processes, and better memory. This happens through three nested loops:
 
-**The Task Loop (minutes)**
-Every task follows: plan, execute, verify, record. Verification must be independent - the agent that built something is not the agent that confirms it works. Every completed task produces an experience record: what was attempted, what succeeded or failed, and what to do differently next time.
+**Operational standards are a prerequisite for learning.** Before the improvement loops can function, every Officer must have defined quality standards in their role definition — the minimum bar for how they do their work, not just what they own. An Officer without standards produces undefined behavior, and undefined behavior cannot be improved through reflection. The Captain defines initial standards; the improvement loops refine them over time.
 
-**The Reflection Loop (daily)**
-The Cabinet reviews accumulated experience records, identifies recurring patterns, and proposes changes to its own operating instructions, skills, or role definitions. A pattern observed twice is noted. A pattern observed three or more times triggers a proposed change.
+**Captain directives vs. retrospective-discovered improvements.** The Captain can update operational standards, role definitions, and processes at any time — this is Captain authority, not micromanagement. The self-improvement loops exist for improvements that Officers discover autonomously through experience. These are complementary mechanisms: Captain directives set and raise the bar; improvement loops optimize how Officers meet it.
 
-**The Evolution Loop (periodic)**
-A heavier analysis cycle where the Cabinet evaluates its own performance against defined metrics, runs validation tests against proposed changes, and promotes improvements that pass. Changes that degrade performance are automatically reverted. The Cabinet can propose organizational restructuring - merging Officers, creating new specialists, retiring unused roles - but the Captain approves structural changes.
+**The Task Loop (event-driven)**
+Every task follows: plan, execute, verify, record. Verification must be independent - the agent that built something is not the agent that confirms it works. Every completed task produces an experience record: what was attempted, what succeeded or failed, and what to do differently next time. The Task Loop is enforced, not optional — a task without a recorded experience is not complete.
+
+**The Reflection Loop (throughput-driven)**
+Each Officer periodically reviews their own accumulated experience records, identifies patterns in their own work, and self-corrects. Additionally, the orchestrating Officer reviews all Officers' experience records for cross-Officer coordination patterns — handoff quality, responsiveness, communication gaps. Reflection cadence should match the rate at which new experience records accumulate. If ten records appear in six hours, reflect every six hours. If one record appears per day, daily reflection is sufficient. The principle: reflect often enough that patterns are caught before they compound, but not so often that every cycle finds nothing.
+
+**The Evolution Loop (batch-driven)**
+A heavier analysis cycle where the Cabinet evaluates its own performance against defined metrics, runs validation tests against proposed changes, and promotes improvements that pass. Changes that degrade performance are automatically reverted. The Cabinet can propose organizational restructuring - merging Officers, creating new specialists, retiring unused roles - but the Captain approves structural changes. Evolution runs after each Reflection cycle has produced enough data to warrant analysis. It can always decide not to promote anything if no improvements qualify.
 
 **The iron rule of self-improvement: every change is an experiment with a rollback path.** The Cabinet modifies its own instructions on a branch, validates against a set of known-good scenarios, and only promotes changes that demonstrably improve outcomes. Self-improvement without validation is drift, not improvement.
+
+**Cadence scales with operating speed.** The improvement loops must match the pace of the Cabinet's work, not a fixed clock. A Cabinet running on powerful models that complete 50 tasks per day needs rapid reflection and frequent evolution cycles. A Cabinet running on smaller models with lower throughput can reflect less often. The principle: improvement loops should never be the bottleneck, and accumulated experience records should never sit unreviewed long enough for bad patterns to compound. Set cadences aggressively and adjust based on whether each cycle produces actionable output.
 
 ### 5. Safety Boundaries
 
@@ -177,6 +183,10 @@ The authoritative list of active Officers in the Cabinet - who exists, what each
 ### The Skill Library
 
 A growing collection of reusable procedures - playbooks for repeated workflows that the Cabinet has validated through experience. Skills are not instructions written on day one and left to rot. They are distilled from successful episodes, tested against validation scenarios, and promoted into the library only after proving their value.
+
+**Skills have a full lifecycle: creation, promotion, review, and archival.** A skill that produces failures when followed, goes unused in its domain, or is superseded by a better skill should be reviewed and potentially archived. A library that only grows becomes noisy and contradictory. Archival is as important as promotion — it keeps the library trustworthy. Archived skills are not deleted; they are kept with reason notes so the Cabinet does not re-invent a procedure it already tried and retired.
+
+**Foundation skills** ship with the Cabinet from day one — baseline procedures that define the minimum quality bar for how Officers operate. They are promoted from the start but follow the same lifecycle as any other skill. They can be improved through the learning loop just like skills discovered through experience.
 
 The Skill Library is the Cabinet's institutional competence. Over time, it becomes the primary source of compounding value - a library of validated procedures that no employee could match for consistency and retention.
 

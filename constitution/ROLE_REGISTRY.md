@@ -8,10 +8,10 @@
 
 | Officer | Role | Telegram | Domain | Status |
 |---------|------|----------|--------|--------|
-| Chief of Staff (CoS) | Orchestrator | @sensed_cos_bot | Captain comms, org management, coordination, briefings | Active |
-| Chief Technology Officer (CTO) | Engineering Lead | @sensed_cto_bot | Codebase, architecture, deploys, infrastructure | Pending (Phase 2) |
-| Chief Research Officer (CRO) | Intelligence Lead | @sensed_cro_bot | Market research, competitive intel, user research, trends | Pending (Phase 3) |
-| Chief Product Officer (CPO) | Product Lead | @sensed_cprod_bot | Product backlog, specs, prioritization, UX | Pending (Phase 2) |
+| Chief of Staff (CoS) | Orchestrator | See `config/product.yml` | Captain comms, org management, coordination, briefings | Active |
+| Chief Technology Officer (CTO) | Engineering Lead | See `config/product.yml` | Codebase, architecture, deploys, infrastructure | Active |
+| Chief Research Officer (CRO) | Intelligence Lead | See `config/product.yml` | Market research, competitive intel, user research, trends | Active |
+| Chief Product Officer (CPO) | Product Lead | See `config/product.yml` | Product backlog, specs, prioritization, UX | Active |
 
 ## Role Definitions
 

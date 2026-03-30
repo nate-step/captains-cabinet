@@ -2,8 +2,8 @@
 
 **Redis key:** `cabinet:killswitch`  
 **Check frequency:** Every tool invocation (pre-tool-use hook)  
-**Activation:** Captain sends `/killswitch` to @sensed_cos_bot  
-**Deactivation:** Captain sends `/resume` to @sensed_cos_bot  
+**Activation:** Captain sends `/killswitch` to the CoS bot  
+**Deactivation:** Captain sends `/resume` to the CoS bot  
 
 ## What Happens on Activation
 

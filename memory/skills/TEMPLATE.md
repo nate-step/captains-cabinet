@@ -1,10 +1,19 @@
 # Skill: [Name]
 
-**Status:** draft | validated | promoted
-**Created by:** [officer]
+**Status:** draft | validated | promoted | under-review | archived
+**Created by:** [officer or "foundation"]
 **Date:** [YYYY-MM-DD]
 **Validated against:** [list of test scenarios]
 **Usage count:** 0
+**Archived reason:** [only if status is archived — e.g., "superseded by X" or "no longer applicable because Y"]
+
+## Status Lifecycle
+
+- `draft` — Written by an officer based on repeated experience. Not yet validated.
+- `validated` — CoS has tested against validation scenarios. Ready for Captain approval.
+- `promoted` — Captain-approved. Officers follow this skill when trigger conditions match.
+- `under-review` — Demotion signal detected (failures citing this skill, unused in domain, or superseded). CoS is investigating.
+- `archived` — No longer active. Kept with reason notes so it isn't re-invented. Can be restored if conditions change.
 
 ## When to Use
 [Describe the trigger conditions — when should an Officer use this skill?]

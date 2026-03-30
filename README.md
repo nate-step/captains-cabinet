@@ -97,18 +97,22 @@ docker exec -it cabinet-officers bash
 1. **Dynamic Roles** — Officers are markdown files, not code. Restructure the org in one message.
 2. **The Founder as Captain** — You set direction. The Cabinet figures out how.
 3. **Memory That Compounds** — Three tiers: always-loaded constitution, working notes, episodic recall.
-4. **Self-Improvement Loops** — The Cabinet proposes its own improvements, validates them, and promotes what works.
+4. **Self-Improvement Loops** — Three nested loops: Task (per-task experience records), Reflection (every 6h individual self-review), Evolution (every 24h cross-officer retro + skill promotion). Foundation skills ship with the repo and improve over time.
 5. **Safety Boundaries** — Hard limits enforced by hooks and Redis. Read-only constitution. Kill switch.
 
 ## Repo Structure
 
 ```
 founders-cabinet/
-├── .claude/agents/          # Officer role definitions
+├── .claude/agents/          # Officer role definitions (identity, not procedures)
 ├── cabinet/                 # Docker, scripts, hooks, cron
 ├── config/product.yml       # Product-specific configuration
 ├── constitution/            # Governance (read-only at runtime)
-├── memory/                  # Tier 2 (working notes) + Tier 3 (episodic)
+├── memory/
+│   ├── skills/              # Foundation + promoted skills (procedures, quality gates)
+│   ├── golden-evals/        # Validation scenarios for Cabinet changes
+│   ├── tier2/               # Officer working notes (per-role)
+│   └── tier3/               # Experience records, decision log, research archive
 ├── shared/                  # Inter-Officer interfaces
 ├── CLAUDE.md                # Root context loaded every session
 └── founders-cabinet-guide.md # The theory document
