@@ -118,13 +118,54 @@ founders-cabinet/
 └── founders-cabinet-guide.md # The theory document
 ```
 
+## Customization
+
+Everything is configured in `config/product.yml` and `cabinet/.env`. Key options:
+
+### Voice Messages (optional)
+Officers can send voice messages alongside text via ElevenLabs TTS. Each officer has their own voice.
+
+```yaml
+# config/product.yml
+voice:
+  enabled: true                  # false by default
+  model: eleven_flash_v2_5       # fastest model
+  mode: all                      # all | captain-dm | group | briefings
+  voices:
+    cos: "7ceZgj78jCCeAW93ItNk" # override with your own voice_ids
+    cto: "AMNzDFTtLuyoKAL3YPnu"
+    cpo: "sgk995upfe3tYLvoGcBN"
+    cro: "77aEIu0qStu8Jwv1EdhX"
+```
+
+Browse voices at [elevenlabs.io/voice-library](https://elevenlabs.io/voice-library) or via API. Requires `ELEVENLABS_API_KEY` in `.env`.
+
+### Image Generation (optional)
+Officers can generate images via Google Gemini (Nano Banana 2) and send them through Telegram. Requires `GOOGLE_API_KEY` in `.env`.
+
+### Improvement Cadences
+Default cadences in `CLAUDE.md` (adjust to match your Cabinet's throughput):
+- **Individual reflection:** every 6h per Officer
+- **Cross-officer retro:** every 24h (CoS)
+- **Evolution loop:** every 24h after retro (CoS)
+
+### Foundation Skills
+Ship with the repo in `memory/skills/`. Officers follow these as baseline procedures. The learning loop can improve them by writing evolved versions to `memory/skills/evolved/` — foundation files are never modified directly.
+
+### What to Customize After Forking
+1. `config/product.yml` — your product name, Notion IDs, Linear workspace, Telegram bots, voice settings
+2. `cabinet/.env` — all API keys and tokens
+3. `constitution/CONSTITUTION.md` — your product's work principles (optional)
+4. `.claude/agents/*.md` — officer identity if you add domain-specific context (optional)
+
 ## Requirements
 
 - **Server:** Ubuntu 24.04 with Docker (Hetzner CPX31 recommended)
 - **Claude:** Max 20x subscription ($200/mo) for 4 Officers
 - **Notion:** Business plan (for MCP integration)
 - **Telegram:** 4 bot tokens + group chat
-- **APIs:** Linear, Neon, Voyage AI, Perplexity, Brave Search, Exa
+- **APIs (required):** Linear, Neon, Voyage AI, Perplexity, Brave Search, Exa
+- **APIs (optional):** ElevenLabs (voice messages), Google Gemini (image generation)
 
 ## Safety
 

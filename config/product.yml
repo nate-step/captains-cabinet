@@ -119,3 +119,31 @@ embeddings:
     storage: voyage-4-large    # 1024d, for document storage
     query: voyage-4-lite       # 1024d, for retrieval queries
   dimensions: 1024
+
+# =============================================================
+# Voice — Officer Voice Messages (optional)
+# =============================================================
+# When enabled, officers send a voice message alongside text replies.
+# Requires ELEVENLABS_API_KEY in .env.
+# Browse voices at https://elevenlabs.io/voice-library or via API:
+#   curl -s https://api.elevenlabs.io/v1/voices -H "xi-api-key: $ELEVENLABS_API_KEY" | jq '.voices[] | {name, voice_id}'
+voice:
+  enabled: false                # Set to true to activate voice messages
+  provider: elevenlabs
+  model: eleven_flash_v2_5      # Fastest model (~75ms latency)
+  mode: all                     # all | captain-dm | group | briefings
+  voices:
+    cos: "7ceZgj78jCCeAW93ItNk"   # Default: calm, authoritative
+    cto: "AMNzDFTtLuyoKAL3YPnu"   # Default: direct, confident
+    cpo: "sgk995upfe3tYLvoGcBN"   # Default: enthusiastic, clear
+    cro: "77aEIu0qStu8Jwv1EdhX"   # Default: analytical, measured
+    # Override with your own voice_ids from https://elevenlabs.io/voice-library
+
+# =============================================================
+# Image Generation (optional)
+# =============================================================
+# Requires GOOGLE_API_KEY in .env.
+image_generation:
+  enabled: true
+  provider: gemini
+  model: gemini-3.1-flash-image-preview    # Nano Banana 2

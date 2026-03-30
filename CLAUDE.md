@@ -30,6 +30,17 @@ The product is defined in `config/product.yml`. On first session, read the produ
 
 Do not hallucinate product knowledge — discover it from artifacts.
 
+## Operating Speed
+
+The Cabinet operates at AI speed, not human team speed. Never estimate timelines in calendar months. Sequence work by **dependencies and validation gates**, not calendar time. The only human-speed bottlenecks are Captain decisions and real-world user feedback — everything else ships in hours to days.
+
+When planning milestones, write them as:
+- "After launch + N active users with N+ signals" — not "3-6 months"
+- "After v1 validated against quality check" — not "Q3 2026"
+- "After Captain approves pricing model" — not "June"
+
+The bottleneck is always a dependency (data, decision, validation), never engineering velocity.
+
 ## Three Knowledge Systems
 
 | System | Purpose | How to access |
@@ -113,7 +124,6 @@ Two phases, run sequentially:
 
 ### Captain ↔ Officer (Telegram DM)
 - Captain DMs your bot → you receive it via Channels plugin → reply with the `reply` tool
-- **Acknowledge immediately:** When you receive a Captain message, your VERY FIRST reply must be a single relevant emoji (👍 🔍 🛠️ 📖 🚀 ⚠️ ✅) — nothing else. This signals receipt. Send the full response after.
 - **When the Captain needs to act** (approve a deploy, make a decision, unblock you): DM the Captain directly. Don't post action-required items to the group.
 - **Formatting:** See the telegram-communication skill (`memory/skills/telegram-communication.md`) for formatting rules, file sending, and image generation.
 

@@ -10,19 +10,6 @@
 
 Every time an Officer sends a message via Telegram — whether through scripts (send-to-group.sh) or the Channels plugin reply tool.
 
-## Acknowledging Captain Messages
-
-When you receive a Captain DM, your VERY FIRST reply must be a single relevant emoji — nothing else. This signals that the message was received and is being worked on. Send the full response after.
-
-Choose the emoji based on context:
-- 👍 — General acknowledgment
-- 🔍 — Investigating / researching
-- 🛠️ — Building / implementing
-- 📖 — Reading / reviewing
-- 🚀 — Deploying / shipping
-- ⚠️ — Noted concern / will address
-- ✅ — Already done / confirming completion
-
 ## Message Formatting
 
 ### Scripts (send-to-group.sh, direct API calls) — Use HTML
@@ -102,13 +89,50 @@ curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAudio" \
 
 Use the Captain's chat ID from environment for DMs, or `$TELEGRAM_HQ_CHAT_ID` for the group.
 
-## Generating Images (via Google Gemini API)
+## Voice Messages (optional — disabled by default)
 
-Officers with `GOOGLE_API_KEY` can generate images:
+When enabled in `config/product.yml`, officers send a voice message alongside text replies. Each officer has their own voice (configured by voice_id).
 
 ```bash
-# Generate an image with Gemini (Nano Banana 2)
-curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent" \
+# Send a voice message to the Captain or group
+bash /opt/founders-cabinet/cabinet/scripts/send-voice.sh "$CHAT_ID" "Your message text"
+```
+
+The script:
+1. Checks if voice is enabled in config
+2. Reads the officer's voice_id from config
+3. Generates audio via ElevenLabs API
+4. Sends via Telegram's sendVoice API
+
+**Config in `config/product.yml`:**
+```yaml
+voice:
+  enabled: false              # Set to true to activate
+  provider: elevenlabs
+  model: eleven_flash_v2_5    # Fastest model
+  mode: all                   # all | captain-dm | group | briefings
+  voices:
+    cos: "voice_id_here"
+    cto: "voice_id_here"
+    cpo: "voice_id_here"
+    cro: "voice_id_here"
+```
+
+**Mode options:**
+- `all` — every message gets a voice version
+- `captain-dm` — only DM replies to Captain
+- `group` — only warroom messages
+- `briefings` — only scheduled briefings (morning/evening)
+
+**When to send voice:** Check the `mode` config. If mode matches the current context (DM, group, briefing), call `send-voice.sh` after sending the text message. The voice message is supplementary — always send text first.
+
+## Generating Images (via Google Gemini API)
+
+Officers with `GOOGLE_API_KEY` can generate images using Nano Banana 2:
+
+```bash
+# Generate an image with Gemini Nano Banana 2
+curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent" \
   -H "x-goog-api-key: $GOOGLE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -123,7 +147,7 @@ Use cases: competitive landscape visuals, UI mockups, architecture diagrams, dat
 
 ## Expected Outcome
 
-Messages are visually structured, easy to scan, and professional. The Captain can quickly parse updates without reading walls of text. Files and images are delivered directly in-chat.
+Messages are visually structured, easy to scan, and professional. The Captain can quickly parse updates without reading walls of text. Files, images, and voice messages are delivered directly in-chat.
 
 ## Known Pitfalls
 
@@ -131,13 +155,16 @@ Messages are visually structured, easy to scan, and professional. The Captain ca
 - Channels plugin replies are plain text — don't use HTML tags in replies (they'll show as raw text)
 - Special HTML characters (`<`, `>`, `&`) in message content must be escaped: `&lt;`, `&gt;`, `&amp;`
 - Large files may fail silently — Telegram has a 50MB bot upload limit
-- Image generation costs money ($0.04-0.13 per image) — use judiciously
+- Image generation costs ~$0.07 per image (Nano Banana 2 at 1K) — use judiciously
+- Voice generation costs per character (ElevenLabs) — keep voice messages concise
+- Always send text FIRST, voice SECOND — text is the record, voice is the supplement
 
 ## Validation Scenarios
 
 - Scenario 1: Officer sends formatted group message via send-to-group.sh → renders with bold headers and bullet points
-- Scenario 2: Officer receives Captain DM → immediately replies with single emoji → then sends full response
-- Scenario 3: CRO generates competitive landscape image → sends to Captain via sendPhoto
+- Scenario 2: Voice enabled + mode=all → officer sends text reply then voice message to Captain
+- Scenario 3: Voice disabled → send-voice.sh exits silently, no error
+- Scenario 4: CRO generates competitive landscape image → sends to Captain via sendPhoto
 
 ## Origin
 
