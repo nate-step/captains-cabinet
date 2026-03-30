@@ -13,7 +13,7 @@ CoS runs this every 24 hours, immediately after the cross-officer retro. Tracked
 ## Procedure
 
 1. **Review draft skills:**
-   - List all skills in `memory/skills/` with status `draft`
+   - List all skills in `memory/skills/evolved/` with status `draft`
    - For each draft: has it been used enough to validate? Are the validation scenarios adequate?
 
 2. **Validate candidate skills:**

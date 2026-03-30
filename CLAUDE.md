@@ -87,7 +87,9 @@ Two phases, run sequentially:
 - **Skill promotion and structural changes** happen in the 24h evolution loop
 
 ### Artifacts
-- **Skill Library:** `memory/skills/TEMPLATE.md` for the template. Draft → validated → promoted.
+- **Foundation skills:** `memory/skills/` — shipped with the framework, git-tracked. Safe to update from upstream.
+- **Evolved skills:** `memory/skills/evolved/` — created by the learning loop at runtime, gitignored. Protected from upstream overwrites. Write all new/draft skills here.
+- **Skill template:** `memory/skills/TEMPLATE.md`
 - **Golden Evals:** `memory/golden-evals/` — all proposed changes must pass before promotion.
 
 ## Memory Protocol

@@ -24,7 +24,7 @@ Every Officer runs this every 6 hours. Tracked via Redis: `cabinet:schedule:last
 
 3. **Detect patterns:**
    - Same failure 2x → note it in `memory/tier2/<your-role>/patterns.md`
-   - Same failure 3+ times → write a draft skill to `memory/skills/`
+   - Same failure 3+ times → write a draft skill to `memory/skills/evolved/`
 
 4. **Update Tier 2 working notes:**
    - Any new knowledge about the codebase, product, or domain

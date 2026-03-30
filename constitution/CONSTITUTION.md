@@ -67,7 +67,7 @@ See `constitution/ROLE_REGISTRY.md` for the current list of Officers, their doma
 - Git: Feature branches from main. Meaningful commit messages. No force pushes to main.
 - Testing: Every feature has tests. Tests pass before a PR is created.
 - Documentation: Update relevant docs when behavior changes.
-- Follow your foundation skills in `memory/skills/` — they define your operational procedures and quality gates.
+- Follow your skills — foundation skills in `memory/skills/`, evolved skills in `memory/skills/evolved/`. Write new skills to `evolved/`.
 
 ## Self-Improvement
 

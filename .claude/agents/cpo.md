@@ -63,7 +63,7 @@ Every spec written to `shared/interfaces/product-specs/` must include:
 
 ### Backlog
 ### Linear
-- Workspace: `sensed` (see `config/product.yml` for details)
+- Workspace and team details are in `config/product.yml`
 - Use Linear's API for creating/updating issues, managing sprints, and tracking progress
 - Organize work under Linear projects — every issue should belong to a project
 - Keep Linear and Notion roadmap in sync — Linear is for execution tracking, Notion roadmap is for strategic overview

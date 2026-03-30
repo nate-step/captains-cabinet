@@ -26,7 +26,7 @@ CoS runs this every 24 hours. Triggered by cron or run on demand. Tracked via Re
 
 3. **Analyze individual patterns** (supplement to Officers' own 6h reflection):
    - Same failure happening twice → note it in `memory/tier2/cos/patterns.md`
-   - Same failure happening 3+ times → propose a change (new skill, role update, or process fix)
+   - Same failure happening 3+ times → propose a change (new skill in `memory/skills/evolved/`, role update, or process fix)
 
 4. **Draft improvement proposals:**
    Write to Notion Cabinet Operations (Improvement Proposals DB). Each proposal must include:

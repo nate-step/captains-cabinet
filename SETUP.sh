@@ -73,12 +73,15 @@ else
 fi
 
 # Product repo
-if [ ! -d /opt/Sensed ]; then
-  git clone https://github.com/nate-step/Sensed.git /opt/Sensed
-  echo "  Cloned Sensed"
+PRODUCT_REPO_URL="${PRODUCT_REPO_URL:?Set PRODUCT_REPO_URL to your product repo (e.g. https://github.com/you/your-app.git)}"
+PRODUCT_REPO_PATH="${PRODUCT_REPO_PATH:-/opt/product}"
+
+if [ ! -d "$PRODUCT_REPO_PATH" ]; then
+  git clone "$PRODUCT_REPO_URL" "$PRODUCT_REPO_PATH"
+  echo "  Cloned product repo to $PRODUCT_REPO_PATH"
 else
-  echo "  /opt/Sensed already exists, pulling..."
-  cd /opt/Sensed && git pull
+  echo "  $PRODUCT_REPO_PATH already exists, pulling..."
+  cd "$PRODUCT_REPO_PATH" && git pull
 fi
 
 # Make scripts executable

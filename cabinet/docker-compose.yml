@@ -17,7 +17,7 @@ services:
       # Mount the Cabinet framework repo
       - /opt/founders-cabinet:/opt/founders-cabinet
       # Mount the product repo as a separate workspace
-      - /opt/Sensed:/workspace/product
+      - ${PRODUCT_REPO_PATH:-/opt/product}:/workspace/product
       # Persist Claude Code auth across container restarts
       - claude-auth:/home/cabinet/.claude
       # Persist Channels plugin state

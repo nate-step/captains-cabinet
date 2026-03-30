@@ -4,8 +4,32 @@ cabinet/.env
 # Runtime logs
 memory/logs/*.jsonl
 
-# Tier 3 raw files (stored in PostgreSQL, local copies are ephemeral)
-memory/tier3/research-archive/*.json
+# ============================================================
+# Runtime state (layer 3 — product-specific, evolves on server)
+# Protected from git pull overwriting server evolution.
+# Foundation files (layer 2) are git-tracked and safe to update.
+# ============================================================
+
+# Product config (each deployment has its own)
+config/product.yml
+
+# Officer working notes (accumulated at runtime)
+memory/tier2/**/*.md
+!memory/tier2/**/.gitkeep
+
+# Experience records, decision log, research archive
+memory/tier3/
+
+# Evolved skills (created/modified by the learning loop at runtime)
+memory/skills/evolved/**/*.md
+!memory/skills/evolved/.gitkeep
+
+# Shared interface content (populated by officers at runtime)
+shared/interfaces/**/*.md
+!shared/interfaces/**/.gitkeep
+
+# Deployment-specific plans (not part of the generic framework)
+founders-cabinet-plan.md
 
 # Node
 node_modules/

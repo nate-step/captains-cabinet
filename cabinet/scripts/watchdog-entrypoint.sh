@@ -2,7 +2,7 @@
 # watchdog-entrypoint.sh — Makes env vars available to cron jobs
 
 echo "============================================"
-echo " Sensed Cabinet — Watchdog Starting"
+echo " Founder's Cabinet — Watchdog Starting"
 echo " $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "============================================"
 
