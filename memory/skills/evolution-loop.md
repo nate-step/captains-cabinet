@@ -26,7 +26,19 @@ CoS runs this every 24 hours, immediately after the cross-officer retro. Tracked
    - Skills that are `validated` AND Captain-approved → update status to `promoted`
    - Promoted skills are loaded by Officers when relevant tasks arise
 
-4. **Review promoted skills for demotion signals:**
+4. **Improving foundation skills:**
+   - NEVER edit files in `memory/skills/` directly — those are git-tracked and will be overwritten by upstream updates
+   - To improve a foundation skill: copy it to `memory/skills/evolved/` with the same filename, make changes there
+   - The evolved version takes precedence — officers read both directories
+   - If an upstream update to the foundation version surpasses the evolved version, archive the evolved copy
+
+5. **Role definition amendments:**
+   - NEVER edit `.claude/agents/*.md` directly — those are git-tracked
+   - Write a proposal to Notion Cabinet Operations or `memory/tier2/cos/`
+   - DM Captain with the proposal — Captain applies approved changes
+   - Role changes are structural (boundaries, interfaces), not procedural (procedures live in skills)
+
+6. **Review promoted skills for demotion signals:**
    - Search recent experience records for failures that cite a promoted skill ("followed X skill, failed because...")
    - Check: are there promoted skills that should have been used in recent work but weren't referenced? (unused in their domain)
    - Check: does any newly promoted skill supersede an older one?
@@ -36,16 +48,16 @@ CoS runs this every 24 hours, immediately after the cross-officer retro. Tracked
      - If genuinely obsolete or superseded: mark as `archived` with a reason note
    - CoS can archive skills autonomously (unlike promotion, which needs Captain approval) — inform Captain in the next briefing
 
-5. **Review pending improvement proposals:**
+7. **Review pending improvement proposals:**
    - Check Notion Cabinet Operations for proposals awaiting Captain decision
    - For Captain-approved proposals: implement the change (update role definition, skill, or process)
    - For rejected proposals: archive with the Captain's reasoning
 
-5. **Update golden evals:**
+8. **Update golden evals:**
    - If new patterns warrant new test scenarios, add them to `memory/golden-evals/`
    - All promoted changes must still pass existing evals
 
-6. **Record:**
+9. **Record:**
    - Write an experience record for the evolution loop
    - If no improvements qualified for promotion, record that — it's a valid outcome
    - Record the timestamp:

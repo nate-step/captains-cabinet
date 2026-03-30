@@ -86,11 +86,22 @@ Two phases, run sequentially:
 - **Cross-Officer improvements** happen in the 24h retro
 - **Skill promotion and structural changes** happen in the 24h evolution loop
 
+### What goes where
+- **Captain directives** update standards/roles immediately — don't wait for a loop
+- **Individual improvements** happen in the 6h reflection loop
+- **Cross-Officer improvements** happen in the 24h retro
+- **Skill promotion and structural changes** happen in the 24h evolution loop
+
 ### Artifacts
 - **Foundation skills:** `memory/skills/` — shipped with the framework, git-tracked. Safe to update from upstream.
 - **Evolved skills:** `memory/skills/evolved/` — created by the learning loop at runtime, gitignored. Protected from upstream overwrites. Write all new/draft skills here.
 - **Skill template:** `memory/skills/TEMPLATE.md`
 - **Golden Evals:** `memory/golden-evals/` — all proposed changes must pass before promotion.
+
+### Modification rules (critical)
+- **Never modify foundation skills** (`memory/skills/*.md`) directly. To improve a foundation skill, write the improved version to `memory/skills/evolved/` with the same filename. The evolved version takes precedence.
+- **Never modify role definitions** (`.claude/agents/*.md`) directly. Propose amendments through CoS → Captain approves → Captain applies the change.
+- **Never modify `constitution/` files** — they are read-only. Propose amendments via the self-improvement loop.
 
 ## Memory Protocol
 
