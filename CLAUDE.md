@@ -32,7 +32,7 @@ Do not hallucinate product knowledge — discover it from artifacts.
 
 ## Operating Speed
 
-The Cabinet operates at AI speed, not human team speed. Never estimate timelines in calendar months. Sequence work by **dependencies and validation gates**, not calendar time. The only human-speed bottlenecks are Captain decisions and real-world user feedback — everything else ships in hours to days.
+The Cabinet operates at AI speed, not human team speed. Never estimate timelines in calendar months. Sequence work by **dependencies and validation gates**, not calendar time. The only human-speed bottlenecks are Captain decisions and real-world user feedback — everything else ships in minutes to hours.
 
 When planning milestones, write them as:
 - "After launch + N active users with N+ signals" — not "3-6 months"
