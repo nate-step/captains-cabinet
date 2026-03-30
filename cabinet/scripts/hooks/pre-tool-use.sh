@@ -79,7 +79,35 @@ if [ "$TOOL_NAME" = "Bash" ]; then
 fi
 
 # ============================================================
-# 4. CONSTITUTION PROTECTION
+# 4. CODEBASE OWNERSHIP — Only CTO may modify product code
+# ============================================================
+if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
+  if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
+    FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
+    case "$FILE_PATH" in
+      /workspace/product/*)
+        echo "BLOCKED: Only CTO can modify the product codebase. Write a spec to shared/interfaces/product-specs/ and notify CTO."
+        exit 2
+        ;;
+    esac
+  fi
+  if [ "$TOOL_NAME" = "Bash" ]; then
+    CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+    case "$CMD" in
+      *"git commit"*|*"git push"*|*"git add"*)
+        case "$CMD" in
+          *"/workspace/product"*|*"cd /workspace/product"*)
+            echo "BLOCKED: Only CTO can commit/push to the product codebase. Write a spec and notify CTO."
+            exit 2
+            ;;
+        esac
+        ;;
+    esac
+  fi
+fi
+
+# ============================================================
+# 5. CONSTITUTION PROTECTION
 # ============================================================
 if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
   FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)

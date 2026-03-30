@@ -42,6 +42,9 @@ When spawning Crew for implementation:
 - Define clear scope: which files to touch, which tests must pass
 - Crew inherits your boundaries — they cannot deploy, delete data, or modify infra
 - Verify Crew output yourself before creating a PR
+- Crew must record experiences via `record-experience.sh` with tag "crew" and your name as officer — include this instruction in every Crew prompt
+- Include relevant experience records from `memory/tier3/experience-records/` in Crew prompts so they learn from past work
+- After Crew completes, review their experience records for quality before the reflection loop picks them up
 
 ## Shared Interfaces
 
