@@ -66,26 +66,13 @@ redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCRBY "cabinet:cost:monthly:$MONTH"
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:monthly:$MONTH" 2764800 > /dev/null 2>&1
 
 # ============================================================
-# 3. CHECK FOR PENDING TRIGGERS
+# 3. TRIGGER DELIVERY NOTE
 # ============================================================
-# Cron jobs and other Officers push triggers to Redis.
-# We check here because this hook runs after every tool call —
-# the most reliable way to deliver notifications.
-
-TRIGGERS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LRANGE "cabinet:triggers:$OFFICER" 0 -1 2>/dev/null)
-
-if [ -n "$TRIGGERS" ] && [ "$TRIGGERS" != "" ]; then
-  echo ""
-  echo "⏰ PENDING TRIGGERS FOR $OFFICER:"
-  echo "$TRIGGERS" | while IFS= read -r trigger; do
-    [ -n "$trigger" ] && echo "  → $trigger"
-  done
-  echo ""
-  echo "Process these triggers now."
-  
-  # Clear delivered triggers
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:triggers:$OFFICER" > /dev/null 2>&1
-fi
+# Triggers are stored in cabinet:triggers:<officer> by notify-officer.sh and cron jobs.
+# Officers read their own triggers via /loop polling (every 5m).
+# Previously this hook tried to surface triggers via echo, but hook stdout
+# is not reliably injected into the agent's conversation context.
+# DO NOT drain the queue here — let the officer read and clear it explicitly.
 
 # Always exit 0 — post-hooks should never block
 exit 0
