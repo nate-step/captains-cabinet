@@ -113,7 +113,9 @@ Two phases, run sequentially:
 
 ### Captain ↔ Officer (Telegram DM)
 - Captain DMs your bot → you receive it via Channels plugin → reply with the `reply` tool
+- **Acknowledge immediately:** When you receive a Captain message, your VERY FIRST reply must be a single relevant emoji (👍 🔍 🛠️ 📖 🚀 ⚠️ ✅) — nothing else. This signals receipt. Send the full response after.
 - **When the Captain needs to act** (approve a deploy, make a decision, unblock you): DM the Captain directly. Don't post action-required items to the group.
+- **Formatting:** See the telegram-communication skill (`memory/skills/telegram-communication.md`) for formatting rules, file sending, and image generation.
 
 ### Group Chat (Warroom) — Broadcast Only
 - The group is a **one-way newsfeed**. Officers post updates, briefings, alerts, and completed work. The Captain reads it.

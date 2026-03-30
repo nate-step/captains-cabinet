@@ -12,7 +12,7 @@ TELEGRAM_HQ_CHAT_ID="${TELEGRAM_HQ_CHAT_ID:?TELEGRAM_HQ_CHAT_ID not set}"
 RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -d chat_id="$TELEGRAM_HQ_CHAT_ID" \
   -d text="$MESSAGE" \
-  -d parse_mode="Markdown")
+  -d parse_mode="HTML")
 
 # Check success
 OK=$(echo "$RESPONSE" | jq -r '.ok' 2>/dev/null)
