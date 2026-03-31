@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/pre-tool-use.sh \"$TOOL_NAME\" \"$TOOL_INPUT\""
+            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/pre-tool-use.sh"
           }
         ]
       }
@@ -43,7 +43,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/post-tool-use.sh \"$TOOL_NAME\" \"$TOOL_INPUT\" \"$TOOL_OUTPUT\""
+            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/post-tool-use.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "reply",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/post-reply-voice.sh"
           }
         ]
       }

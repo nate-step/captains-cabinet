@@ -1,9 +1,13 @@
 #!/bin/bash
 # pre-tool-use.sh — Runs before every tool invocation
 # Exit 0 = allow, Exit 2 = block (with reason on stdout)
+# Claude Code passes JSON on stdin: { tool_name, tool_input }
 
-TOOL_NAME="$1"
-TOOL_INPUT="$2"
+# Read JSON from stdin
+HOOK_INPUT=$(cat)
+TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+TOOL_INPUT=$(echo "$HOOK_INPUT" | jq -c '.tool_input // {}' 2>/dev/null)
+
 REDIS_URL="${REDIS_URL:-redis://redis:6379}"
 REDIS_HOST=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f1)
 REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)

@@ -1,15 +1,13 @@
 #!/bin/bash
 # post-tool-use.sh — Runs after every tool invocation
 # Logs the action and increments cost counters.
-#
-# Arguments:
-#   $1 = TOOL_NAME
-#   $2 = TOOL_INPUT (JSON)
-#   $3 = TOOL_OUTPUT (may be truncated)
+# Claude Code passes JSON on stdin: { tool_name, tool_input, tool_response }
 
-TOOL_NAME="$1"
-TOOL_INPUT="$2"
-TOOL_OUTPUT="$3"
+# Read JSON from stdin
+HOOK_INPUT=$(cat)
+TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+TOOL_INPUT=$(echo "$HOOK_INPUT" | jq -c '.tool_input // {}' 2>/dev/null)
+TOOL_OUTPUT=$(echo "$HOOK_INPUT" | jq -c '.tool_response // {}' 2>/dev/null)
 
 REDIS_URL="${REDIS_URL:-redis://redis:6379}"
 REDIS_HOST=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f1)
@@ -36,13 +34,11 @@ LOG_FILE="$LOG_DIR/${TODAY}.jsonl"
 TRUNCATED_OUTPUT=$(echo "$TOOL_OUTPUT" | head -c 500)
 
 # Write JSON log line
-echo "{\"ts\":\"$TIMESTAMP\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '""')}" >> "$LOG_FILE"
+echo "{\"ts\":\"$TIMESTAMP\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE"
 
 # ============================================================
 # 2. COST TRACKING (rough estimate)
 # ============================================================
-# Estimate cost based on tool type and input/output size
-# These are rough approximations — real cost comes from API usage
 INPUT_TOKENS=$(echo "$TOOL_INPUT" | wc -c)
 OUTPUT_TOKENS=$(echo "$TOOL_OUTPUT" | wc -c)
 
@@ -68,9 +64,7 @@ redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:monthly:$MONTH"
 # ============================================================
 # 3. EXPERIENCE RECORD NUDGE
 # ============================================================
-# After significant actions (git push, PR creation, spec publish, research brief),
-# set a Redis flag. The officer's /loop picks it up as a reminder.
-# We don't block because hook stdout isn't reliably injected into context.
+# After significant actions, set a Redis flag for the officer's /loop to pick up.
 
 SIGNIFICANT_ACTION=false
 
@@ -96,8 +90,6 @@ fi
 # ============================================================
 # Triggers are stored in cabinet:triggers:<officer> by notify-officer.sh and cron jobs.
 # Officers read their own triggers via /loop polling (every 5m).
-# Previously this hook tried to surface triggers via echo, but hook stdout
-# is not reliably injected into the agent's conversation context.
 # DO NOT drain the queue here — let the officer read and clear it explicitly.
 
 # Always exit 0 — post-hooks should never block

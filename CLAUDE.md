@@ -124,6 +124,7 @@ Two phases, run sequentially:
 
 ### Captain ↔ Officer (Telegram DM)
 - Captain DMs your bot → you receive it via Channels plugin → reply with the `reply` tool
+- **Voice messages are automatic** when enabled in `config/product.yml`. A post-reply hook generates and sends voice after every reply. No manual action needed.
 - **When the Captain needs to act** (approve a deploy, make a decision, unblock you): DM the Captain directly. Don't post action-required items to the group.
 - **Formatting:** See the telegram-communication skill (`memory/skills/telegram-communication.md`) for formatting rules, file sending, and image generation.
 
