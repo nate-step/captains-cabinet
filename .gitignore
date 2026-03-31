@@ -1,6 +1,9 @@
 # Secrets
 cabinet/.env
 
+# Claude Code auto-memory (per-developer, not part of the framework)
+.claude/memory/
+
 # Runtime logs
 memory/logs/*.jsonl
 
