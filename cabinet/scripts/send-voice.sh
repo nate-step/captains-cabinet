@@ -62,6 +62,10 @@ else
   MODEL="${MODEL:-eleven_flash_v2_5}"
 fi
 
+# Get per-officer speed (default: 1.0)
+SPEED=$(voice_subsection_field "speeds" "$OFFICER")
+SPEED="${SPEED:-1.0}"
+
 # Get captain's name (default: Captain)
 CAPTAIN_NAME=$(awk '/^product:/{p=1} p && /captain_name:/{print $2;exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'")
 CAPTAIN_NAME="${CAPTAIN_NAME:-Captain}"
@@ -89,7 +93,17 @@ Rules:
 - Preserve the meaning and all key information
 - No emojis, no markdown, no special characters
 - Use natural transitions (\"also\", \"and\", \"meanwhile\")
-- Speak as the officer would to ${CAPTAIN_NAME} in a quick huddle"
+- Speak as the officer would to ${CAPTAIN_NAME} in a quick huddle
+
+Text normalization for speech (critical):
+- Prices: \"\$4.99\" becomes \"four ninety-nine\" or \"four dollars ninety-nine cents\"
+- Percentages: \"30%\" becomes \"thirty percent\"
+- URLs: \"sensed.app/redesign\" becomes \"sensed dot app slash redesign\"
+- Dates: \"2024-01-01\" becomes \"January first twenty twenty-four\"
+- Times: \"14:30\" becomes \"two thirty PM\"
+- Abbreviations: expand fully (\"API\" becomes \"A P I\", \"PR\" becomes \"pull request\", \"DB\" becomes \"database\")
+- Version numbers: \"v3\" becomes \"version three\"
+- Counts with units: \"6/6\" becomes \"six out of six\", \"4h\" becomes \"four hours\""
 
   if [ -n "$prompt" ]; then
     system_prompt="${system_prompt}
@@ -150,7 +164,8 @@ HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TMPFILE" \
     \"model_id\": \"${MODEL}\",
     \"voice_settings\": {
       \"stability\": 0.5,
-      \"similarity_boost\": 0.75
+      \"similarity_boost\": 0.75,
+      \"speed\": ${SPEED}
     }
   }")
 

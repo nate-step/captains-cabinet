@@ -144,6 +144,11 @@ voice:
     cto: eleven_v3                # v3 for expressive audio tags, pauses, emphasis
     cpo: eleven_v3                # v3 for expressive audio tags, pauses, emphasis
     cro: eleven_v3                # v3 for expressive audio tags, pauses, emphasis
+  speeds:                         # Per-officer speech speed (0.7-1.2, default 1.0)
+    cos: 1.05                     # Slightly brisk — efficient British pace
+    cto: 1.1                      # Fast — excited nerd energy
+    cpo: 0.9                      # Slower — deliberate Southern storytelling
+    cro: 1.0                      # Default — measured researcher pace
   voices:
     cos: "lsWQW1EMQ6tAMakRFauZ"   # A woman in her 30s to early 40s with a thick British accent, candid and excited
     cto: "m7IHUfNpQno4ACQu1sF9"   # Scottish young tech genius, excited and nerdy
