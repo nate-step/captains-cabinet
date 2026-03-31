@@ -97,10 +97,10 @@ Rules:
 }
 
 # Check if naturalization is enabled
-NATURALIZE=$(grep -A15 "^voice:" "$CONFIG_FILE" | grep "naturalize:" | awk '{print $2}' | tr -d ' ')
+NATURALIZE=$(grep -A20 "^voice:" "$CONFIG_FILE" | grep "naturalize:" | head -1 | awk '{print $2}' | tr -d ' ')
 if [ "$NATURALIZE" = "true" ]; then
-  # Read optional style prompt from config
-  NATURALIZE_PROMPT=$(grep -A15 "^voice:" "$CONFIG_FILE" | grep "naturalize_prompt:" | sed 's/.*naturalize_prompt:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  # Read per-officer prompt from naturalize_prompts.<officer>, fallback to empty
+  NATURALIZE_PROMPT=$(grep -A10 "naturalize_prompts:" "$CONFIG_FILE" | grep "${OFFICER}:" | sed "s/.*${OFFICER}:[[:space:]]*//" | tr -d '"' | tr -d "'")
   TEXT=$(naturalize_for_speech "$TEXT" "$NATURALIZE_PROMPT")
 fi
 
