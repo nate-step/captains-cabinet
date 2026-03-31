@@ -4,6 +4,9 @@ cabinet/.env
 # Claude Code auto-memory (per-developer, not part of the framework)
 .claude/memory/
 
+# Per-officer working directories (created at runtime for session isolation)
+officers/
+
 # Runtime logs
 memory/logs/*.jsonl
 
