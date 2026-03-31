@@ -3,7 +3,7 @@
 # Uses ElevenLabs TTS to convert text to audio, then sends via Telegram Bot API.
 # Optionally rewrites structured text into natural speech via Haiku before TTS.
 #
-# Usage: send-voice.sh <chat_id> "Your message text"
+# Usage: send-voice.sh <chat_id> "Your message text" ["context/captain's message"]
 # Optional: VOICE_ID env var overrides the officer's configured voice
 #
 # Requires: ELEVENLABS_API_KEY, TELEGRAM_BOT_TOKEN in environment
@@ -12,6 +12,7 @@
 
 CHAT_ID="${1:?Usage: send-voice.sh <chat_id> \"message text\"}"
 TEXT="${2:?Usage: send-voice.sh <chat_id> \"message text\"}"
+CONTEXT="${3:-}"
 
 ELEVENLABS_API_KEY="${ELEVENLABS_API_KEY:?ELEVENLABS_API_KEY not set}"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN not set}"
@@ -67,6 +68,7 @@ fi
 naturalize_for_speech() {
   local input="$1"
   local prompt="$2"
+  local context="$3"
 
   if [ -z "$ANTHROPIC_API_KEY" ]; then
     echo "$input"
@@ -90,6 +92,15 @@ Rules:
 - Additional style instruction: ${prompt}"
   fi
 
+  # Build user message with optional context
+  local user_content="$input"
+  if [ -n "$context" ]; then
+    user_content="The Captain said: ${context}
+
+The officer's reply (rewrite this for speech):
+${input}"
+  fi
+
   local response
   response=$(curl -s --max-time 10 \
     -X POST "https://api.anthropic.com/v1/messages" \
@@ -102,7 +113,7 @@ Rules:
       \"system\": $(echo "$system_prompt" | jq -Rs '.'),
       \"messages\": [{
         \"role\": \"user\",
-        \"content\": $(echo "$input" | jq -Rs '.')
+        \"content\": $(echo "$user_content" | jq -Rs '.')
       }]
     }" 2>/dev/null)
 
@@ -120,7 +131,7 @@ Rules:
 NATURALIZE=$(voice_field "naturalize")
 if [ "$NATURALIZE" = "true" ]; then
   NATURALIZE_PROMPT=$(voice_subsection_value "naturalize_prompts" "$OFFICER")
-  TEXT=$(naturalize_for_speech "$TEXT" "$NATURALIZE_PROMPT")
+  TEXT=$(naturalize_for_speech "$TEXT" "$NATURALIZE_PROMPT" "$CONTEXT")
 fi
 
 # Generate audio via ElevenLabs

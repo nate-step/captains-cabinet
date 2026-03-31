@@ -5,7 +5,8 @@
 #
 # Usage: reply-to-captain.sh "Your reply message"
 
-MESSAGE="${1:?Usage: reply-to-captain.sh \"message\"}"
+MESSAGE="${1:?Usage: reply-to-captain.sh \"message\" [\"captain's message for voice context\"]}"
+CAPTAIN_CONTEXT="${2:-}"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN not set}"
 CAPTAIN_TELEGRAM_ID="${CAPTAIN_TELEGRAM_ID:?CAPTAIN_TELEGRAM_ID not set}"
 
@@ -30,5 +31,5 @@ VOICE_MODE=$(grep -A4 "^voice:" "$CONFIG_FILE" 2>/dev/null | grep "mode:" | awk 
 
 if [ "$VOICE_ENABLED" = "true" ] && [ "$VOICE_MODE" = "all" -o "$VOICE_MODE" = "captain-dm" ]; then
   PLAIN_TEXT=$(echo "$MESSAGE" | sed 's/<[^>]*>//g')
-  bash /opt/founders-cabinet/cabinet/scripts/send-voice.sh "$CAPTAIN_TELEGRAM_ID" "$PLAIN_TEXT" &
+  bash /opt/founders-cabinet/cabinet/scripts/send-voice.sh "$CAPTAIN_TELEGRAM_ID" "$PLAIN_TEXT" "$CAPTAIN_CONTEXT" &
 fi

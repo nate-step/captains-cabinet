@@ -41,7 +41,18 @@ CAPTAIN_TELEGRAM_ID="${CAPTAIN_TELEGRAM_ID:-}"
 if [ -n "$CAPTAIN_TELEGRAM_ID" ]; then
   # Strip any HTML tags for clean TTS
   PLAIN_TEXT=$(echo "$REPLY_TEXT" | sed 's/<[^>]*>//g')
-  bash /opt/founders-cabinet/cabinet/scripts/send-voice.sh "$CAPTAIN_TELEGRAM_ID" "$PLAIN_TEXT" > /dev/null 2>&1 &
+
+  # Try to get Captain's last message from MCP logs for context
+  CAPTAIN_MSG=""
+  LOG_DIR="/home/cabinet/.cache/claude-cli-nodejs/-opt-founders-cabinet-officers-${OFFICER}/mcp-logs-plugin-telegram-telegram"
+  if [ -d "$LOG_DIR" ]; then
+    LATEST_LOG=$(ls -t "$LOG_DIR"/*.jsonl 2>/dev/null | head -1)
+    if [ -n "$LATEST_LOG" ]; then
+      CAPTAIN_MSG=$(grep 'notifications/claude/channel:' "$LATEST_LOG" 2>/dev/null | tail -1 | sed 's/.*notifications\/claude\/channel: //' | sed 's/",.*//' | tr -d '"')
+    fi
+  fi
+
+  bash /opt/founders-cabinet/cabinet/scripts/send-voice.sh "$CAPTAIN_TELEGRAM_ID" "$PLAIN_TEXT" "$CAPTAIN_MSG" > /dev/null 2>&1 &
 fi
 
 exit 0
