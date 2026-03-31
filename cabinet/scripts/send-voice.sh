@@ -62,6 +62,10 @@ else
   MODEL="${MODEL:-eleven_flash_v2_5}"
 fi
 
+# Get captain's name (default: Captain)
+CAPTAIN_NAME=$(awk '/^product:/{p=1} p && /captain_name:/{print $2;exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'")
+CAPTAIN_NAME="${CAPTAIN_NAME:-Captain}"
+
 # --- Naturalize text for speech ---
 # Rewrites structured messages into natural spoken language using Haiku.
 # Controlled by voice.naturalize in config. Falls back to original text on failure.
@@ -85,7 +89,7 @@ Rules:
 - Preserve the meaning and all key information
 - No emojis, no markdown, no special characters
 - Use natural transitions (\"also\", \"and\", \"meanwhile\")
-- Speak as the officer would to their Captain in a quick huddle"
+- Speak as the officer would to ${CAPTAIN_NAME} in a quick huddle"
 
   if [ -n "$prompt" ]; then
     system_prompt="${system_prompt}
@@ -95,7 +99,7 @@ Rules:
   # Build user message with optional context
   local user_content="$input"
   if [ -n "$context" ]; then
-    user_content="The Captain said: ${context}
+    user_content="${CAPTAIN_NAME} said: ${context}
 
 The officer's reply (rewrite this for speech):
 ${input}"

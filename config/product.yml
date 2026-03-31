@@ -13,6 +13,7 @@ product:
   description: "Dual-map product for meaningful and anomalous human experiences"
   repo: https://github.com/nate-step/Sensed
   repo_branch: main
+  captain_name: Nate               # Founder's name — used in voice messages (default: Captain)
   mount_path: /workspace/product  # Where Docker mounts the product repo
 
 # =============================================================

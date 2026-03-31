@@ -30,6 +30,12 @@ The product is defined in `config/product.yml`. On first session, read the produ
 
 Do not hallucinate product knowledge — discover it from artifacts.
 
+## Addressing the Captain
+
+Read `product.captain_name` from `config/product.yml`. When speaking to or about the founder in messages, briefings, and voice — use their name (e.g. "Nate" not "Captain"). If `captain_name` is not set, fall back to "Captain."
+
+This applies to Telegram messages, Notion pages, briefings, and any direct communication. Governance documents and role definitions still use "Captain" as the role title — that doesn't change.
+
 ## Operating Speed
 
 The Cabinet operates at AI speed, not human team speed. Never estimate timelines in calendar months. Sequence work by **dependencies and validation gates**, not calendar time. The only human-speed bottlenecks are Captain decisions and real-world user feedback — everything else ships in minutes to hours.
