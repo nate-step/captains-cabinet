@@ -37,9 +37,14 @@ if [ -z "$VOICE_ID" ]; then
   exit 1
 fi
 
-# Get model from config (default: eleven_flash_v2_5)
-MODEL=$(grep -A5 "^voice:" "$CONFIG_FILE" | grep "model:" | awk '{print $2}' | tr -d ' ')
-MODEL="${MODEL:-eleven_flash_v2_5}"
+# Get model: check per-officer override first, then global default
+OFFICER_MODEL=$(grep -A10 "models:" "$CONFIG_FILE" | grep "${OFFICER}:" | awk '{print $2}' | tr -d '"' | tr -d "'")
+if [ -n "$OFFICER_MODEL" ]; then
+  MODEL="$OFFICER_MODEL"
+else
+  MODEL=$(grep -A5 "^voice:" "$CONFIG_FILE" | grep "model:" | head -1 | awk '{print $2}' | tr -d ' ')
+  MODEL="${MODEL:-eleven_flash_v2_5}"
+fi
 
 # --- Naturalize text for speech ---
 # Rewrites structured messages into natural spoken language using Haiku.
