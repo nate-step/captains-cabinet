@@ -132,6 +132,8 @@ voice:
   provider: elevenlabs
   model: eleven_flash_v2_5      # Fastest model (~75ms latency)
   mode: all                     # all | captain-dm | group | briefings
+  naturalize: true              # Rewrite structured text into natural speech via Haiku before TTS
+  naturalize_prompt: ""         # Optional style instruction (e.g. "speak like a pirate", "be very concise")
   voices:
     cos: "7ceZgj78jCCeAW93ItNk"   # Default: calm, authoritative
     cto: "AMNzDFTtLuyoKAL3YPnu"   # Default: direct, confident
