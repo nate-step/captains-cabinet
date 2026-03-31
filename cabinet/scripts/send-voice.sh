@@ -20,8 +20,23 @@ OFFICER="${OFFICER_NAME:-unknown}"
 # Read voice config from product.yml
 CONFIG_FILE="/opt/founders-cabinet/config/product.yml"
 
+# --- YAML parsing helpers ---
+# All config reads use awk with section isolation to avoid cross-section bleed.
+# Pattern: enter voice block on ^voice:, enter subsection on indented key, exit on next sibling.
+voice_field() {
+  awk '/^voice:/{v=1} v && /^  '"$1"':/{print $2;exit}' "$CONFIG_FILE" | tr -d ' '
+}
+voice_subsection_field() {
+  local section="$1" key="$2"
+  awk '/^voice:/{v=1} v && /^  '"$section"':/{s=1;next} v && s && /'"$key"':/{print $2;exit} v && s && /^  [a-z]/{exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'"
+}
+voice_subsection_value() {
+  local section="$1" key="$2"
+  awk '/^voice:/{v=1} v && /^  '"$section"':/{s=1;next} v && s && /'"$key"':/{sub(/^[[:space:]]*'"$key"':[[:space:]]*/,"");print;exit} v && s && /^  [a-z]/{exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'"
+}
+
 # Check if voice is enabled
-VOICE_ENABLED=$(grep -A1 "^voice:" "$CONFIG_FILE" | grep "enabled:" | awk '{print $2}' | tr -d ' ')
+VOICE_ENABLED=$(voice_field "enabled")
 if [ "$VOICE_ENABLED" != "true" ]; then
   echo "Voice messages disabled in config/product.yml"
   exit 0
@@ -29,7 +44,7 @@ fi
 
 # Get voice ID for this officer (can be overridden by VOICE_ID env var)
 if [ -z "$VOICE_ID" ]; then
-  VOICE_ID=$(grep -A10 "voices:" "$CONFIG_FILE" | grep "${OFFICER}:" | awk '{print $2}' | tr -d '"' | tr -d "'")
+  VOICE_ID=$(voice_subsection_field "voices" "$OFFICER")
 fi
 
 if [ -z "$VOICE_ID" ]; then
@@ -37,12 +52,12 @@ if [ -z "$VOICE_ID" ]; then
   exit 1
 fi
 
-# Get model: check per-officer override first, then global default
-OFFICER_MODEL=$(grep -A10 "models:" "$CONFIG_FILE" | grep "${OFFICER}:" | awk '{print $2}' | tr -d '"' | tr -d "'")
+# Get model: check per-officer override in voice.models, then global default
+OFFICER_MODEL=$(voice_subsection_field "models" "$OFFICER")
 if [ -n "$OFFICER_MODEL" ]; then
   MODEL="$OFFICER_MODEL"
 else
-  MODEL=$(grep -A5 "^voice:" "$CONFIG_FILE" | grep "model:" | head -1 | awk '{print $2}' | tr -d ' ')
+  MODEL=$(voice_field "model")
   MODEL="${MODEL:-eleven_flash_v2_5}"
 fi
 
@@ -102,10 +117,9 @@ Rules:
 }
 
 # Check if naturalization is enabled
-NATURALIZE=$(grep -A20 "^voice:" "$CONFIG_FILE" | grep "naturalize:" | head -1 | awk '{print $2}' | tr -d ' ')
+NATURALIZE=$(voice_field "naturalize")
 if [ "$NATURALIZE" = "true" ]; then
-  # Read per-officer prompt from naturalize_prompts.<officer>, fallback to empty
-  NATURALIZE_PROMPT=$(grep -A10 "naturalize_prompts:" "$CONFIG_FILE" | grep "${OFFICER}:" | sed "s/.*${OFFICER}:[[:space:]]*//" | tr -d '"' | tr -d "'")
+  NATURALIZE_PROMPT=$(voice_subsection_value "naturalize_prompts" "$OFFICER")
   TEXT=$(naturalize_for_speech "$TEXT" "$NATURALIZE_PROMPT")
 fi
 
