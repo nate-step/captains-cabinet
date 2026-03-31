@@ -17,7 +17,6 @@ echo "TELEGRAM_BOT_TOKEN=$BOT_TOKEN" > "$STATE_DIR/telegram/.env"
 
 # Each officer gets their own working subdirectory so --continue resumes
 # the correct session (Claude Code scopes sessions by working directory).
-# Symlink key framework files so Claude Code finds them.
 OFFICER_DIR="$CABINET_ROOT/officers/$OFFICER"
 mkdir -p "$OFFICER_DIR"
 ln -sfn "$CABINET_ROOT/CLAUDE.md" "$OFFICER_DIR/CLAUDE.md"
@@ -28,19 +27,33 @@ ln -sfn "$CABINET_ROOT/shared" "$OFFICER_DIR/shared"
 ln -sfn "$CABINET_ROOT/config" "$OFFICER_DIR/config"
 ln -sfn "$CABINET_ROOT/cabinet" "$OFFICER_DIR/cabinet"
 
+# Check if this officer has a previous session to continue
+# Claude Code stores sessions in ~/.claude/projects/<encoded-path>/
+ENCODED_PATH=$(echo "$OFFICER_DIR" | sed 's|/|-|g; s|^-||')
+HAS_SESSION=false
+if [ -d "/home/cabinet/.claude/projects/$ENCODED_PATH" ]; then
+  HAS_SESSION=true
+fi
+
+# Build the claude command — use --continue only if a prior session exists
+if [ "$HAS_SESSION" = true ]; then
+  CLAUDE_CMD="claude --continue --channels plugin:telegram@claude-plugins-official --dangerously-skip-permissions --effort max"
+else
+  CLAUDE_CMD="claude --channels plugin:telegram@claude-plugins-official --dangerously-skip-permissions --effort max"
+fi
+
 # Kill any existing session for this officer
 tmux kill-window -t "cabinet:$WINDOW" 2>/dev/null
 
-# Start Claude Code session — --continue resumes this officer's last session
+# Start Claude Code session
 tmux new-window -t cabinet -n "$WINDOW"
 tmux send-keys -t "cabinet:$WINDOW" \
-  "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=\$TELEGRAM_HQ_CHAT_ID && cd $OFFICER_DIR && claude --continue --channels plugin:telegram@claude-plugins-official --dangerously-skip-permissions --effort max" \
+  "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=\$TELEGRAM_HQ_CHAT_ID && cd $OFFICER_DIR && $CLAUDE_CMD" \
   Enter
 
 # Wait for Claude Code to initialize, then auto-set up the polling loop
-# The loop is session-scoped and dies on restart, so we re-create it every time
 (
-  sleep 15  # Give Claude Code time to load and resume
+  sleep 20  # Give Claude Code time to load
 
   # Build the loop prompt based on officer role
   case "$OFFICER" in
@@ -61,4 +74,4 @@ tmux send-keys -t "cabinet:$WINDOW" \
   tmux send-keys -t "cabinet:$WINDOW" "/loop 5m $LOOP_PROMPT" Enter
 ) &
 
-echo "Started $OFFICER in cabinet:$WINDOW (loop will auto-setup in ~15s)"
+echo "Started $OFFICER in cabinet:$WINDOW (has_session=$HAS_SESSION, loop in ~20s)"
