@@ -62,7 +62,9 @@ else
   MODEL="${MODEL:-eleven_flash_v2_5}"
 fi
 
-# Get per-officer speed (default: 1.0)
+# Get per-officer stability (default: 0.5) and speed (default: 1.0)
+STABILITY=$(voice_subsection_field "stability" "$OFFICER")
+STABILITY="${STABILITY:-0.5}"
 SPEED=$(voice_subsection_field "speeds" "$OFFICER")
 SPEED="${SPEED:-1.0}"
 
@@ -163,7 +165,7 @@ HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TMPFILE" \
     \"text\": $(echo "$TEXT" | jq -Rs '.'),
     \"model_id\": \"${MODEL}\",
     \"voice_settings\": {
-      \"stability\": 0.5,
+      \"stability\": ${STABILITY},
       \"similarity_boost\": 0.75,
       \"speed\": ${SPEED}
     }
