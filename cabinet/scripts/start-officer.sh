@@ -51,9 +51,14 @@ tmux send-keys -t "cabinet:$WINDOW" \
   "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=\$TELEGRAM_HQ_CHAT_ID && cd $OFFICER_DIR && $CLAUDE_CMD" \
   Enter
 
-# Wait for Claude Code to initialize, then auto-set up the polling loop
+# Wait for Claude Code to initialize, then send boot prompt + polling loop
 (
   sleep 20  # Give Claude Code time to load
+
+  # Send boot prompt — tells the officer to initialize and announce
+  tmux send-keys -t "cabinet:$WINDOW" "You are $OFFICER. Read your role definition at .claude/agents/$OFFICER.md and your session start checklist. Read your foundation skills in memory/skills/. Read your tier 2 notes in memory/tier2/$OFFICER/. Then announce yourself on the warroom: bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh '<b>$OFFICER online.</b> Session started. Checking for pending work.' — then check for pending triggers and overdue work immediately." Enter
+
+  sleep 30  # Give time to boot and announce
 
   # Build the loop prompt based on officer role
   case "$OFFICER" in
