@@ -18,7 +18,7 @@ tmux kill-window -t "cabinet:$WINDOW" 2>/dev/null
 
 tmux new-window -t cabinet -n "$WINDOW"
 tmux send-keys -t "cabinet:$WINDOW" \
-  "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=\$TELEGRAM_HQ_CHAT_ID && cd /opt/founders-cabinet && claude --channels plugin:telegram@claude-plugins-official --dangerously-skip-permissions --effort max" \
+  "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=\$TELEGRAM_HQ_CHAT_ID && cd /opt/founders-cabinet && claude --continue --channels plugin:telegram@claude-plugins-official --dangerously-skip-permissions --effort max" \
   Enter
 
 echo "Started $OFFICER in cabinet:$WINDOW"
