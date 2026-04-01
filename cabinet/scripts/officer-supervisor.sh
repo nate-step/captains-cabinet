@@ -7,7 +7,6 @@ REDIS_URL="${REDIS_URL:-redis://redis:6379}"
 REDIS_HOST=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f1)
 REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
-OFFICERS=("cos" "cto" "cro" "cpo")
 CHECK_INTERVAL=120  # 2 minutes
 RESTART_COOLDOWN=300  # 5 minutes between restarts of the same officer
 
@@ -15,13 +14,9 @@ log() {
   echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] [supervisor] $1"
 }
 
-get_token_var() {
-  case "$1" in
-    cos) echo "TELEGRAM_COS_TOKEN" ;;
-    cto) echo "TELEGRAM_CTO_TOKEN" ;;
-    cro) echo "TELEGRAM_CRO_TOKEN" ;;
-    cpo) echo "TELEGRAM_CPO_TOKEN" ;;
-  esac
+# Discover active officers from tmux windows (fully dynamic — no hardcoded list)
+get_officers() {
+  tmux list-windows -t cabinet -F '#{window_name}' 2>/dev/null | grep '^officer-' | sed 's/officer-//'
 }
 
 send_restart_alert() {
@@ -49,6 +44,8 @@ while true; do
     continue
   fi
 
+  # Dynamically discover officers from tmux windows
+  OFFICERS=($(get_officers))
   for officer in "${OFFICERS[@]}"; do
     WINDOW="officer-$officer"
 
@@ -70,8 +67,8 @@ while true; do
     if ! tmux has-session -t cabinet 2>/dev/null; then
       log "CRITICAL: tmux session 'cabinet' is gone! Recreating..."
       tmux new-session -d -s cabinet -n main
-      # All officers need restart
-      for o in "${OFFICERS[@]}"; do
+      # All expected-active officers need restart (check Redis)
+      for o in $(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:officer:expected:*" 2>/dev/null | sed 's/cabinet:officer:expected://'); do
         E=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:officer:expected:$o" 2>/dev/null)
         if [ "$E" = "active" ]; then
           log "Restarting $o after tmux session recovery"

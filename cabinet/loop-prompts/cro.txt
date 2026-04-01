@@ -1,0 +1,1 @@
+Check triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:cro 0 -1 — process each, then DEL. Check overdue: research sweep 4h, reflection 6h.

@@ -1,0 +1,1 @@
+Check triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:cto 0 -1 — process each, then DEL. Check overdue: reflection 6h. Check shared/interfaces/product-specs/ for new specs.

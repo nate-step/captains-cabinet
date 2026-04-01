@@ -22,10 +22,9 @@ exec su cabinet -s /bin/bash -c '
   echo "Cabinet tmux session created."
   echo ""
   echo "To start Officers, exec into this container and run:"
-  echo "  /home/cabinet/start-officer.sh cos"
-  echo "  /home/cabinet/start-officer.sh cto"
-  echo "  /home/cabinet/start-officer.sh cro"
-  echo "  /home/cabinet/start-officer.sh cpo"
+  echo "  /home/cabinet/start-officer.sh <officer-abbreviation>"
+  echo "To create a new Officer:"
+  echo "  bash /opt/founders-cabinet/cabinet/scripts/create-officer.sh <abbrev> <title> <domain> <bot-username> <bot-token>"
   echo ""
 
   # Start the officer supervisor (auto-restart on crash)

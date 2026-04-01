@@ -1,0 +1,1 @@
+Check triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:coo 0 -1 — process each, then DEL. Check overdue: reflection 6h, exploratory testing 2h. Check Sentry for new errors. Check shared/interfaces/deployment-status.md for unvalidated deploys.
