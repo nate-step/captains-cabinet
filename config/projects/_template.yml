@@ -1,0 +1,91 @@
+# =============================================================
+# Project: [PROJECT NAME]
+# =============================================================
+# Copy this template to config/projects/<slug>.yml
+# Fill in all IDs from your Notion, Linear, and Neon setup.
+# Then run: bash cabinet/scripts/switch-project.sh <slug>
+# =============================================================
+
+product:
+  name: ""                        # Product name
+  description: ""                 # One-line description
+  repo: ""                        # GitHub repo URL
+  repo_branch: main               # Default branch
+  mount_path: /workspace/product   # Docker mount path for the product repo
+
+# =============================================================
+# Notion — Create these pages/databases in your Notion workspace
+# =============================================================
+# CoS can create this structure automatically via MCP tools.
+# See: memory/skills/evolved/create-project.md
+notion:
+  cabinet_hq_id: ""
+
+  dashboard:
+    page_id: ""
+    decision_queue_db: ""
+    daily_briefings_db: ""
+    weekly_reports_db: ""
+
+  business_brain:
+    page_id: ""
+    vision_id: ""
+    strategy_brief_id: ""
+    brand_guidelines_id: ""
+    messaging_pillars_id: ""
+    growth_guardrails_id: ""
+    pricing_id: ""
+
+  research_hub:
+    page_id: ""
+    research_briefs_db: ""
+    competitive_intel_db: ""
+    market_trends_db: ""
+
+  product_hub:
+    page_id: ""
+    product_roadmap_db: ""
+    feature_specs_db: ""
+    user_feedback_db: ""
+
+  engineering_hub:
+    page_id: ""
+    architecture_decisions_db: ""
+    tech_debt_db: ""
+
+  cabinet_ops:
+    page_id: ""
+    decision_journal_db: ""
+    improvement_proposals_db: ""
+
+  reference:
+    page_id: ""
+
+  archive:
+    page_id: ""
+
+# =============================================================
+# Linear — Create a team/workspace for this project
+# =============================================================
+linear:
+  team_key: ""                     # e.g. "myapp"
+  workspace_url: ""                # e.g. "https://linear.app/myapp"
+
+# =============================================================
+# Neon — Create a project for this product's database
+# =============================================================
+neon:
+  project: ""                      # Neon project name
+
+# =============================================================
+# Telegram — Same bots, different group chat
+# =============================================================
+# Create a new Telegram group for this project and add your officer bots.
+# The bot usernames stay the same — only the group chat ID changes.
+telegram:
+  officers:
+    cos: ""                        # Same bot username as other projects
+    cto: ""
+    cro: ""
+    cpo: ""
+    coo: ""

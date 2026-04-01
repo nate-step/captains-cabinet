@@ -2,6 +2,7 @@ import Link from 'next/link'
 import redis, { getCostHistory } from '@/lib/redis'
 import { getTmuxWindows, isClaudeAlive, isTelegramConnected } from '@/lib/docker'
 import { getOfficerConfig } from '@/lib/config'
+import { getProjects } from '@/actions/projects'
 import OfficerCard from '@/components/officer-card'
 import KillSwitch from '@/components/kill-switch'
 import { BarChart, HorizontalBars, ChartLegend } from '@/components/cost-chart'
@@ -105,11 +106,14 @@ function formatCents(cents: number): string {
 }
 
 export default async function DashboardPage() {
-  const [officers, killSwitchActive, costHistory] = await Promise.all([
+  const [officers, killSwitchActive, costHistory, projects] = await Promise.all([
     getOfficerData(),
     getKillSwitchState(),
     getCostHistory(7),
+    getProjects(),
   ])
+
+  const activeProjectName = projects.find((p) => p.active)?.name || 'Unknown'
 
   const now = new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
@@ -143,7 +147,10 @@ export default async function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-white">
+            Dashboard <span className="text-zinc-500">&mdash;</span>{' '}
+            <span className="text-zinc-300">{activeProjectName}</span>
+          </h1>
           <p className="mt-1 text-sm text-zinc-500">Last updated: {now}</p>
         </div>
         <div className="flex items-center gap-3">

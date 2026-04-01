@@ -6,6 +6,16 @@
 # Requires: TELEGRAM_<UPPER>_TOKEN in environment (e.g. TELEGRAM_CTO_TOKEN)
 
 OFFICER="${1:?Usage: start-officer.sh <officer-abbreviation>}"
+CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
+
+# Source base env + active project env (if not already loaded)
+if [ -f "$CABINET_ROOT/cabinet/.env" ]; then
+  set -a; source "$CABINET_ROOT/cabinet/.env" 2>/dev/null; set +a
+fi
+ACTIVE_SLUG=$(cat "$CABINET_ROOT/config/active-project.txt" 2>/dev/null | tr -d '[:space:]')
+if [ -n "$ACTIVE_SLUG" ] && [ -f "$CABINET_ROOT/cabinet/env/${ACTIVE_SLUG}.env" ]; then
+  set -a; source "$CABINET_ROOT/cabinet/env/${ACTIVE_SLUG}.env" 2>/dev/null; set +a
+fi
 
 # Dynamic bot token lookup — constructs env var name from officer abbreviation
 TOKEN_VAR="TELEGRAM_${OFFICER^^}_TOKEN"

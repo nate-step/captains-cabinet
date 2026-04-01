@@ -2,6 +2,8 @@ import fs from 'fs'
 import yaml from 'js-yaml'
 
 const CONFIG_PATH = process.env.CONFIG_PATH || '/opt/founders-cabinet/config/product.yml'
+const PROJECTS_DIR = process.env.PROJECTS_DIR || '/opt/founders-cabinet/config/projects'
+const ACTIVE_PROJECT_FILE = process.env.ACTIVE_PROJECT_FILE || '/opt/founders-cabinet/config/active-project.txt'
 const AGENTS_DIR = process.env.AGENTS_DIR || '/opt/founders-cabinet/.claude/agents'
 const LOOP_PROMPTS_DIR = process.env.LOOP_PROMPTS_DIR || '/opt/founders-cabinet/cabinet/loop-prompts'
 const IS_MOCK = process.env.MOCK_DATA === 'true' || !fs.existsSync(CONFIG_PATH)
@@ -298,5 +300,52 @@ export function getLinearConfig(): { team_key: string; workspace_url: string } {
   return {
     team_key: (linear.team_key as string) || '',
     workspace_url: (linear.workspace_url as string) || '',
+  }
+}
+
+export function getActiveProjectSlug(): string {
+  if (IS_MOCK) {
+    return 'sensed'
+  }
+  try {
+    const content = fs.readFileSync(ACTIVE_PROJECT_FILE, 'utf8')
+    return content.trim() || 'sensed'
+  } catch {
+    return 'sensed'
+  }
+}
+
+export interface ProjectListItem {
+  slug: string
+  name: string
+}
+
+export function getProjectsList(): ProjectListItem[] {
+  if (IS_MOCK) {
+    return [
+      { slug: 'sensed', name: 'Sensed' },
+      { slug: 'demo-project', name: 'Demo Project' },
+    ]
+  }
+  try {
+    const files = fs.readdirSync(PROJECTS_DIR).filter((f) => f.endsWith('.yml'))
+    return files.map((f) => {
+      const slug = f.replace('.yml', '')
+      try {
+        const content = fs.readFileSync(`${PROJECTS_DIR}/${f}`, 'utf8')
+        const parsed = yaml.load(content) as Record<string, unknown>
+        const product = (parsed.product || parsed) as Record<string, unknown>
+        const name = (product.name as string) || slug
+        return { slug, name }
+      } catch {
+        return { slug, name: slug }
+      }
+    })
+  } catch {
+    // Fallback: return from active config
+    const config = getConfig()
+    const product = (config.product || {}) as Record<string, unknown>
+    const name = (product.name as string) || 'Unknown'
+    return [{ slug: getActiveProjectSlug(), name }]
   }
 }

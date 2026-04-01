@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { logout } from '@/actions/auth'
+import ProjectSelector from '@/components/project-selector'
 
 const links = [
   { href: '/', label: 'Dashboard', icon: DashboardIcon },
@@ -119,7 +120,19 @@ function CloseIcon() {
   )
 }
 
-export default function Nav() {
+interface ProjectInfo {
+  slug: string
+  name: string
+  active: boolean
+}
+
+export default function Nav({
+  projects,
+  activeProject,
+}: {
+  projects?: ProjectInfo[]
+  activeProject?: string
+}) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -127,7 +140,14 @@ export default function Nav() {
     <>
       {/* Mobile header */}
       <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4 py-3 md:hidden">
-        <span className="text-lg font-bold text-white">Cabinet</span>
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-bold text-white">Cabinet</span>
+          {projects && projects.length > 0 && (
+            <span className="text-xs text-zinc-500">
+              / {projects.find((p) => p.active)?.name || activeProject}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="text-zinc-400 hover:text-white"
@@ -156,6 +176,11 @@ export default function Nav() {
             Founder&apos;s Cabinet
           </span>
         </div>
+
+        {/* Project selector */}
+        {projects && projects.length > 0 && (
+          <ProjectSelector projects={projects} activeProject={activeProject || ''} />
+        )}
 
         {/* Navigation links */}
         <nav className="flex-1 space-y-1 px-3 py-4">
