@@ -36,7 +36,7 @@ export default async function CronsPage() {
   ])
 
   return (
-    <div className="space-y-8">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       <div>
         <h1 className="text-2xl font-bold text-white">Scheduled Jobs</h1>
         <p className="mt-1 text-sm text-zinc-500">
@@ -51,21 +51,21 @@ export default async function CronsPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-zinc-800">
-                <th className="pb-3 font-medium text-zinc-500" style={{ padding: '12px 16px' }}>Job</th>
-                <th className="pb-3 font-medium text-zinc-500" style={{ padding: '12px 16px' }}>Schedule</th>
-                <th className="pb-3 font-medium text-zinc-500" style={{ padding: '12px 16px' }}>Cron Expression</th>
+                <th className="pb-3 font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Job</th>
+                <th className="pb-3 font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Schedule</th>
+                <th className="pb-3 font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Cron Expression</th>
               </tr>
             </thead>
             <tbody>
               {cronJobs.map((job, i) => (
                 <tr key={i} className="border-b border-zinc-800/50">
-                  <td className="text-zinc-300" style={{ padding: '16px 16px' }}>
+                  <td className="text-zinc-300" style={{ padding: '10px 12px' }}>
                     {job.description}
                   </td>
-                  <td className="text-zinc-400" style={{ padding: '16px 16px' }}>
+                  <td className="text-zinc-400" style={{ padding: '10px 12px' }}>
                     {formatSchedule(job.schedule)}
                   </td>
-                  <td className="font-mono text-zinc-500" style={{ padding: '16px 16px' }}>
+                  <td className="font-mono text-zinc-500" style={{ padding: '10px 12px' }}>
                     {job.schedule}
                   </td>
                 </tr>
@@ -88,9 +88,9 @@ export default async function CronsPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-zinc-800">
-                  <th className="font-medium text-zinc-500" style={{ padding: '12px 16px' }}>Officer</th>
-                  <th className="font-medium text-zinc-500" style={{ padding: '12px 16px' }}>Task</th>
-                  <th className="font-medium text-zinc-500" style={{ padding: '12px 16px' }}>Last Run</th>
+                  <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Officer</th>
+                  <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Task</th>
+                  <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Last Run</th>
                 </tr>
               </thead>
               <tbody>
@@ -102,13 +102,13 @@ export default async function CronsPage() {
                     const task = parts.slice(1).join(':') || '-'
                     return (
                       <tr key={key} className="border-b border-zinc-800/50">
-                        <td className="font-medium text-zinc-300 uppercase" style={{ padding: '16px 16px' }}>
+                        <td className="font-medium text-zinc-300 uppercase" style={{ padding: '10px 12px' }}>
                           {officer}
                         </td>
-                        <td className="text-zinc-400" style={{ padding: '16px 16px' }}>
+                        <td className="text-zinc-400" style={{ padding: '10px 12px' }}>
                           {task}
                         </td>
-                        <td className="text-zinc-500" style={{ padding: '16px 16px' }}>
+                        <td className="text-zinc-500" style={{ padding: '10px 12px' }}>
                           {formatTimestamp(ts)}
                         </td>
                       </tr>

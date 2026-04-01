@@ -143,7 +143,7 @@ export default async function OfficerDetailPage({
   const config = getOfficerConfig(role)
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       {/* Back button */}
       <Link
         href="/officers"
