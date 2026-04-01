@@ -131,4 +131,30 @@ while true; do
       # self-checking their schedule on every interaction (see role definitions).
     fi
   done
+
+  # Second pass: check Redis for expected-active officers whose windows are completely gone
+  # (not caught by the tmux discovery above because get_officers only sees existing windows)
+  EXPECTED_OFFICERS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:officer:expected:*" 2>/dev/null | sed 's/cabinet:officer:expected://')
+  for officer in $EXPECTED_OFFICERS; do
+    EXPECTED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:officer:expected:$officer" 2>/dev/null)
+    [ "$EXPECTED" != "active" ] && continue
+
+    WINDOW="officer-$officer"
+    # Skip if window exists (already handled in first pass)
+    tmux list-windows -t cabinet -F '#{window_name}' 2>/dev/null | grep -q "^${WINDOW}$" && continue
+
+    # Check cooldown
+    LAST_RESTART=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:supervisor:last-restart:$officer" 2>/dev/null)
+    NOW=$(date +%s)
+    if [ -n "$LAST_RESTART" ] && [ "$LAST_RESTART" != "" ]; then
+      ELAPSED=$((NOW - LAST_RESTART))
+      [ "$ELAPSED" -lt "$RESTART_COOLDOWN" ] && continue
+    fi
+
+    log "Expected-active officer '$officer' has no tmux window — restarting"
+    /home/cabinet/start-officer.sh "$officer"
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-restart:$officer" "$NOW" EX 600 > /dev/null 2>&1
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:restart-count:$officer" > /dev/null 2>&1
+    send_restart_alert "$officer" "tmux window gone, restarted from Redis expected-active list"
+  done
 done

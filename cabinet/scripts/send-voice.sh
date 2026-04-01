@@ -29,11 +29,11 @@ voice_field() {
 }
 voice_subsection_field() {
   local section="$1" key="$2"
-  awk '/^voice:/{v=1} v && /^  '"$section"':/{s=1;next} v && s && /'"$key"':/{print $2;exit} v && s && /^  [a-z]/{exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'"
+  awk '/^voice:/{v=1} v && /^  '"$section"':/{s=1;next} v && s && /^[[:space:]]*'"$key"':/{print $2;exit} v && s && /^  [a-z]/{exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'"
 }
 voice_subsection_value() {
   local section="$1" key="$2"
-  awk '/^voice:/{v=1} v && /^  '"$section"':/{s=1;next} v && s && /'"$key"':/{sub(/^[[:space:]]*'"$key"':[[:space:]]*/,"");print;exit} v && s && /^  [a-z]/{exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'"
+  awk '/^voice:/{v=1} v && /^  '"$section"':/{s=1;next} v && s && /^[[:space:]]*'"$key"':/{sub(/^[[:space:]]*'"$key"':[[:space:]]*/,"");print;exit} v && s && /^  [a-z]/{exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'"
 }
 
 # Check if voice is enabled

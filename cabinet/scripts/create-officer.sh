@@ -125,14 +125,7 @@ if grep -q "    ${OFFICER}:" "$CONFIG_FILE" 2>/dev/null; then
 else
   log "Adding $OFFICER to product.yml..."
 
-  # Add to telegram.officers (after last entry in the section)
-  sed -i "/^  officers:/,/^  [a-z]/{
-    /^  [a-z]/!{
-      /^    [a-z]/H
-    }
-  }" "$CONFIG_FILE"
-
-  # Simpler approach: append after the last officer entry in each section
+  # Append after the last entry in each voice/telegram subsection
   # telegram.officers
   LAST_OFFICER_LINE=$(grep -n "^    [a-z]*:.*bot" "$CONFIG_FILE" | tail -1 | cut -d: -f1)
   if [ -n "$LAST_OFFICER_LINE" ]; then
