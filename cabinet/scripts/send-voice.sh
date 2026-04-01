@@ -100,6 +100,10 @@ naturalize_for_speech() {
 - Preserve ALL key information and meaning
 - No emojis, no markdown formatting
 - Speak as the officer would to ${CAPTAIN_NAME} — direct, personal, human
+- NEVER read out secrets, tokens, API keys, DSN URLs, long hashes, or UUIDs — refer to them by name only (\"the new Sentry token\", \"the auth key\", \"the DSN\")
+- NEVER read out long URLs, connection strings, or base64 strings — describe what they are instead (\"the Sentry DSN for the web project\", \"the database connection string\")
+- Environment variable names like SENTRY_AUTH_TOKEN should be spoken naturally: \"the Sentry auth token\" not \"SENTRY underscore AUTH underscore TOKEN\"
+- Long numbers and IDs (commit hashes, container IDs, org IDs) — skip them entirely or say \"the latest commit\" instead of the hash
 
 ## Audio tags (use liberally, matched to the moment)
 Emotional directions: [happy] [sad] [excited] [angry] [annoyed] [appalled] [thoughtful] [surprised] [curious] [dismissive] [sarcastic] [mischievously] [reassuring] [professional]
