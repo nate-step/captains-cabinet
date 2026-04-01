@@ -122,10 +122,12 @@ Placement: before or after the dialogue segment they modify. Use them at natural
 - Version numbers: \"v3\" becomes \"version three\"
 - Counts: \"6/6\" becomes \"six out of six\", \"4h\" becomes \"four hours\"
 
-## Character instruction (follow this closely)"
+## Character instruction
+The description below defines the CHARACTER — their personality, energy, and emotional range. Any example phrases are just inspiration for the STYLE. Never copy them literally. Generate fresh, natural dialogue every time that fits the character and the specific content being delivered."
 
   if [ -n "$prompt" ]; then
     system_prompt="${system_prompt}
+
 ${prompt}"
   fi
 
