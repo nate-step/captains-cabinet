@@ -1,6 +1,7 @@
 'use client'
 
 import { useTransition } from 'react'
+import Link from 'next/link'
 import { startOfficer, stopOfficer, restartOfficer } from '@/actions/officers'
 
 type OfficerStatus = 'running' | 'stopped' | 'no-heartbeat'
@@ -8,6 +9,10 @@ type OfficerStatus = 'running' | 'stopped' | 'no-heartbeat'
 interface OfficerCardProps {
   role: string
   title?: string
+  botUsername?: string
+  voiceId?: string
+  claudeAlive?: boolean
+  telegramConnected?: boolean
   status: OfficerStatus
   lastHeartbeat: string | null
 }
@@ -63,6 +68,17 @@ function StatusBadge({ status }: { status: OfficerStatus }) {
   )
 }
 
+function ConnectionDot({ connected, label }: { connected: boolean; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
+      />
+      {label}
+    </span>
+  )
+}
+
 function formatTimestamp(ts: string | null): string {
   if (!ts) return 'Never'
   const date = new Date(ts)
@@ -78,46 +94,83 @@ function formatTimestamp(ts: string | null): string {
 export default function OfficerCard({
   role,
   title,
+  botUsername,
+  voiceId,
+  claudeAlive,
+  telegramConnected,
   status,
   lastHeartbeat,
 }: OfficerCardProps) {
   const [isPending, startTransition] = useTransition()
 
-  function handleStart() {
+  function handleStart(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
     startTransition(() => {
       startOfficer(role)
     })
   }
 
-  function handleStop() {
+  function handleStop(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
     startTransition(() => {
       stopOfficer(role)
     })
   }
 
-  function handleRestart() {
+  function handleRestart(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
     startTransition(() => {
       restartOfficer(role)
     })
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+    <Link
+      href={`/officers/${role}`}
+      className="block rounded-xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 hover:bg-zinc-900/80"
+      style={{ padding: '20px' }}
+    >
       <div className="flex items-start justify-between">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-lg font-bold text-white uppercase">{role}</h3>
           {title && (
-            <p className="mt-0.5 text-sm text-zinc-500">{title}</p>
+            <p className="mt-0.5 truncate text-sm text-zinc-500">{title}</p>
+          )}
+          {botUsername && (
+            <p className="mt-0.5 truncate text-xs text-zinc-600">@{botUsername}</p>
           )}
         </div>
         <StatusBadge status={status} />
       </div>
 
-      <div className="mt-3 text-xs text-zinc-500">
-        Last heartbeat: {formatTimestamp(lastHeartbeat)}
+      {/* Connection indicators */}
+      {(claudeAlive !== undefined || telegramConnected !== undefined) && (
+        <div className="mt-2 flex items-center gap-3">
+          {claudeAlive !== undefined && (
+            <ConnectionDot connected={claudeAlive} label="Claude" />
+          )}
+          {telegramConnected !== undefined && (
+            <ConnectionDot connected={telegramConnected} label="Telegram" />
+          )}
+        </div>
+      )}
+
+      {/* Voice and heartbeat row */}
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-xs text-zinc-500">
+          Last heartbeat: {formatTimestamp(lastHeartbeat)}
+        </span>
+        {voiceId !== undefined && (
+          <span className={`text-xs ${voiceId ? 'text-zinc-500' : 'text-zinc-600'}`}>
+            Voice: {voiceId ? 'enabled' : 'not configured'}
+          </span>
+        )}
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-3 flex gap-2">
         {status === 'stopped' && (
           <button
             onClick={handleStart}
@@ -149,6 +202,6 @@ export default function OfficerCard({
           </>
         )}
       </div>
-    </div>
+    </Link>
   )
 }

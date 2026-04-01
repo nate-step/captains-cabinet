@@ -56,6 +56,58 @@ export async function restartOfficer(role: string) {
   }
 }
 
+export async function deleteOfficer(role: string) {
+  try {
+    if (!/^[a-z]{2,4}$/.test(role)) {
+      return { success: false, error: 'Invalid role identifier' }
+    }
+
+    // Stop the officer first
+    try {
+      await dockerExec(`tmux kill-window -t cabinet:officer-${role} 2>/dev/null || true`)
+    } catch {
+      // May not be running
+    }
+
+    // Remove role definition and loop prompt files
+    await dockerExec(`rm -f /opt/founders-cabinet/.claude/agents/${role}.md`)
+    await dockerExec(`rm -f /opt/founders-cabinet/cabinet/loop-prompts/${role}.txt`)
+
+    // Remove from product.yml voice sections
+    const CONFIG_PATH = '/opt/founders-cabinet/config/product.yml'
+    const sections = ['voices', 'naturalize_prompts', 'stability', 'speeds', 'models']
+    for (const section of sections) {
+      await dockerExec(
+        `sed -i '/^voice:/,/^[a-z]/{/^  ${section}:/,/^  [a-z]/{/^    ${role}: /d}}' ${CONFIG_PATH}`
+      )
+    }
+
+    // Remove telegram officer entry
+    await dockerExec(
+      `sed -i '/^telegram:/,/^[a-z]/{/^  officers:/,/^  [a-z]/{/^    ${role}: /d}}' ${CONFIG_PATH}`
+    )
+
+    // Clean up Redis state
+    await redis.del(`cabinet:officer:expected:${role}`)
+    await redis.del(`cabinet:heartbeat:${role}`)
+
+    // Remove bot token from .env
+    const upperRole = role.toUpperCase()
+    await dockerExec(
+      `sed -i '/^TELEGRAM_${upperRole}_TOKEN=/d' /opt/founders-cabinet/cabinet/.env`
+    )
+
+    revalidatePath('/officers')
+    revalidatePath('/')
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to delete officer',
+    }
+  }
+}
+
 export async function createOfficer(
   _prevState: { error?: string; success?: boolean } | null,
   formData: FormData

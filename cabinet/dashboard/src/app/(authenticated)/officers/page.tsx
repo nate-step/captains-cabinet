@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import redis from '@/lib/redis'
-import { getTmuxWindows } from '@/lib/docker'
+import { getTmuxWindows, isClaudeAlive, isTelegramConnected } from '@/lib/docker'
+import { getOfficerConfig } from '@/lib/config'
 import OfficerCard from '@/components/officer-card'
 import fs from 'fs'
 import path from 'path'
@@ -12,24 +13,12 @@ type OfficerStatus = 'running' | 'stopped' | 'no-heartbeat'
 interface OfficerInfo {
   role: string
   title: string
+  botUsername: string
+  voiceId: string
+  claudeAlive: boolean
+  telegramConnected: boolean
   status: OfficerStatus
   lastHeartbeat: string | null
-}
-
-function readRoleTitle(role: string): string {
-  const agentDir = '/opt/founders-cabinet/.claude/agents'
-  const filePath = path.join(agentDir, `${role}.md`)
-  try {
-    const content = fs.readFileSync(filePath, 'utf8')
-    // Try to extract title from first heading
-    const match = content.match(/^#\s+(.+)/m)
-    if (match) {
-      return match[1].trim()
-    }
-    return role.toUpperCase()
-  } catch {
-    return role.toUpperCase()
-  }
 }
 
 async function getOfficerData(): Promise<OfficerInfo[]> {
@@ -51,8 +40,8 @@ async function getOfficerData(): Promise<OfficerInfo[]> {
   try {
     diskRoles = fs
       .readdirSync(agentDir)
-      .filter((f) => f.endsWith('.md'))
-      .map((f) => f.replace('.md', ''))
+      .filter((f: string) => f.endsWith('.md'))
+      .map((f: string) => f.replace('.md', ''))
   } catch {
     // Not available
   }
@@ -72,31 +61,47 @@ async function getOfficerData(): Promise<OfficerInfo[]> {
     roles.add(r)
   }
 
-  // Build officer info
-  const officers: OfficerInfo[] = []
-  for (const role of roles) {
-    const heartbeat = await redis.get(`cabinet:heartbeat:${role}`)
-    const expected = await redis.get(`cabinet:officer:expected:${role}`)
-    const isRunning = runningWindows.includes(role)
-    const title = readRoleTitle(role)
+  // Build officer info with parallel fetches for connection status
+  const roleArray = Array.from(roles)
+  const officers: OfficerInfo[] = await Promise.all(
+    roleArray.map(async (role) => {
+      const [heartbeat, expected, claudeAliveResult, telegramResult] = await Promise.all([
+        redis.get(`cabinet:heartbeat:${role}`),
+        redis.get(`cabinet:officer:expected:${role}`),
+        isClaudeAlive(role),
+        isTelegramConnected(role),
+      ])
 
-    let status: OfficerStatus
-    if (isRunning) {
-      if (heartbeat) {
-        const hbTime = new Date(heartbeat).getTime()
-        const now = Date.now()
-        status = now - hbTime > 10 * 60 * 1000 ? 'no-heartbeat' : 'running'
+      const isRunning = runningWindows.includes(role)
+      const config = getOfficerConfig(role)
+
+      let status: OfficerStatus
+      if (isRunning) {
+        if (heartbeat) {
+          const hbTime = new Date(heartbeat).getTime()
+          const now = Date.now()
+          status = now - hbTime > 10 * 60 * 1000 ? 'no-heartbeat' : 'running'
+        } else {
+          status = 'no-heartbeat'
+        }
+      } else if (expected === 'stopped') {
+        status = 'stopped'
       } else {
-        status = 'no-heartbeat'
+        status = 'stopped'
       }
-    } else if (expected === 'stopped') {
-      status = 'stopped'
-    } else {
-      status = 'stopped'
-    }
 
-    officers.push({ role, title, status, lastHeartbeat: heartbeat })
-  }
+      return {
+        role,
+        title: config.title,
+        botUsername: config.botUsername,
+        voiceId: config.voiceId,
+        claudeAlive: claudeAliveResult,
+        telegramConnected: telegramResult,
+        status,
+        lastHeartbeat: heartbeat,
+      }
+    })
+  )
 
   officers.sort((a, b) => a.role.localeCompare(b.role))
   return officers
@@ -151,6 +156,10 @@ export default async function OfficersPage() {
               key={officer.role}
               role={officer.role}
               title={officer.title}
+              botUsername={officer.botUsername}
+              voiceId={officer.voiceId}
+              claudeAlive={officer.claudeAlive}
+              telegramConnected={officer.telegramConnected}
               status={officer.status}
               lastHeartbeat={officer.lastHeartbeat}
             />
