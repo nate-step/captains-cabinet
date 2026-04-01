@@ -10,6 +10,41 @@
 
 Every time an Officer sends a message via Telegram — whether through scripts (send-to-group.sh) or the Channels plugin reply tool.
 
+## Core Rules
+
+### Always reply to the specific message
+
+When replying to the Captain via the Channels plugin, **always** pass `reply_to` with the Captain's `message_id` from the incoming `<channel>` block. This creates a threaded quote-reply in Telegram so the Captain can see which message you are responding to.
+
+```
+# Incoming message arrives as:
+# <channel source="telegram" chat_id="123" message_id="456" user="Nate" ts="...">
+
+# When replying, pass the message_id:
+reply(chat_id="123", text="Your response", reply_to="456")
+```
+
+Do this for every reply, not just replies to older messages.
+
+### Send files when referencing paths
+
+When your message references a file the Captain should read (role definitions, specs, research briefs, config files, logs), **send the file** — do not just mention the path. The Captain cannot access the server filesystem.
+
+Using the Channels plugin reply tool:
+```
+reply(chat_id="123", text="Here is the COO role definition", files=["/opt/founders-cabinet/.claude/agents/coo.md"])
+```
+
+Using the Telegram API directly:
+```bash
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+  -F chat_id="$CAPTAIN_TELEGRAM_ID" \
+  -F document=@"/opt/founders-cabinet/.claude/agents/coo.md" \
+  -F caption="COO role definition"
+```
+
+If the file is very long, you can summarize the key points in your message AND attach the file so the Captain has both.
+
 ## Message Formatting
 
 ### Scripts (send-to-group.sh, direct API calls) — Use HTML
