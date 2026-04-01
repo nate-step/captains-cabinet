@@ -109,7 +109,7 @@ export default async function DashboardPage() {
           {dailyCost && (
             <div className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm">
               <span className="text-zinc-500">Daily cost: </span>
-              <span className="font-medium text-white">${dailyCost}</span>
+              <span className="font-medium text-white">${(parseInt(dailyCost) / 100).toFixed(2)}</span>
             </div>
           )}
           <div className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm">

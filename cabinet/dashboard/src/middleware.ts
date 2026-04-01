@@ -21,6 +21,11 @@ async function verify(
 }
 
 export async function middleware(request: NextRequest) {
+  // Skip auth in mock/dev mode when no password is configured
+  if (process.env.MOCK_DATA === 'true' || (!process.env.DASHBOARD_PASSWORD && process.env.NODE_ENV === 'development')) {
+    return NextResponse.next()
+  }
+
   if (request.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.next()
   }
