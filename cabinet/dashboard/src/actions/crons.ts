@@ -3,6 +3,7 @@
 import { exec as execCb } from 'child_process'
 import { promisify } from 'util'
 import { revalidatePath } from 'next/cache'
+import redis from '@/lib/redis'
 
 const exec = promisify(execCb)
 const prefix = process.env.CABINET_PREFIX || 'cabinet'
@@ -122,5 +123,53 @@ export async function deleteCronJob(
     return { success: true }
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Failed to delete cron job' }
+  }
+}
+
+// === Officer Task Actions ===
+
+export async function resetTaskTimer(officer: string, task: string) {
+  try {
+    const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+    await redis.set(`cabinet:schedule:last-run:${officer}:${task}`, now)
+    revalidatePath('/crons')
+    return { success: true }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Failed to reset timer' }
+  }
+}
+
+export async function deleteTaskTimer(officer: string, task: string) {
+  try {
+    await redis.del(`cabinet:schedule:last-run:${officer}:${task}`)
+    revalidatePath('/crons')
+    return { success: true }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Failed to delete task' }
+  }
+}
+
+export async function createTaskTimer(
+  _prev: { error?: string; success?: boolean } | null,
+  formData: FormData
+) {
+  const officer = formData.get('officer') as string
+  const task = formData.get('task') as string
+
+  if (!officer || !task) {
+    return { error: 'Officer and task name are required' }
+  }
+
+  if (!/^[a-z-]+$/.test(task)) {
+    return { error: 'Task name must be lowercase with dashes (e.g. research-sweep)' }
+  }
+
+  try {
+    const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+    await redis.set(`cabinet:schedule:last-run:${officer}:${task}`, now)
+    revalidatePath('/crons')
+    return { success: true }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Failed to create task' }
   }
 }

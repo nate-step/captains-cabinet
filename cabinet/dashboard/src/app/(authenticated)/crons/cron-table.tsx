@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useActionState } from 'react'
-import { updateCronSchedule, addCronJob, deleteCronJob } from '@/actions/crons'
+import { updateCronSchedule, addCronJob, deleteCronJob, resetTaskTimer, deleteTaskTimer, createTaskTimer } from '@/actions/crons'
 import type { CronJob } from '@/lib/docker'
 
 function formatSchedule(cron: string): string {
@@ -222,15 +222,20 @@ export default function CronTable({
       {/* Add job */}
       <AddJobForm />
 
-      {/* Last-run times */}
+      {/* Officer Tasks — per-officer scheduled work with CRUD */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900" style={{ padding: '24px' }}>
-        <h2 className="text-lg font-semibold text-white">Last Run Times</h2>
-        <p className="mt-1 text-sm text-zinc-600">
-          From Redis cabinet:schedule:last-run:* keys
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Officer Tasks</h2>
+            <p className="mt-1 text-sm text-zinc-600">
+              Scheduled tasks each officer runs — tracks last execution via Redis
+            </p>
+          </div>
+          <span className="text-xs text-zinc-600">{Object.keys(lastRuns).length} tasks</span>
+        </div>
         <div className="mt-4 overflow-x-auto">
           {Object.keys(lastRuns).length === 0 ? (
-            <p className="text-sm text-zinc-600">No scheduled runs recorded yet.</p>
+            <p className="text-sm text-zinc-600">No officer tasks recorded yet.</p>
           ) : (
             <table className="w-full text-left text-sm">
               <thead>
@@ -238,6 +243,7 @@ export default function CronTable({
                   <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Officer</th>
                   <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Task</th>
                   <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Last Run</th>
+                  <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -248,17 +254,7 @@ export default function CronTable({
                     const officer = parts[0] || key
                     const task = parts.slice(1).join(':') || '-'
                     return (
-                      <tr key={key} className="border-b border-zinc-800/50">
-                        <td className="font-medium text-zinc-300 uppercase" style={{ padding: '10px 12px' }}>
-                          {officer}
-                        </td>
-                        <td className="text-zinc-400" style={{ padding: '10px 12px' }}>
-                          {task}
-                        </td>
-                        <td className="text-zinc-500" style={{ padding: '10px 12px' }}>
-                          {formatTimestamp(ts)}
-                        </td>
-                      </tr>
+                      <TaskRow key={key} officer={officer} task={task} lastRun={ts} />
                     )
                   })}
               </tbody>
@@ -266,6 +262,110 @@ export default function CronTable({
           )}
         </div>
       </div>
+
+      {/* Add officer task */}
+      <AddTaskForm />
     </>
+  )
+}
+
+function TaskRow({ officer, task, lastRun }: { officer: string; task: string; lastRun: string }) {
+  const [isPending, startTransition] = useTransition()
+  const [confirming, setConfirming] = useState(false)
+
+  return (
+    <tr className="border-b border-zinc-800/50">
+      <td className="font-medium text-zinc-300 uppercase" style={{ padding: '10px 12px' }}>
+        {officer}
+      </td>
+      <td className="text-zinc-400" style={{ padding: '10px 12px' }}>
+        {task}
+      </td>
+      <td className="text-zinc-500" style={{ padding: '10px 12px' }}>
+        {formatTimestamp(lastRun)}
+      </td>
+      <td style={{ padding: '10px 12px' }}>
+        <div className="flex gap-2">
+          <button
+            onClick={() => startTransition(async () => { await resetTaskTimer(officer, task) })}
+            disabled={isPending}
+            className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-white disabled:opacity-50"
+            title="Reset timer to now"
+          >
+            {isPending ? '...' : 'Reset'}
+          </button>
+          {confirming ? (
+            <div className="flex gap-1">
+              <button
+                onClick={() => { startTransition(async () => { await deleteTaskTimer(officer, task) }); setConfirming(false) }}
+                disabled={isPending}
+                className="rounded bg-red-600 px-2 py-0.5 text-xs text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                Confirm
+              </button>
+              <button onClick={() => setConfirming(false)}
+                className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-800">
+                No
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirming(true)}
+              className="rounded border border-red-800 px-2 py-0.5 text-xs text-red-400 hover:bg-red-900/30">
+              Delete
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function AddTaskForm() {
+  const [open, setOpen] = useState(false)
+  const [state, formAction, isPending] = useActionState(createTaskTimer, null)
+
+  if (state?.success) {
+    setOpen(false)
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-white">
+        + Add Officer Task
+      </button>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900" style={{ padding: '24px' }}>
+      <h3 className="text-sm font-semibold text-white">Add Officer Task</h3>
+      <form action={formAction} className="mt-4 flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="text-xs text-zinc-500">Officer</label>
+            <input name="officer" placeholder="e.g. cos, cto, cro" required
+              className="mt-1 block w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:border-zinc-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-500">Task Name</label>
+            <input name="task" placeholder="e.g. research-sweep, reflection" required
+              className="mt-1 block w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:border-zinc-500 focus:outline-none" />
+            <p className="mt-1 text-xs text-zinc-600">lowercase with dashes</p>
+          </div>
+        </div>
+        {state?.error && <p className="text-xs text-red-500">{state.error}</p>}
+        <div className="flex gap-2">
+          <button type="submit" disabled={isPending}
+            className="rounded bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-200 disabled:opacity-50">
+            {isPending ? 'Adding...' : 'Add Task'}
+          </button>
+          <button type="button" onClick={() => setOpen(false)}
+            className="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
   )
 }
