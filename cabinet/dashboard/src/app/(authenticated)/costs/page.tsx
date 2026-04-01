@@ -78,10 +78,7 @@ export default async function CostsPage() {
 
       {/* 7-day trend */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900" style={{ padding: '24px' }}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">7-Day Trend</h2>
-          <ChartLegend />
-        </div>
+        <h2 className="text-lg font-semibold text-white">7-Day Trend</h2>
         <div className="mt-4">
           <BarChart data={trendData} height={220} />
         </div>
@@ -89,7 +86,10 @@ export default async function CostsPage() {
 
       {/* Stacked bar chart */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900" style={{ padding: '24px' }}>
-        <h2 className="text-lg font-semibold text-white">7-Day Per-Officer Breakdown</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-white">7-Day Per-Officer Breakdown</h2>
+          <ChartLegend />
+        </div>
         <div className="mt-4">
           <StackedBarChart data={stackedData} height={220} />
         </div>
