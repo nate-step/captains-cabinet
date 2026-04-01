@@ -102,6 +102,32 @@ services:
     networks:
       - cabinet-net
 
+  # ============================================================
+  # Dashboard — Next.js admin UI for officer management
+  # ============================================================
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: ${CABINET_PREFIX:-cabinet}-dashboard
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cabinet:${POSTGRES_PASSWORD}@postgres:5432/cabinet_memory
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-changeme}
+      - CABINET_PREFIX=${CABINET_PREFIX:-cabinet}
+    ports:
+      - "3100:3000"
+    volumes:
+      - /opt/founders-cabinet:/opt/founders-cabinet:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - cabinet-net
+
 volumes:
   pgdata:
   redisdata:
