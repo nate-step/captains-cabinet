@@ -70,7 +70,7 @@ export default function CreateOfficerPage() {
         )}
 
         {/* Identity */}
-        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 px-6 py-6">
           <h3 className="text-sm font-semibold text-white">Identity</h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -116,7 +116,7 @@ export default function CreateOfficerPage() {
         </div>
 
         {/* Telegram */}
-        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 px-6 py-6">
           <h3 className="text-sm font-semibold text-white">Telegram</h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -141,7 +141,7 @@ export default function CreateOfficerPage() {
         </div>
 
         {/* Voice */}
-        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 px-6 py-6">
           <h3 className="text-sm font-semibold text-white">Voice</h3>
 
           <div>
