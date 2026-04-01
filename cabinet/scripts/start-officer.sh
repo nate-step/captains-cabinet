@@ -1,10 +1,11 @@
 #!/bin/bash
-OFFICER="${1:?Usage: start-officer.sh <cos|cto|cro|cpo>}"
+OFFICER="${1:?Usage: start-officer.sh <cos|cto|cro|cpo|coo>}"
 case "$OFFICER" in
   cos) BOT_TOKEN="${TELEGRAM_COS_TOKEN:?not set}" ;;
   cto) BOT_TOKEN="${TELEGRAM_CTO_TOKEN:?not set}" ;;
   cro) BOT_TOKEN="${TELEGRAM_CRO_TOKEN:?not set}" ;;
   cpo) BOT_TOKEN="${TELEGRAM_CPO_TOKEN:?not set}" ;;
+  coo) BOT_TOKEN="${TELEGRAM_COO_TOKEN:?not set}" ;;
   *) echo "Unknown: $OFFICER"; exit 1 ;;
 esac
 
@@ -73,6 +74,9 @@ tmux send-keys -t "cabinet:$WINDOW" \
       ;;
     cro)
       LOOP_PROMPT="Check triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:cro 0 -1 — process each, then DEL. Check overdue: research sweep 4h, reflection 6h."
+      ;;
+    coo)
+      LOOP_PROMPT="Check triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:coo 0 -1 — process each, then DEL. Check overdue: reflection 6h, exploratory testing 2h. Check Sentry for new errors. Check shared/interfaces/deployment-status.md for unvalidated deploys."
       ;;
   esac
 
