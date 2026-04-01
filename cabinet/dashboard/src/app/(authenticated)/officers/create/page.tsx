@@ -70,8 +70,8 @@ export default function CreateOfficerPage() {
         )}
 
         {/* Identity */}
-        <fieldset className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-          <legend className="px-2 text-sm font-semibold text-white">Identity</legend>
+        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          <h3 className="text-sm font-semibold text-white">Identity</h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -113,11 +113,11 @@ export default function CreateOfficerPage() {
               placeholder="e.g. financial-reports (optional)" />
             <p className="mt-1 text-xs text-zinc-600">Creates shared/interfaces/&lt;name&gt;.md for cross-officer output</p>
           </div>
-        </fieldset>
+        </div>
 
         {/* Telegram */}
-        <fieldset className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-          <legend className="px-2 text-sm font-semibold text-white">Telegram</legend>
+        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          <h3 className="text-sm font-semibold text-white">Telegram</h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -138,11 +138,11 @@ export default function CreateOfficerPage() {
                 placeholder="From @BotFather" />
             </div>
           </div>
-        </fieldset>
+        </div>
 
         {/* Voice */}
-        <fieldset className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-          <legend className="px-2 text-sm font-semibold text-white">Voice</legend>
+        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          <h3 className="text-sm font-semibold text-white">Voice</h3>
 
           <div>
             <label htmlFor="voiceId" className="block text-sm font-medium text-zinc-400">
@@ -190,7 +190,7 @@ export default function CreateOfficerPage() {
               <p className="mt-1 text-xs text-zinc-600">0.7 = slow, 1.2 = fast</p>
             </div>
           </div>
-        </fieldset>
+        </div>
 
         <div className="flex gap-3">
           <button type="submit" disabled={isPending}
