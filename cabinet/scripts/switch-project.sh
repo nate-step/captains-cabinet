@@ -84,10 +84,10 @@ if command -v redis-cli &>/dev/null; then
       log "Starting $officer..."
       # Source both env files before starting
       (
+        set -a
         source "$BASE_ENV" 2>/dev/null || true
         [ -f "$PROJECT_ENV" ] && source "$PROJECT_ENV"
-        export $(grep -v '^#' "$BASE_ENV" 2>/dev/null | xargs) 2>/dev/null || true
-        [ -f "$PROJECT_ENV" ] && export $(grep -v '^#' "$PROJECT_ENV" | xargs) 2>/dev/null || true
+        set +a
         bash "$CABINET_ROOT/cabinet/scripts/start-officer.sh" "$officer"
       )
       sleep 2  # Stagger restarts

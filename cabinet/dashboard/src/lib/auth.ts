@@ -10,7 +10,7 @@ function sign(value: string): string {
 }
 
 export async function createSession() {
-  const token = Date.now().toString()
+  const token = crypto.randomBytes(32).toString('hex')
   const signed = `${token}.${sign(token)}`
   const cookieStore = await cookies()
   cookieStore.set(COOKIE_NAME, signed, {
@@ -37,5 +37,8 @@ export async function destroySession() {
 }
 
 export function checkPassword(password: string): boolean {
-  return password === SECRET
+  const a = Buffer.from(password)
+  const b = Buffer.from(SECRET)
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(a, b)
 }

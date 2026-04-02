@@ -67,6 +67,7 @@ export async function getProjects(): Promise<ProjectInfo[]> {
     const projects: ProjectInfo[] = stdout
       .split('\n')
       .filter((line) => line.includes('|'))
+      .filter((line) => !line.split('|')[0].trim().startsWith('_'))
       .map((line) => {
         const [slug, name] = line.split('|')
         return {

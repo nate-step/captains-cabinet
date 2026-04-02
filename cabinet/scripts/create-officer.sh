@@ -215,7 +215,7 @@ else
   LAST_PROMPT_LINE=$(awk '/^voice:/{v=1} v && /^  naturalize_prompts:/{found=1} found && /^    [a-z]+:/{last=NR} found && /^  [a-z]/ && !/^  naturalize_prompts:/{exit} END{print last}' "$CONFIG_FILE")
   if [ -n "$LAST_PROMPT_LINE" ]; then
     ESCAPED_PROMPT=$(echo "$VOICE_PROMPT" | sed 's/"/\\"/g')
-    sed -i "${LAST_PROMPT_LINE}a\\    ${OFFICER}: \"${ESCAPED_PROMPT}\"" "$CONFIG_FILE"
+    awk -v line="$LAST_PROMPT_LINE" -v entry="    ${OFFICER}: \"${ESCAPED_PROMPT}\"" 'NR==line{print; print entry; next}1' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
   fi
 
   # voice.models

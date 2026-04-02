@@ -5,8 +5,17 @@ import { revalidatePath } from 'next/cache'
 
 const CONFIG_PATH = '/opt/founders-cabinet/config/product.yml'
 
+const PRODUCT_FIELDS = ['name', 'description', 'repo', 'repo_branch', 'captain_name', 'mount_path']
+const VOICE_FIELDS = ['enabled', 'provider', 'model', 'mode', 'naturalize']
+const IMAGE_GEN_FIELDS = ['enabled', 'provider', 'model']
+const EMBEDDINGS_FIELDS = ['provider', 'dimensions']
+const VOICE_OFFICER_FIELDS = ['stability', 'speeds', 'voices', 'models', 'naturalize_prompts']
+
 export async function updateProductConfig(field: string, value: string) {
   try {
+    if (!PRODUCT_FIELDS.includes(field)) {
+      return { success: false, error: `Invalid field: ${field}` }
+    }
     // field is like "name", "description", etc. under the product: section
     const safeValue = value.replace(/'/g, "'\\''")
     await dockerExec(
@@ -25,6 +34,9 @@ export async function updateProductConfig(field: string, value: string) {
 
 export async function updateGlobalVoiceConfig(field: string, value: string) {
   try {
+    if (!VOICE_FIELDS.includes(field)) {
+      return { success: false, error: `Invalid field: ${field}` }
+    }
     const safeValue = value.replace(/'/g, "'\\''")
     await dockerExec(
       `sed -i '/^voice:/,/^[a-z]/{s/^  ${field}: .*/  ${field}: ${safeValue}/}' ${CONFIG_PATH}`
@@ -42,6 +54,9 @@ export async function updateGlobalVoiceConfig(field: string, value: string) {
 
 export async function updateImageGenConfig(field: string, value: string) {
   try {
+    if (!IMAGE_GEN_FIELDS.includes(field)) {
+      return { success: false, error: `Invalid field: ${field}` }
+    }
     const safeValue = value.replace(/'/g, "'\\''")
     await dockerExec(
       `sed -i '/^image_generation:/,/^[a-z]/{s/^  ${field}: .*/  ${field}: ${safeValue}/}' ${CONFIG_PATH}`
@@ -58,6 +73,9 @@ export async function updateImageGenConfig(field: string, value: string) {
 
 export async function updateEmbeddingsConfig(field: string, value: string) {
   try {
+    if (!EMBEDDINGS_FIELDS.includes(field) && field !== 'models.storage' && field !== 'models.query') {
+      return { success: false, error: `Invalid field: ${field}` }
+    }
     const safeValue = value.replace(/'/g, "'\\''")
     // Handle nested models section
     if (field === 'models.storage' || field === 'models.query') {
@@ -82,6 +100,9 @@ export async function updateEmbeddingsConfig(field: string, value: string) {
 
 export async function updateOfficerVoiceConfig(role: string, field: string, value: string) {
   try {
+    if (!VOICE_OFFICER_FIELDS.includes(field)) {
+      return { success: false, error: `Invalid field: ${field}` }
+    }
     const safeValue = value.replace(/'/g, "'\\''")
     // field is like "voices", "stability", "speeds", "naturalize_prompts", "models"
     // These are under voice.<field>.<role>

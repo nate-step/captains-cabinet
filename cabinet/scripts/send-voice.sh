@@ -68,6 +68,10 @@ STABILITY="${STABILITY:-0.5}"
 SPEED=$(voice_subsection_field "speeds" "$OFFICER")
 SPEED="${SPEED:-1.0}"
 
+# Validate numeric values to prevent JSON injection
+[[ "$STABILITY" =~ ^[0-9]*\.?[0-9]+$ ]] || STABILITY="0.5"
+[[ "$SPEED" =~ ^[0-9]*\.?[0-9]+$ ]] || SPEED="1.0"
+
 # Get captain's name (default: Captain)
 CAPTAIN_NAME=$(awk '/^product:/{p=1} p && /captain_name:/{print $2;exit}' "$CONFIG_FILE" | tr -d '"' | tr -d "'")
 CAPTAIN_NAME="${CAPTAIN_NAME:-Captain}"
@@ -166,6 +170,7 @@ ${input}"
   if [ -n "$naturalized" ]; then
     echo "$naturalized"
   else
+    echo "[voice] Haiku naturalization failed or timed out, using raw text" >&2
     echo "$input"
   fi
 }
@@ -179,6 +184,7 @@ fi
 
 # Generate audio via ElevenLabs
 TMPFILE=$(mktemp /tmp/voice-XXXXXX.mp3)
+trap 'rm -f "$TMPFILE" 2>/dev/null' EXIT
 
 HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TMPFILE" \
   -X POST "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}" \

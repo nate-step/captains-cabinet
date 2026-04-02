@@ -58,11 +58,6 @@ fi
   # Extract captain_name from platform and inject into product section
   # (send-voice.sh reads captain_name under product:)
   CAPTAIN_NAME=$(grep '^captain_name:' "$PLATFORM_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
-  if [ -n "$CAPTAIN_NAME" ]; then
-    # Append captain_name to the product section (after mount_path line)
-    # But since product.yml is flat, just add it to the product: block via sed later
-    true
-  fi
   echo ""
   # Append platform config (skip the captain_name line since it goes under product:)
   grep -v '^captain_name:' "$PLATFORM_FILE" | grep -v '^#.*Platform Configuration' | grep -v '^# Settings that stay' | grep -v '^# Officer personalities' | grep -v '^# This file is merged'

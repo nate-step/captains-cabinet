@@ -61,7 +61,7 @@ tmux kill-window -t "cabinet:$WINDOW" 2>/dev/null
 # Start Claude Code session
 tmux new-window -t cabinet -n "$WINDOW"
 tmux send-keys -t "cabinet:$WINDOW" \
-  "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=\$TELEGRAM_HQ_CHAT_ID && cd $OFFICER_DIR && $CLAUDE_CMD" \
+  "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=$TELEGRAM_HQ_CHAT_ID && cd $OFFICER_DIR && $CLAUDE_CMD" \
   Enter
 
 # Wait for Claude Code to initialize, then send boot prompt + polling loop
