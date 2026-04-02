@@ -77,8 +77,13 @@ export interface DailyCostEntry {
 }
 
 export async function getCostHistory(days: number): Promise<DailyCostEntry[]> {
+  // Discover officers dynamically from Redis expected keys (not hardcoded)
+  const officerKeys = await redis.keys('cabinet:officer:expected:*')
+  const officers = officerKeys.map(k => k.replace('cabinet:officer:expected:', ''))
+  // Fallback if no expected keys found
+  if (officers.length === 0) officers.push('cos', 'cto', 'cpo', 'cro', 'coo')
+
   const entries: DailyCostEntry[] = []
-  const knownOfficers = ['cos', 'cto', 'cpo', 'cro', 'coo']
 
   for (let i = 0; i < days; i++) {
     const d = new Date()
@@ -89,7 +94,7 @@ export async function getCostHistory(days: number): Promise<DailyCostEntry[]> {
     const total = totalStr ? parseInt(totalStr, 10) : 0
 
     const officerCosts: Record<string, number> = {}
-    for (const role of knownOfficers) {
+    for (const role of officers) {
       const costStr = await redis.get(`cabinet:cost:officer:${role}:${dateStr}`)
       officerCosts[role] = costStr ? parseInt(costStr, 10) : 0
     }

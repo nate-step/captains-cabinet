@@ -13,6 +13,19 @@ export default async function CostsPage() {
   const last7 = history.slice(0, 7).reverse()
   const monthlyTotal = history.reduce((sum, d) => sum + d.total, 0)
 
+  // Derive officer list from data (not hardcoded)
+  const allOfficers = new Set<string>()
+  for (const day of history) {
+    for (const role of Object.keys(day.officers)) {
+      if (day.officers[role] > 0) allOfficers.add(role)
+    }
+  }
+  // Fallback if no cost data yet
+  if (allOfficers.size === 0 && today) {
+    Object.keys(today.officers).forEach(r => allOfficers.add(r))
+  }
+  const officerList = Array.from(allOfficers).sort()
+
   // Per-officer totals for today
   const officerTodayData = today
     ? Object.entries(today.officers)
@@ -104,7 +117,7 @@ export default async function CostsPage() {
               <tr className="border-b border-zinc-800">
                 <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Date</th>
                 <th className="font-medium text-zinc-500" style={{ padding: '8px 12px' }}>Total</th>
-                {['cos', 'cto', 'cpo', 'cro', 'coo'].map((role) => (
+                {officerList.map((role) => (
                   <th key={role} className="font-medium text-zinc-500 uppercase" style={{ padding: '8px 12px' }}>
                     {role}
                   </th>
@@ -118,7 +131,7 @@ export default async function CostsPage() {
                   <td className="font-medium text-white" style={{ padding: '10px 12px' }}>
                     {formatCents(day.total)}
                   </td>
-                  {['cos', 'cto', 'cpo', 'cro', 'coo'].map((role) => (
+                  {officerList.map((role) => (
                     <td key={role} className="text-zinc-400" style={{ padding: '10px 12px' }}>
                       {formatCents(day.officers[role] || 0)}
                     </td>
