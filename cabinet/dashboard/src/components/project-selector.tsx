@@ -18,6 +18,7 @@ export default function ProjectSelector({
 }) {
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [showNewProject, setShowNewProject] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -149,7 +150,6 @@ export default function ProjectSelector({
                         : 'text-zinc-400 hover:bg-zinc-700/30 hover:text-zinc-200'
                     }`}
                   >
-                    {/* Status dot */}
                     <span
                       className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
                         isActive ? 'bg-emerald-500' : 'bg-zinc-600'
@@ -164,8 +164,51 @@ export default function ProjectSelector({
                   </button>
                 )
               })}
+              {/* New project */}
+              <div className="border-t border-zinc-700" style={{ margin: '4px 0' }} />
+              <button
+                onClick={() => { setOpen(false); setShowNewProject(true) }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-zinc-700/30 hover:text-zinc-200"
+              >
+                <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full border border-zinc-500" />
+                <span className="flex-1">+ New Project</span>
+              </button>
             </div>
           )}
+        </div>
+      )}
+      {/* New project modal */}
+      {showNewProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowNewProject(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+            style={{ padding: '32px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-white">Create a New Project</h3>
+            <p className="mt-3 text-sm text-zinc-400">
+              DM your <span className="font-medium text-white">Chief of Staff</span> on Telegram:
+            </p>
+            <div
+              className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 font-mono text-sm text-emerald-400"
+              style={{ padding: '16px' }}
+            >
+              Create a new project called [name]
+            </div>
+            <p className="mt-4 text-xs text-zinc-500">
+              CoS will automatically set up Notion, Neon, Linear, GitHub, and all config files.
+              The only manual step is creating a Telegram group and adding the officer bots.
+            </p>
+            <button
+              onClick={() => setShowNewProject(false)}
+              className="mt-6 w-full rounded-lg border border-zinc-700 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+            >
+              Got it
+            </button>
+          </div>
         </div>
       )}
     </div>
