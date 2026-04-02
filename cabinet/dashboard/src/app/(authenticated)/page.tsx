@@ -5,7 +5,7 @@ import { getOfficerConfig } from '@/lib/config'
 import { getProjects } from '@/actions/projects'
 import OfficerCard from '@/components/officer-card'
 import KillSwitch from '@/components/kill-switch'
-import { BarChart, HorizontalBars, ChartLegend } from '@/components/cost-chart'
+import { StackedBarChart, HorizontalBars, ChartLegend } from '@/components/cost-chart'
 
 export const dynamic = 'force-dynamic'
 
@@ -133,13 +133,16 @@ export default async function DashboardPage() {
         .sort((a, b) => b.value - a.value)
     : []
 
-  // 7-day trend
+  // 7-day trend (stacked by officer)
   const trendData = costHistory
     .slice()
     .reverse()
     .map((d) => ({
       label: d.date.slice(5), // MM-DD
-      value: d.total,
+      total: d.total,
+      segments: Object.entries(d.officers)
+        .map(([role, value]) => ({ role, value }))
+        .sort((a, b) => b.value - a.value),
     }))
 
   return (
@@ -229,7 +232,7 @@ export default async function DashboardPage() {
           </div>
           <div className="mt-4">
             {trendData.length > 0 ? (
-              <BarChart data={trendData} height={180} />
+              <StackedBarChart data={trendData} height={180} />
             ) : (
               <p className="text-sm text-zinc-600">No cost data available.</p>
             )}
