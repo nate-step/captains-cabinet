@@ -42,7 +42,7 @@ ln -sfn "$CABINET_ROOT/cabinet" "$OFFICER_DIR/cabinet"
 
 # Check if this officer has a previous session to continue
 # Claude Code stores sessions in ~/.claude/projects/<encoded-path>/
-ENCODED_PATH=$(echo "$OFFICER_DIR" | sed 's|/|-|g; s|^-||')
+ENCODED_PATH=$(echo "$OFFICER_DIR" | sed 's|/|-|g')
 HAS_SESSION=false
 if [ -d "/home/cabinet/.claude/projects/$ENCODED_PATH" ]; then
   HAS_SESSION=true
