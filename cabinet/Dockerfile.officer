@@ -16,6 +16,18 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
+# Headless browser dependencies for Playwright/E2E testing (COO)
+RUN apt-get update && apt-get install -y \
+    chromium-browser \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    libgbm1 \
+    libnss3 \
+    libxss1 \
+    libasound2t64 \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
 # Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
@@ -36,6 +48,9 @@ ENV PATH="/home/cabinet/.bun/bin:/home/cabinet/.local/bin:${PATH}"
 
 # Install Claude Code
 RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Install Playwright for E2E testing (COO uses this for browser automation)
+RUN npx playwright install chromium
 
 # Create directories for Channels state (one per Officer)
 RUN mkdir -p \
