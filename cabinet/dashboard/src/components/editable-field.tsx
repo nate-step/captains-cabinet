@@ -111,11 +111,17 @@ interface ToggleFieldProps {
 }
 
 export function ToggleField({ label, description, enabled, onToggle }: ToggleFieldProps) {
+  const [localEnabled, setLocalEnabled] = useState(enabled)
   const [isPending, startTransition] = useTransition()
 
   function handleToggle() {
+    const newValue = !localEnabled
+    setLocalEnabled(newValue)
     startTransition(async () => {
-      await onToggle(!enabled)
+      const result = await onToggle(newValue)
+      if (!result.success) {
+        setLocalEnabled(!newValue) // revert on failure
+      }
     })
   }
 
@@ -129,12 +135,12 @@ export function ToggleField({ label, description, enabled, onToggle }: ToggleFie
         onClick={handleToggle}
         disabled={isPending}
         className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-          enabled ? 'bg-green-600' : 'bg-zinc-700'
+          localEnabled ? 'bg-green-600' : 'bg-zinc-700'
         }`}
       >
         <span
           className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-            enabled ? 'translate-x-5' : 'translate-x-0'
+            localEnabled ? 'translate-x-5' : 'translate-x-0'
           }`}
         />
       </button>
