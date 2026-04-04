@@ -1,6 +1,6 @@
 'use client'
 
-import { EditableField, ToggleField } from '@/components/editable-field'
+import { EditableField, ToggleField, SelectField } from '@/components/editable-field'
 import {
   updateProductConfig,
   updateGlobalVoiceConfig,
@@ -57,9 +57,16 @@ export function VoiceSection({ config }: { config: GlobalConfig['voice'] }) {
           enabled={config.enabled}
           onToggle={(v) => updateGlobalVoiceConfig('enabled', String(v))}
         />
-        <EditableField
+        <SelectField
           label="Mode"
           value={config.mode}
+          options={[
+            { value: 'all', label: 'All messages' },
+            { value: 'group', label: 'Group broadcasts only' },
+            { value: 'captain-dm', label: 'Captain DMs only' },
+            { value: 'briefings', label: 'Briefings only' },
+            { value: 'none', label: 'Disabled' },
+          ]}
           onSave={(v) => updateGlobalVoiceConfig('mode', v)}
         />
         <ToggleField

@@ -142,6 +142,51 @@ export function ToggleField({ label, description, enabled, onToggle }: ToggleFie
   )
 }
 
+interface SelectFieldProps {
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onSave: (value: string) => Promise<{ success: boolean; error?: string }>
+}
+
+export function SelectField({ label, value, options, onSave }: SelectFieldProps) {
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  function handleChange(newValue: string) {
+    if (newValue === value) return
+    setError(null)
+    startTransition(async () => {
+      const result = await onSave(newValue)
+      if (!result.success) {
+        setError(result.error || 'Failed to save')
+      }
+    })
+  }
+
+  const currentLabel = options.find(o => o.value === value)?.label || value
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <span className="text-sm text-zinc-500">{label}</span>
+        {error && <p className="text-xs text-red-400 mt-0.5">{error}</p>}
+      </div>
+      <select
+        value={value}
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={isPending}
+        className="rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-300 focus:border-zinc-500 focus:outline-none disabled:opacity-50"
+        style={{ padding: '6px 12px' }}
+      >
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 interface MaskedFieldProps {
   label: string
   value: string
