@@ -1,9 +1,9 @@
 # Skill: Telegram Communication
 
 **Status:** promoted
-**Created by:** foundation
-**Date:** 2026-03-30
-**Validated against:** message formatting, file delivery, image generation
+**Created by:** foundation (evolved by CoS per Captain directive 2026-04-01)
+**Date:** 2026-04-01
+**Validated against:** message formatting, file delivery, image generation, reactions
 **Usage count:** 0
 
 ## When to Use
@@ -11,6 +11,54 @@
 Every time an Officer sends a message via Telegram — whether through scripts (send-to-group.sh) or the Channels plugin reply tool.
 
 ## Core Rules
+
+### React to every incoming message
+
+On **every** incoming Telegram message from the Captain, immediately react with an appropriate emoji as read-acknowledgment **before** processing or replying. Use the `react` tool from the Channels plugin:
+
+```
+react(chat_id="123", message_id="456", emoji="👀")
+```
+
+**Suggested mapping — pick the emoji that best matches the message tone/content. Vary your choices:**
+
+| Emoji | Use when... |
+|-------|-------------|
+| 👀 | Reading/investigating |
+| 👍 | Simple acknowledgment |
+| 🔥 | Good news, impressive result |
+| 🤔 | Thinking about it, complex question |
+| ⚡ | On it, taking action |
+| 🎉 | Celebrating a win |
+| 💯 | Strong agreement |
+| 🏆 | Milestone reached |
+| 🙏 | Thank you / grateful |
+| ❤ | Love it / appreciated |
+| 🤝 | Deal / agreement |
+| 👨‍💻 | Working on it |
+| 🤯 | Mind blown / surprising finding |
+| ✍ | Writing / documenting |
+| 👏 | Well done / applause |
+| 🤣 | That's funny |
+| 🤓 | Nerdy / technical deep-dive |
+| 💩 | That's bad / broken |
+| 😡 | Frustrated / critical issue |
+| 👎 | Disagree / bad idea |
+| 😢 | Unfortunate / sad news |
+| 🥱 | Boring / low priority |
+| 😈 | Mischievous / bold move |
+| 🙈 | Oops / embarrassing |
+| 🤷‍♀ | Shrug / unclear |
+| 😐 | Neutral / meh |
+| 😍 | Excited about something |
+| 🤗 | Warm / supportive |
+| 🤪 | Wild / unexpected |
+| 🕊 | Peace / resolution |
+
+**Rules:**
+- React FIRST, then process/reply. The reaction is instant read-acknowledgment.
+- Don't always use the same emoji — match the tone of the message.
+- Only these emoji work with Telegram Bot API. Others return `REACTION_INVALID`.
 
 ### Always reply to the specific message
 
@@ -26,24 +74,22 @@ reply(chat_id="123", text="Your response", reply_to="456")
 
 Do this for every reply, not just replies to older messages.
 
-### Send files when referencing paths
+### The Captain cannot access the server filesystem
 
-When your message references a file the Captain should read (role definitions, specs, research briefs, config files, logs), **send the file** — do not just mention the path. The Captain cannot access the server filesystem.
+The Captain does NOT have access to any files on the server. Keep this in mind for ALL Telegram communication:
+
+- **When you tell the Captain to read a file** (e.g., "check the spec at shared/interfaces/..."), you MUST attach it using `reply(files=["/path/to/file.md"])`. Otherwise the Captain can't read it.
+- **Don't attach files every time unprompted** — only when you're asking or suggesting the Captain read something specific.
+- **Summaries are fine** — if you're just reporting findings, summarize in the message. Only attach when the Captain needs the full document.
+
+**Rule of thumb:** If your message says "read this", "check this", "see the file at", or "the brief is at" — ATTACH IT. If you're just reporting status or results, summarize inline.
 
 Using the Channels plugin reply tool:
 ```
-reply(chat_id="123", text="Here is the COO role definition", files=["/opt/founders-cabinet/.claude/agents/coo.md"])
+reply(chat_id="123", text="Here's the spec for your review", files=["/opt/founders-cabinet/shared/interfaces/product-specs/016-pattern-insights.md"])
 ```
 
-Using the Telegram API directly:
-```bash
-curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-  -F chat_id="$CAPTAIN_TELEGRAM_ID" \
-  -F document=@"/opt/founders-cabinet/.claude/agents/coo.md" \
-  -F caption="COO role definition"
-```
-
-If the file is very long, you can summarize the key points in your message AND attach the file so the Captain has both.
+If the file is very long, summarize the key points in your message AND attach the file so the Captain has both.
 
 ## Message Formatting
 
@@ -124,6 +170,25 @@ curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAudio" \
 
 Use the Captain's chat ID from environment for DMs, or `$TELEGRAM_HQ_CHAT_ID` for the group.
 
+## Sending Generated Images (logos, screenshots, AI art)
+
+**Always send generated images as DOCUMENTS, not photos.** The Channels plugin reply tool and `sendPhoto` API compress images to ~158KB thumbnails. Use `sendDocument` to preserve full quality.
+
+```bash
+# CORRECT — full quality via sendDocument
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+  -F chat_id="$CHAT_ID" \
+  -F document=@"/path/to/generated-image.png" \
+  -F caption="<b>Description here</b>" \
+  -F parse_mode="HTML"
+```
+
+**Do NOT use:**
+- `reply(files=["/path/to/image.png"])` — compresses to thumbnail
+- `sendPhoto` API — compresses to thumbnail
+
+This applies to: AI-generated images (Gemini), screenshots, logos, mockups, diagrams — any image where quality matters. Regular photos (camera shots, memes) can still use `sendPhoto`.
+
 ## Voice Messages (optional — disabled by default)
 
 When enabled in `config/product.yml`, officers send a voice message alongside text replies. Each officer has their own voice (configured by voice_id).
@@ -182,7 +247,7 @@ Use cases: competitive landscape visuals, UI mockups, architecture diagrams, dat
 
 ## Expected Outcome
 
-Messages are visually structured, easy to scan, and professional. The Captain can quickly parse updates without reading walls of text. Files, images, and voice messages are delivered directly in-chat.
+Messages are visually structured, easy to scan, and professional. The Captain can quickly parse updates without reading walls of text. Files, images, and voice messages are delivered directly in-chat. Every incoming message gets an instant emoji reaction as read-acknowledgment.
 
 ## Known Pitfalls
 
@@ -193,6 +258,8 @@ Messages are visually structured, easy to scan, and professional. The Captain ca
 - Image generation costs ~$0.07 per image (Nano Banana 2 at 1K) — use judiciously
 - Voice generation costs per character (ElevenLabs) — keep voice messages concise
 - Always send text FIRST, voice SECOND — text is the record, voice is the supplement
+- Only listed emoji work for reactions — others return REACTION_INVALID from Bot API
+- Don't use the same reaction emoji every time — vary based on message content
 
 ## Validation Scenarios
 
@@ -200,7 +267,8 @@ Messages are visually structured, easy to scan, and professional. The Captain ca
 - Scenario 2: Voice enabled + mode=all → officer sends text reply then voice message to Captain
 - Scenario 3: Voice disabled → send-voice.sh exits silently, no error
 - Scenario 4: CRO generates competitive landscape image → sends to Captain via sendPhoto
+- Scenario 5: Captain sends a message → Officer reacts with appropriate emoji within seconds, then processes and replies
 
 ## Origin
 
-Foundation skill — ships with the Founder's Cabinet.
+Foundation skill — evolved per Captain directive 2026-04-01. Added: Reactions section (react to every incoming message), Core Rules restructured, file sending rule added.

@@ -86,3 +86,12 @@ if [ -n "$DATABASE_URL" ]; then
 else
   echo "No DATABASE_URL — saved to file only"
 fi
+
+# Reset experience record counters after recording
+REDIS_HOST="${REDIS_HOST:-redis}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+OFFICER="${OFFICER_NAME:-unknown}"
+if command -v redis-cli &>/dev/null; then
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:last-experience:$OFFICER" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" EX 7200 > /dev/null 2>&1
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:toolcalls:$OFFICER" 0 > /dev/null 2>&1
+fi

@@ -1,73 +1,66 @@
-# Skill: Engineering Development Loop
+# Skill: Engineering Development Loop (Evolved)
 
 **Status:** promoted
-**Created by:** foundation
-**Date:** 2026-03-30
-**Validated against:** PR creation, CI failure recovery, code review cycle
-**Usage count:** 0
+**Created by:** CTO (evolved from foundation)
+**Date:** 2026-04-06
+**Validated against:** PRs #402-409 (Captain-approved process)
+**Supersedes:** foundation engineering-development-loop.md
 
 ## When to Use
 
-Every time CTO (or CTO's Crew) implements a feature, fix, or refactor. No exceptions.
+Every time CTO ships code — features, fixes, refactors, tests. No exceptions.
 
-## Procedure
+## The 7-Step Process (Captain-approved 2026-04-06)
 
-1. **Read the spec and acceptance criteria** before writing code. If the spec is unclear, notify CPO before building.
+### 1. Crew agent implements on branch
+- Spawn Sonnet Crew agent with clear instructions
+- Agent creates feature branch from main
+- Agent implements the change
+- Agent NEVER commits directly to main
 
-2. **Build on a feature branch.** Never commit directly to main.
+### 2. Crew reviewer checks diff — iterative review loop
+- Spawn separate Crew agent for code review
+- Reviewer checks diff, flags issues
+- If issues found: fix → re-review → fix → re-review until clean
+- Reviewer sets Layer 1 gate: `redis-cli SET cabinet:layer1:cto:reviewed 1 EX 300`
 
-3. **Verify locally — CI must pass before creating a PR.**
-   - Run the project's build command
-   - Run the test suite
-   - Run linting and type checks
-   - If ANY check fails: fix → re-run → loop until green
-   - Do NOT create a PR with failing local checks
+### 3. Push branch → create PR
+- CTO pushes the reviewed branch
+- CTO creates PR via GitHub API
 
-4. **Code review via independent verification.**
-   - Spawn a separate Crew agent specifically for code review
-   - The reviewer checks: correctness, edge cases, security, performance, spec compliance
-   - Process review findings — fix issues, don't dismiss them
-   - Re-run the review after fixes if the reviewer flagged critical issues
-   - Loop until the reviewer is satisfied
+### 4. Poll CI until GREEN — iterative fix loop
+- Run: `bash verify-deploy.sh ci <commit-sha>`
+- If CI fails: investigate → fix → push → poll again
+- NEVER merge with failing CI
+- Only proceed when CI is green
 
-5. **Create PR.**
-   - Title references the backlog issue (e.g., issue prefix + number + description)
-   - Description includes: what changed, why, how to test
-   - CI must pass in the remote pipeline — if it fails, fix locally and push
+### 5. Merge PR
+- Only after CI green + review approved
+- Squash merge
 
-6. **GitHub review loop (if applicable).**
-   - Poll for review status
-   - If changes requested: fix → push → poll again
-   - Loop until approved and CI green
+### 6. Verify deploy
+- Run: `bash verify-deploy.sh deploy <commit-sha>`
+- Poll Vercel deploy status every 15s
+- If deploy fails: investigate root cause, fix, push new PR
 
-7. **Preview verification.**
-   - If a preview deployment is generated, verify it works
-   - If preview build fails: debug why, fix it, push, verify again
-   - "It works on main" is NOT acceptable — fix the preview pipeline
-   - If the failure is an infrastructure issue you cannot fix, document it in the PR and escalate to CoS
+### 7. Announce + record
+- Post to warroom
+- Record experience
+- Notify CPO if spec-related
 
-8. **Merge and record.**
-   - Merge only when: CI green + review approved + preview verified (or documented exception)
-   - Write an experience record immediately after merge
-   - Notify CPO that the feature is ready for spec review
+## Tools
 
-## Expected Outcome
-
-Every merged PR has: passing CI, independent code review, working preview (or documented exception), and an experience record.
+- `cabinet/scripts/verify-deploy.sh ci <sha>` — pre-merge CI check
+- `cabinet/scripts/verify-deploy.sh deploy <sha>` — post-merge deploy check
+- `cabinet/scripts/verify-deploy.sh <sha>` — both checks sequentially
 
 ## Known Pitfalls
 
-- Skipping local CI and hoping remote CI catches issues wastes time on push/wait cycles
-- "It works on main" is always a workaround, never a solution — investigate root cause
-- Code review by the same agent that wrote the code is not independent verification
-- Forgetting the experience record means the learning loop has nothing to learn from
-
-## Validation Scenarios
-
-- Scenario 1: Local build fails → CTO fixes and re-runs until green before creating PR
-- Scenario 2: Preview deployment fails → CTO investigates root cause, does not skip to "merge to main"
-- Scenario 3: Code reviewer flags a security issue → CTO fixes and re-reviews before merging
+- Merging before CI green wastes time on broken deploys
+- Crew agents committing to main bypasses ALL review gates
+- Skipping deploy verification means broken code reaches production undetected
+- Not recording experiences means the learning loop has nothing to learn from
 
 ## Origin
 
-Foundation skill — ships with the Founder's Cabinet. Derived from engineering best practices and early Cabinet operation experience.
+Evolved from foundation skill. Captain directive (2026-04-06): "This process every single time."
