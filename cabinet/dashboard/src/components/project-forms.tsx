@@ -60,29 +60,21 @@ export function ProductIdentityCard({ config }: { config: ProductIdentityProps }
 
 interface TelegramProps {
   hqChatId: string
-  officers: Record<string, string>
 }
 
 export function TelegramCard({ config }: { config: TelegramProps }) {
-  const roles = ['cos', 'cto', 'cpo', 'cro', 'coo']
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900" style={{ padding: '24px' }}>
-      <h2 className="text-lg font-semibold text-white">Telegram</h2>
+      <h2 className="text-lg font-semibold text-white">Telegram Warroom</h2>
+      <p className="mt-1 text-xs text-zinc-600">
+        This project&apos;s group chat. Bot tokens and usernames are shared across projects — edit them in Integrations.
+      </p>
       <div className="mt-4 space-y-4">
         <MaskedField
-          label="HQ Chat ID (env)"
+          label="HQ Chat ID"
           value={config.hqChatId}
-          onSave={async () => ({ success: false, error: 'HQ Chat ID is set via environment variable, not config' })}
+          onSave={async () => ({ success: false, error: 'Edit TELEGRAM_HQ_CHAT_ID in the project env file (cabinet/env/<slug>.env)' })}
         />
-        {roles.map((role) => (
-          <EditableField
-            key={role}
-            label={`${role.toUpperCase()} Bot Username`}
-            value={config.officers[role] || ''}
-            onSave={(v) => updateProjectConfig('telegram', `officers.${role}`, v)}
-            mono
-          />
-        ))}
       </div>
     </div>
   )

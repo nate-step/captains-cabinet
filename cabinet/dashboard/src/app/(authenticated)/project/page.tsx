@@ -82,8 +82,7 @@ export default async function ProjectPage() {
   const notion = rec(config, 'notion')
   const linear = rec(config, 'linear')
   const neon = rec(config, 'neon')
-  const telegram = rec(config, 'telegram')
-  const telegramOfficers = rec(telegram, 'officers')
+  const _telegram = rec(config, 'telegram')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -113,12 +112,6 @@ export default async function ProjectPage() {
       <TelegramCard
         config={{
           hqChatId: env.TELEGRAM_HQ_CHAT_ID || '',
-          officers: Object.fromEntries(
-            ['cos', 'cto', 'cpo', 'cro', 'coo'].map((r) => [
-              r,
-              str(telegramOfficers, r),
-            ]),
-          ),
         }}
       />
 
