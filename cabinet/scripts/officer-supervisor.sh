@@ -159,6 +159,8 @@ while true; do
           tmux kill-window -t "cabinet:$WINDOW" 2>/dev/null
           sleep 2
           /home/cabinet/start-officer.sh "$officer"
+          # Reset last-toolcall so new session gets a fresh idle window (prevents restart loop)
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:last-toolcall:$officer" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" EX 86400 > /dev/null 2>&1
           redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-restart:$officer" "$NOW" EX 600 > /dev/null 2>&1
           redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:restart-count:$officer" > /dev/null 2>&1
           send_restart_alert "$officer" "$REASON — auto-recycled"
