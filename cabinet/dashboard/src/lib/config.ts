@@ -320,6 +320,100 @@ export interface ProjectListItem {
   name: string
 }
 
+/* ------------------------------------------------------------------ */
+/*  Project-level config (reads the active project's full YAML)        */
+/* ------------------------------------------------------------------ */
+
+const mockProjectConfig: Record<string, unknown> = {
+  product: {
+    name: 'Sensed',
+    description: 'Dual-map product for meaningful and anomalous human experiences',
+    repo: 'https://github.com/nate-step/Sensed',
+    repo_branch: 'main',
+    mount_path: '/workspace/product',
+  },
+  notion: {
+    cabinet_hq_id: '331412e2-7cc5-815c-b533-e18353773815',
+    dashboard: {
+      page_id: '331412e2-7cc5-81ac-9a8f-f56812925c93',
+      decision_queue_db: '6d81d3e6-a022-4f81-b361-88b15bd496c5',
+      daily_briefings_db: '49ce66ef-144a-453b-8868-ff45f09fabf7',
+      weekly_reports_db: '27b2d483-3b43-4280-8e10-2ddb96be1d12',
+    },
+    business_brain: {
+      page_id: '331412e2-7cc5-812f-aa5a-fa5c1f022d5e',
+      vision_id: '327412e2-7cc5-810a-9f9a-f8484fcca6fc',
+      strategy_brief_id: 'e740b7a7-d9a2-4171-9f37-21f759921187',
+      brand_guidelines_id: '12d016b9-d22e-44cc-b18b-178ddb8ad88a',
+      messaging_pillars_id: 'b0b04025-97d4-423c-8b1a-0f9f68221e79',
+      growth_guardrails_id: 'd7df68f2-7071-4125-be4d-e9e90355d631',
+      pricing_id: '329412e2-7cc5-81da-a742-eb44dfe0fe95',
+    },
+    research_hub: {
+      page_id: '331412e2-7cc5-8142-8eec-db661c07398a',
+      research_briefs_db: 'a65d1718-a57f-4661-827d-bd18031f7f19',
+      competitive_intel_db: '0ba5e403-9a0c-4a2c-8c9e-0f2ba42c3f41',
+      market_trends_db: '69b63e5a-8e63-4a25-8913-ef1d068f3255',
+    },
+    product_hub: {
+      page_id: '331412e2-7cc5-8100-8647-c6f41abcbf04',
+      product_roadmap_db: '0af3ecf2-21d8-44a7-b0ec-3e15806c6d8a',
+      feature_specs_db: 'b8005591-a238-4fad-acee-80adb022ad32',
+      user_feedback_db: 'ee0c6f7d-e509-44b0-a008-630ab2abe105',
+    },
+    engineering_hub: {
+      page_id: '331412e2-7cc5-8114-ae84-f6dbbdfa84ea',
+      architecture_decisions_db: '63b6c6ff-7f31-4841-9072-bb91241d3fcc',
+      tech_debt_db: '4d25e734-ffa2-4b1c-bb04-b4141cb72d01',
+    },
+    cabinet_ops: {
+      page_id: '331412e2-7cc5-8190-84ab-cbadcc2573ca',
+      decision_journal_db: '62ef4861-4d21-4283-a1df-f833b00dc144',
+      improvement_proposals_db: '71131823-c6f2-4cf9-8fb1-dae1365dc097',
+    },
+    reference: {
+      page_id: '331412e2-7cc5-8108-ac5d-f45de40c8e2e',
+    },
+    archive: {
+      page_id: '331412e2-7cc5-81a7-bc2b-f9795afe0233',
+    },
+  },
+  linear: {
+    team_key: 'sensed',
+    workspace_url: 'https://linear.app/sensed',
+  },
+  neon: {
+    project: 'sensed',
+  },
+  telegram: {
+    officers: {
+      cos: 'sensed_cos_bot',
+      cto: 'sensed_cto_bot',
+      cro: 'sensed_cro_bot',
+      cpo: 'sensed_cpo_bot',
+      coo: 'sensed_coo_bot',
+    },
+  },
+}
+
+/**
+ * Read the active project's source YAML (config/projects/<slug>.yml).
+ * Falls back to mock data when running outside Docker.
+ */
+export function getProjectConfig(): Record<string, unknown> {
+  if (IS_MOCK) {
+    return mockProjectConfig
+  }
+  try {
+    const slug = getActiveProjectSlug()
+    const filePath = `${PROJECTS_DIR}/${slug}.yml`
+    const content = fs.readFileSync(filePath, 'utf8')
+    return yaml.load(content) as Record<string, unknown>
+  } catch {
+    return mockProjectConfig
+  }
+}
+
 export function getProjectsList(): ProjectListItem[] {
   if (IS_MOCK) {
     return [
