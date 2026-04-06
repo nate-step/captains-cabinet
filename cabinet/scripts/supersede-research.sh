@@ -11,15 +11,15 @@ NEW_BRIEF="${2:-}"
 DB_URL="${NEON_DATABASE_URL:-${DATABASE_URL:-}}"
 [[ -z "$DB_URL" ]] && DB_URL="postgresql://cabinet:cabinet@postgres:5432/cabinet"
 
-# Find and mark matching briefs as superseded
-ESCAPED_QUERY=$(echo "$QUERY" | sed "s/'/''/g")
-RESULT=$(psql "$DB_URL" -t -A -c "
-  UPDATE cabinet_research
+# Use parameterized query to prevent SQL injection
+SEARCH_PATTERN="%${QUERY}%"
+RESULT=$(psql "$DB_URL" -t -A \
+  -v pattern="$SEARCH_PATTERN" \
+  -c "UPDATE cabinet_research
   SET usage_status = 'superseded', updated_at = NOW()
-  WHERE LOWER(title) LIKE LOWER('%${ESCAPED_QUERY}%')
+  WHERE LOWER(title) LIKE LOWER(:'pattern')
     AND usage_status != 'superseded'
-  RETURNING id, title;
-")
+  RETURNING id, title;")
 
 if [ -z "$RESULT" ]; then
   echo "No matching briefs found for: $QUERY"

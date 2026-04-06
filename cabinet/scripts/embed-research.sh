@@ -27,9 +27,16 @@ PG_TAGS="{}"
 [[ -n "$TAGS" ]] && PG_TAGS="{$(echo "$TAGS" | sed 's/,/","/g;s/^/"/;s/$/"/')}"
 DB_URL="${NEON_DATABASE_URL:-${DATABASE_URL:-}}"
 [[ -z "$DB_URL" ]] && { echo "Error: DATABASE_URL not set"; exit 1; }
-ESCAPED_CONTENT=$(echo "$CONTENT" | sed "s/'/''/g")
-ESCAPED_TITLE=$(echo "$TITLE" | sed "s/'/''/g")
-ESCAPED_SUMMARY=$(echo "$SUMMARY" | sed "s/'/''/g")
-ESCAPED_TOPIC=$(echo "$TOPIC" | sed "s/'/''/g")
-RESULT=$(psql "$DB_URL" -t -A -c "INSERT INTO cabinet_research (title, topic, content, summary, embedding, tags, officer, decay_rate) VALUES ('${ESCAPED_TITLE}', '${ESCAPED_TOPIC}', '${ESCAPED_CONTENT}', '${ESCAPED_SUMMARY}', '${EMBEDDING}'::vector, '${PG_TAGS}'::text[], '${OFFICER_NAME:-cro}', '${DECAY}') RETURNING id;")
+
+# Use parameterized query via psql variables to prevent SQL injection
+RESULT=$(psql "$DB_URL" -t -A \
+  -v title="$TITLE" \
+  -v topic="$TOPIC" \
+  -v content="$CONTENT" \
+  -v summary="$SUMMARY" \
+  -v embedding="$EMBEDDING" \
+  -v tags="$PG_TAGS" \
+  -v officer="${OFFICER_NAME:-cro}" \
+  -v decay="$DECAY" \
+  -c "INSERT INTO cabinet_research (title, topic, content, summary, embedding, tags, officer, decay_rate) VALUES (:'title', :'topic', :'content', :'summary', :'embedding'::vector, :'tags'::text[], :'officer', :'decay') RETURNING id;")
 echo "Embedded: $TITLE (id: $RESULT)"

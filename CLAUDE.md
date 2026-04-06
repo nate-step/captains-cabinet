@@ -222,7 +222,7 @@ Generates and sends voice messages when enabled in `config/product.yml`.
 ## Scheduled Work & Triggers
 
 ### How triggers work
-Cron jobs and Officer notifications push triggers to Redis. The **post-tool-use hook auto-delivers** them after your next tool call — you see them inline in your conversation, then they are auto-cleared. Process them immediately.
+Cron jobs and Officer notifications push triggers to Redis. The **post-tool-use hook auto-delivers** them after your next tool call — you see them inline in your conversation. Process them immediately, then clear them: `redis-cli -h redis -p 6379 DEL cabinet:triggers:<your-role>`.
 
 ### Active polling with /loop (required)
 On session start, set up a polling loop that checks for overdue scheduled work every 5 minutes:
