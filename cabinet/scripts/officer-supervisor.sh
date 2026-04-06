@@ -26,10 +26,20 @@ send_restart_alert() {
   local captain="${CAPTAIN_TELEGRAM_ID:-}"
   [ -z "$token" ] || [ -z "$captain" ] && return
 
+  # Dedup: skip if we already alerted for this officer within the last hour
+  local already_sent
+  already_sent=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:alert-sent:$officer" 2>/dev/null)
+  if [ -n "$already_sent" ] && [ "$already_sent" != "(nil)" ]; then
+    return
+  fi
+
   curl -s -X POST "https://api.telegram.org/bot${token}/sendMessage" \
     -d chat_id="$captain" \
     -d text="🔄 Auto-restart: *${officer}* — ${reason}" \
     -d parse_mode="Markdown" > /dev/null 2>&1
+
+  # Mark alert as sent with 1-hour expiry
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:alert-sent:$officer" "1" EX 3600 > /dev/null 2>&1
 }
 
 log "Officer supervisor starting. Check interval: ${CHECK_INTERVAL}s"
@@ -124,11 +134,37 @@ while true; do
       TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
       redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:heartbeat:$officer" "$TIMESTAMP" EX 900 > /dev/null 2>&1
 
-      # Note: pending Redis triggers are delivered by the post-tool-use hook
-      # when the officer next makes a tool call. Idle officers (waiting for
-      # Telegram) cannot be woken programmatically — the Channels plugin only
-      # processes messages from real Telegram users. Officers handle this by
-      # self-checking their schedule on every interaction (see role definitions).
+      # SMART HEALTH CHECK: detect "alive but idle" sessions
+      # If last tool call is >30 min old AND officer has pending triggers, session may be stuck
+      LAST_TOOL=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:last-toolcall:$officer" 2>/dev/null)
+      PENDING_TRIGGERS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$officer" 2>/dev/null)
+      PENDING_TRIGGERS=${PENDING_TRIGGERS:-0}
+
+      if [ -n "$LAST_TOOL" ] && [ "$LAST_TOOL" != "(nil)" ]; then
+        TOOL_EPOCH=$(date -d "$LAST_TOOL" +%s 2>/dev/null || echo "0")
+        IDLE_SECS=$((NOW - TOOL_EPOCH))
+
+        # If idle >90 min with pending triggers, or >180 min regardless — session is stuck
+        SHOULD_RESTART=false
+        if [ "$IDLE_SECS" -gt 5400 ] && [ "$PENDING_TRIGGERS" -gt 0 ] 2>/dev/null; then
+          SHOULD_RESTART=true
+          REASON="idle ${IDLE_SECS}s with ${PENDING_TRIGGERS} pending triggers"
+        elif [ "$IDLE_SECS" -gt 10800 ] 2>/dev/null; then
+          SHOULD_RESTART=true
+          REASON="idle ${IDLE_SECS}s (>180min, likely dead session)"
+        fi
+
+        if [ "$SHOULD_RESTART" = true ]; then
+          log "Officer $officer alive but stuck — $REASON. Restarting."
+          tmux kill-window -t "cabinet:$WINDOW" 2>/dev/null
+          sleep 2
+          /home/cabinet/start-officer.sh "$officer"
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-restart:$officer" "$NOW" EX 600 > /dev/null 2>&1
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:restart-count:$officer" > /dev/null 2>&1
+          send_restart_alert "$officer" "$REASON — auto-recycled"
+          continue
+        fi
+      fi
     fi
   done
 

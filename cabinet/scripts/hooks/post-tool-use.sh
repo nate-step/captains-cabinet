@@ -86,11 +86,125 @@ if [ "$SIGNIFICANT_ACTION" = true ]; then
 fi
 
 # ============================================================
-# 4. TRIGGER DELIVERY NOTE
 # ============================================================
-# Triggers are stored in cabinet:triggers:<officer> by notify-officer.sh and cron jobs.
-# Officers read their own triggers via /loop polling (every 5m).
-# DO NOT drain the queue here — let the officer read and clear it explicitly.
+# 4. TRIGGER DELIVERY — deliver and clear pending triggers
+# ============================================================
+# Instead of relying on polling loops (which truncate output),
+# deliver triggers directly in hook output. Officers see them
+# in their conversation after any tool call.
+TRIGGER_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$OFFICER" 2>/dev/null)
+if [ -n "$TRIGGER_COUNT" ] && [ "$TRIGGER_COUNT" -gt 0 ] 2>/dev/null; then
+  TRIGGERS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LRANGE "cabinet:triggers:$OFFICER" 0 -1 2>/dev/null)
+  echo ""
+  echo "PENDING TRIGGERS ($TRIGGER_COUNT):"
+  echo "$TRIGGERS"
+  echo ""
+  echo "Process these triggers now. When done, clear them: redis-cli -h redis -p 6379 DEL cabinet:triggers:$OFFICER"
+  # NOTE: Do NOT auto-clear here. The officer's loop handles clearing after processing.
+  # Auto-clearing caused a bug where triggers were deleted before the officer could read them.
+fi
+# ============================================================
+
+
+# ============================================================
+# 5. AUTO-NOTIFY COO + CPO ON DEPLOY
+# ============================================================
+if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
+  CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+  if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge'; then
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:coo" \
+      "[$TIMESTAMP] From cto: AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status." > /dev/null 2>&1
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:coo" 21600 > /dev/null 2>&1
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cpo" \
+      "[$TIMESTAMP] From cto: AUTO-DEPLOY DETECTED — push to main. Review the implementation against spec: screenshot the live result via Chromium, compare against spec design intent, confirm acceptance criteria met or file issues." > /dev/null 2>&1
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cpo" 21600 > /dev/null 2>&1
+  fi
+fi
+
+# ============================================================
+# 6. DEPLOY VERIFICATION + CREW REVIEW REMINDER
+# ============================================================
+if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
+  CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+  if echo "$CMD" | grep -qE 'git push.*main|gh pr merge'; then
+    echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
+    echo "REMINDER: Update shared/interfaces/deployment-status.md with current deploy state."
+  fi
+fi
+
+# ============================================================
+# 7. EXPERIENCE RECORD NUDGE (count-based)
+# ============================================================
+CALL_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:toolcalls:$OFFICER" 2>/dev/null)
+redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:toolcalls:$OFFICER" 86400 > /dev/null 2>&1
+
+if [ "$((CALL_COUNT % 50))" -eq "0" ] 2>/dev/null; then
+  LAST_RECORD=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:last-experience:$OFFICER" 2>/dev/null)
+  if [ -z "$LAST_RECORD" ] || [ "$LAST_RECORD" = "(nil)" ]; then
+    echo "You have made 50 tool calls without an experience record. Write a catch-up record if you have completed meaningful work."
+  fi
+fi
+
+# ============================================================
+# 8. CAPTAIN DECISION LOGGING ENFORCEMENT (CTO)
+# ============================================================
+# After CTO replies to Captain's Telegram chat, remind to log decisions.
+# This is event-driven — fires exactly when decisions happen.
+CAPTAIN_CHAT_ID="8631324091"
+
+if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "mcp__plugin_telegram_telegram__reply" ]; then
+  REPLY_CHAT=$(echo "$TOOL_INPUT" | jq -r '.chat_id // empty' 2>/dev/null)
+  if [ "$REPLY_CHAT" = "$CAPTAIN_CHAT_ID" ]; then
+    echo "⚠️ CAPTAIN DECISION CHECK: Did Nate make a decision in this exchange (kill a feature, change direction, approve/reject)? If YES: (1) Add 'captain-decision' label to the Linear issue, (2) Comment with decision + WHY, (3) Update shared/interfaces/captain-decisions.md. If no decision was made, carry on."
+  fi
+fi
+
+# ============================================================
+# 9. IDLE DETECTION — warn officers who have work waiting
+# ============================================================
+# Check if this officer has been idle (>30min since last tool call)
+# and has pending work. If so, inject a strong warning.
+LAST_CALL=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:last-toolcall:$OFFICER" 2>/dev/null)
+redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:last-toolcall:$OFFICER" "$TIMESTAMP" EX 86400 > /dev/null 2>&1
+
+if [ -n "$LAST_CALL" ] && [ "$LAST_CALL" != "(nil)" ]; then
+  LAST_EPOCH=$(date -d "$LAST_CALL" +%s 2>/dev/null || echo "0")
+  NOW_EPOCH=$(date -u +%s)
+  IDLE_SECONDS=$((NOW_EPOCH - LAST_EPOCH))
+
+  if [ "$IDLE_SECONDS" -gt 1800 ] 2>/dev/null; then
+    echo ""
+    echo "⚠️ You were idle for $((IDLE_SECONDS / 60)) minutes. Check for pending work NOW:"
+    echo "  - Check shared/interfaces/product-specs/ for ready specs"
+    echo "  - Check Linear backlog for bugs and issues"
+    echo "  - Check shared/backlog.md for priorities"
+    echo "  - If truly nothing to do, run proactive work from your role definition"
+    echo "  - Officers must NEVER idle when work is available"
+    echo ""
+  fi
+fi
+
+# ============================================================
+# 10. PROACTIVE WORK INJECTION — prevent polling-only idling
+# ============================================================
+# If officer is only doing heartbeat polling (low tool count relative to time),
+# inject proactive work instructions. Checks every 50 tool calls.
+if [ "$((CALL_COUNT % 50))" -eq "0" ] 2>/dev/null; then
+  LAST_EXPERIENCE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:last-experience:$OFFICER" 2>/dev/null)
+  if [ -n "$LAST_EXPERIENCE" ] && [ "$LAST_EXPERIENCE" != "(nil)" ]; then
+    EXP_EPOCH=$(date -d "$LAST_EXPERIENCE" +%s 2>/dev/null || echo "0")
+    NOW_EPOCH=$(date -u +%s)
+    SINCE_LAST_RECORD=$((NOW_EPOCH - EXP_EPOCH))
+    # If no experience record in 2+ hours, officer is likely just polling
+    if [ "$SINCE_LAST_RECORD" -gt 7200 ] 2>/dev/null; then
+      echo ""
+      echo "⚠️ PROACTIVE WORK CHECK: Your last experience record was $((SINCE_LAST_RECORD / 3600))h ago. You may be polling without doing real work."
+      echo "  Re-read your role definition (.claude/agents/${OFFICER}.md) and execute your proactive responsibilities NOW."
+      echo "  If you have completed work, write an experience record immediately."
+      echo ""
+    fi
+  fi
+fi
 
 # Always exit 0 — post-hooks should never block
 exit 0

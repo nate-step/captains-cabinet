@@ -131,4 +131,35 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
   esac
 fi
 
+
+# ============================================================
+# 6. LAYER 1 GATE — CTO must run Crew review before push/merge
+# ============================================================
+if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
+  CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+  if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge'; then
+    REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
+    if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
+      echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300"
+      exit 2
+    fi
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:layer1:cto:reviewed" > /dev/null 2>&1
+  fi
+fi
+
+# ============================================================
+# 7. CI GREEN GATE — CTO must verify CI before merge
+# ============================================================
+if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
+  CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+  if echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
+    CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
+    if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then
+      echo "CI GREEN GATE: Run 'bash /opt/founders-cabinet/cabinet/scripts/verify-deploy.sh ci <commit-sha>' and confirm CI is green before merging. After CI passes, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:ci-green 1 EX 300"
+      exit 2
+    fi
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:layer1:cto:ci-green" > /dev/null 2>&1
+  fi
+fi
+
 exit 0
