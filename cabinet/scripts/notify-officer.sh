@@ -5,7 +5,7 @@
 # Usage: notify-officer.sh <officer> "Your message here"
 # Example: notify-officer.sh cto "New spec ready: feature-x.md"
 
-TARGET="${1:?Usage: notify-officer.sh <cos|cto|cro|cpo> \"message\"}"
+TARGET="${1:?Usage: notify-officer.sh <cos|cto|cro|cpo|coo> \"message\"}"
 MESSAGE="${2:?Usage: notify-officer.sh <officer> \"message\"}"
 
 REDIS_URL="${REDIS_URL:-redis://redis:6379}"
