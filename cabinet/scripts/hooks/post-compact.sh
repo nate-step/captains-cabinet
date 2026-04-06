@@ -15,6 +15,7 @@ ALL OFFICERS — read these immediately:
 2. memory/skills/evolved/individual-reflection.md — 6h cadence + value maximization step
 3. shared/interfaces/captain-decisions.md — Captain Decision Trail (check before any design/UI work)
 4. Your role definition in .claude/agents/${OFFICER}.md — re-read your full role
+5. memory/tier2/${OFFICER}/corrections.md — Captain corrections (mistakes to never repeat)
 
 OFFICER-SPECIFIC — also read:
 REFRESH
