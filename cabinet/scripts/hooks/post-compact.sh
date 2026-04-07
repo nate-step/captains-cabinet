@@ -54,6 +54,17 @@ esac
 echo ""
 echo "Read these files now before doing anything else. Do not skip this step."
 echo ""
-echo "THEN: Check Redis for pending triggers (redis-cli -h redis -p 6379 LRANGE cabinet:triggers:${OFFICER} 0 -1) and verify your /loop is still running. If not, re-create it per your session start checklist."
+echo "THEN:"
+echo "1. Check Redis for pending triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:${OFFICER} 0 -1"
+echo "2. Re-create your /loop (safety net — will skip if already running):"
+
+# Read the officer's loop prompt from file
+LOOP_FILE="/opt/founders-cabinet/cabinet/loop-prompts/${OFFICER}.txt"
+if [ -f "$LOOP_FILE" ]; then
+  LOOP_PROMPT=$(cat "$LOOP_FILE" | tr '\n' ' ' | head -c 200)
+  echo "   /loop 5m ${LOOP_PROMPT}..."
+else
+  echo "   /loop 5m Check triggers and do proactive work per your role definition."
+fi
 
 exit 0
