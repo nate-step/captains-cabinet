@@ -134,39 +134,6 @@ while true; do
       TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
       redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:heartbeat:$officer" "$TIMESTAMP" EX 900 > /dev/null 2>&1
 
-      # SMART HEALTH CHECK: detect "alive but idle" sessions
-      # If last tool call is >30 min old AND officer has pending triggers, session may be stuck
-      LAST_TOOL=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:last-toolcall:$officer" 2>/dev/null)
-      PENDING_TRIGGERS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$officer" 2>/dev/null)
-      PENDING_TRIGGERS=${PENDING_TRIGGERS:-0}
-
-      if [ -n "$LAST_TOOL" ] && [ "$LAST_TOOL" != "(nil)" ]; then
-        TOOL_EPOCH=$(date -d "$LAST_TOOL" +%s 2>/dev/null || echo "0")
-        IDLE_SECS=$((NOW - TOOL_EPOCH))
-
-        # If idle >90 min with pending triggers, or >180 min regardless — session is stuck
-        SHOULD_RESTART=false
-        if [ "$IDLE_SECS" -gt 5400 ] && [ "$PENDING_TRIGGERS" -gt 0 ] 2>/dev/null; then
-          SHOULD_RESTART=true
-          REASON="idle ${IDLE_SECS}s with ${PENDING_TRIGGERS} pending triggers"
-        elif [ "$IDLE_SECS" -gt 10800 ] 2>/dev/null; then
-          SHOULD_RESTART=true
-          REASON="idle ${IDLE_SECS}s (>180min, likely dead session)"
-        fi
-
-        if [ "$SHOULD_RESTART" = true ]; then
-          log "Officer $officer alive but stuck — $REASON. Restarting."
-          tmux kill-window -t "cabinet:$WINDOW" 2>/dev/null
-          sleep 2
-          /home/cabinet/start-officer.sh "$officer"
-          # Reset last-toolcall so new session gets a fresh idle window (prevents restart loop)
-          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:last-toolcall:$officer" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" EX 86400 > /dev/null 2>&1
-          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-restart:$officer" "$NOW" EX 600 > /dev/null 2>&1
-          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:restart-count:$officer" > /dev/null 2>&1
-          send_restart_alert "$officer" "$REASON — auto-recycled"
-          continue
-        fi
-      fi
     fi
   done
 
