@@ -15,6 +15,7 @@ const links = [
   { href: '/integrations', label: 'Integrations', icon: IntegrationsIcon },
   { href: '/costs', label: 'Costs', icon: CostsIcon },
   { href: '/crons', label: 'Crons', icon: CronsIcon },
+  { href: 'https://terminal.sensed.app', label: 'Terminal', icon: TerminalIcon, external: true },
 ]
 
 function DashboardIcon() {
@@ -108,6 +109,14 @@ function GovernanceIcon() {
   return (
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+    </svg>
+  )
+}
+
+function TerminalIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
     </svg>
   )
 }
@@ -214,17 +223,27 @@ export default function Nav({
         <nav className="flex-1 space-y-1 px-3 py-4">
           {links.map((link) => {
             const active = pathname === link.href
+            const isExternal = 'external' in link && link.external
+            const className = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              active
+                ? 'bg-zinc-800 text-white'
+                : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
+            }`
+            if (isExternal) {
+              return (
+                <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer"
+                  onClick={() => setMobileOpen(false)} className={className}>
+                  <link.icon />
+                  {link.label}
+                  <svg className="ml-auto h-3 w-3 text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                  </svg>
+                </a>
+              )
+            }
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
-                }`}
-              >
+              <Link key={link.href} href={link.href}
+                onClick={() => setMobileOpen(false)} className={className}>
                 <link.icon />
                 {link.label}
               </Link>
