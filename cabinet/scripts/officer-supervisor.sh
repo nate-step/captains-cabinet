@@ -9,6 +9,8 @@ REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
 CHECK_INTERVAL=120  # 2 minutes
 RESTART_COOLDOWN=300  # 5 minutes between restarts of the same officer
+LOOP_REFRESH_INTERVAL=60  # Every 60th pass (~2 hours), re-send /loop to all officers
+LOOP_PASS_COUNT=0
 
 log() {
   echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] [supervisor] $1"
@@ -46,6 +48,21 @@ log "Officer supervisor starting. Check interval: ${CHECK_INTERVAL}s"
 
 while true; do
   sleep "$CHECK_INTERVAL"
+  LOOP_PASS_COUNT=$((LOOP_PASS_COUNT + 1))
+
+  # Every ~2 hours, re-send /loop to all officers as safety net (idempotent)
+  if [ "$((LOOP_PASS_COUNT % LOOP_REFRESH_INTERVAL))" -eq 0 ]; then
+    CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
+    for officer_window in $(tmux list-windows -t cabinet -F '#{window_name}' 2>/dev/null | grep '^officer-'); do
+      role=$(echo "$officer_window" | sed 's/officer-//')
+      LOOP_FILE="$CABINET_ROOT/cabinet/loop-prompts/${role}.txt"
+      if [ -f "$LOOP_FILE" ]; then
+        LOOP_PROMPT=$(cat "$LOOP_FILE" | tr '\n' ' ')
+        tmux send-keys -t "cabinet:$officer_window" "/loop 5m $LOOP_PROMPT" Enter 2>/dev/null
+        log "Loop refresh sent to $role (pass $LOOP_PASS_COUNT)"
+      fi
+    done
+  fi
 
   # Check kill switch — don't restart if Cabinet is halted
   KILLSWITCH=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET cabinet:killswitch 2>/dev/null)
