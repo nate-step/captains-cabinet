@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import redis from '@/lib/redis'
 import { getTmuxWindows, isClaudeAlive, isTelegramConnected } from '@/lib/docker'
-import { getOfficerConfig } from '@/lib/config'
+import { getOfficerConfig, getConfig } from '@/lib/config'
 import OfficerCard from '@/components/officer-card'
 import fs from 'fs'
 import path from 'path'
@@ -109,6 +109,9 @@ async function getOfficerData(): Promise<OfficerInfo[]> {
 
 export default async function OfficersPage() {
   const officers = await getOfficerData()
+  const config = getConfig()
+  const voiceConfig = config.voice as Record<string, unknown> | undefined
+  const voiceGlobalEnabled = voiceConfig?.enabled === true
 
   return (
     <div className="space-y-8">
@@ -158,6 +161,7 @@ export default async function OfficersPage() {
               title={officer.title}
               botUsername={officer.botUsername}
               voiceId={officer.voiceId}
+              voiceGlobalEnabled={voiceGlobalEnabled}
               claudeAlive={officer.claudeAlive}
               telegramConnected={officer.telegramConnected}
               status={officer.status}

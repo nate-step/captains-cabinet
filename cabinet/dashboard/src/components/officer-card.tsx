@@ -11,6 +11,7 @@ interface OfficerCardProps {
   title?: string
   botUsername?: string
   voiceId?: string
+  voiceGlobalEnabled?: boolean
   claudeAlive?: boolean
   telegramConnected?: boolean
   status: OfficerStatus
@@ -96,6 +97,7 @@ export default function OfficerCard({
   title,
   botUsername,
   voiceId,
+  voiceGlobalEnabled,
   claudeAlive,
   telegramConnected,
   status,
@@ -164,8 +166,8 @@ export default function OfficerCard({
           Last heartbeat: {formatTimestamp(lastHeartbeat)}
         </span>
         {voiceId !== undefined && (
-          <span className={`text-xs ${voiceId ? 'text-zinc-500' : 'text-zinc-600'}`}>
-            Voice: {voiceId ? 'enabled' : 'not configured'}
+          <span className={`text-xs ${voiceGlobalEnabled === false ? 'text-red-400/60' : voiceId ? 'text-zinc-500' : 'text-zinc-600'}`}>
+            Voice: {voiceGlobalEnabled === false ? 'disabled' : voiceId ? 'enabled' : 'not configured'}
           </span>
         )}
       </div>

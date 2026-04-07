@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import redis, { getCostHistory } from '@/lib/redis'
 import { getTmuxWindows, isClaudeAlive, isTelegramConnected } from '@/lib/docker'
-import { getOfficerConfig } from '@/lib/config'
+import { getOfficerConfig, getConfig } from '@/lib/config'
 import { getProjects } from '@/actions/projects'
 import OfficerCard from '@/components/officer-card'
 import KillSwitch from '@/components/kill-switch'
@@ -114,6 +114,9 @@ export default async function DashboardPage() {
   ])
 
   const activeProjectName = projects.find((p) => p.active)?.name || 'Unknown'
+  const config = getConfig()
+  const voiceConfig = config.voice as Record<string, unknown> | undefined
+  const voiceGlobalEnabled = voiceConfig?.enabled === true
 
   const now = new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
@@ -190,6 +193,7 @@ export default async function DashboardPage() {
               title={officer.title}
               botUsername={officer.botUsername}
               voiceId={officer.voiceId}
+              voiceGlobalEnabled={voiceGlobalEnabled}
               claudeAlive={officer.claudeAlive}
               telegramConnected={officer.telegramConnected}
               status={officer.status}
