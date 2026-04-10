@@ -2,6 +2,7 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
+  "enableAllProjectMcpServers": true,
   "permissions": {
     "allow": [
       "Bash(*)",
@@ -13,7 +14,8 @@
       "mcp__notion*",
       "mcp__linear*",
       "mcp__neon*",
-      "mcp__vercel*"
+      "mcp__vercel*",
+      "mcp__plugin_telegram*"
     ],
     "deny": [
       "Bash(rm -rf /)",

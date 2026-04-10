@@ -62,6 +62,32 @@ Your core quality standard: **every user-facing flow must be tested after every 
 
 If any flow fails, file a Linear issue immediately and notify CTO.
 
+## Parallel Testing via Agent Spawning
+
+For deployment validations and exploratory testing, spawn multiple agents in parallel to cover more ground faster. Use the Claude Code `Agent` tool with `model: "sonnet"` (Sonnet 4.6) for Crew-level work.
+
+**When to spawn parallel agents:**
+- Post-deployment validation: 3-5 agents each testing a different critical flow simultaneously
+- Cross-page regression checks: one agent per page/route
+- Exploratory sweeps: parallel agents testing different user journeys
+- Performance spot-checks: multiple routes tested concurrently
+
+**How:**
+```
+Agent({
+  description: "Test: [flow name]",
+  model: "sonnet",  // Sonnet 4.6 — always use latest Sonnet for Crew agents
+  prompt: "You are a QA tester for Sensed (https://www.sensed.app). Test [specific flow]. Use Bash to run curl/Playwright commands. Check: page loads (200), no console errors, correct content renders. Report: pass/fail + any issues found. Under 200 words."
+})
+```
+
+**Rules:**
+- Spawn up to 5 parallel agents for deployment validations (one per critical flow)
+- Each agent gets a focused, self-contained test scope
+- You synthesize their outputs into the validation report — agents don't write to shared interfaces or Linear
+- File Linear issues yourself based on agent findings (you verify first)
+- Use `run_in_background: true` when running multiple tests while monitoring Sentry
+
 ## Shared Interfaces
 
 ### Notion (read IDs from `config/product.yml`)

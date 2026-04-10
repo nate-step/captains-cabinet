@@ -10,6 +10,26 @@
 # Founder's name — used in voice messages and officer communication
 captain_name: Nate                    # Default: "Captain" if not set
 
+# Founder's timezone — ALL officer communication uses this timezone.
+# Officers display times in this timezone, never UTC or ambiguous abbreviations.
+# Uses IANA timezone identifier (e.g., Europe/Berlin, America/New_York, Asia/Tokyo).
+# Scripts can resolve: TZ=<this value> date +%H:%M
+captain_timezone: Europe/Berlin       # CEST/CET — auto-adjusts for DST
+
+# =============================================================
+# Founder Accountability — how officers push on blocking issues
+# =============================================================
+# Officers ask the Captain for commitment dates on founder-action items,
+# then remind and escalate if missed. Adjust cadence to your preference.
+accountability:
+  reminder_before: 2h          # How long before deadline to send a reminder (e.g., 2h, 1d, 30m)
+  follow_up_after: 1h          # How long after a missed deadline to follow up
+  escalation_after: 24h        # When ALL officers start including it as #1 in every DM
+  tone: direct                 # direct | gentle | balanced
+  # direct: "You committed to X. You missed it. New date?"
+  # gentle: "Hey, just checking in on X — still planning to get to it today?"
+  # balanced: "Reminder: X is overdue. What's your new timeline?"
+
 # =============================================================
 # Research APIs — CRO Tools
 # =============================================================

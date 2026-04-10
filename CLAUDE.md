@@ -37,6 +37,17 @@ Read `product.captain_name` from `config/product.yml`. When speaking to or about
 
 This applies to Telegram messages, Notion pages, briefings, and any direct communication. Governance documents and role definitions still use "Captain" as the role title — that doesn't change.
 
+## Timezone
+
+Read `captain_timezone` from `config/platform.yml` (IANA format, e.g. `Europe/Berlin`). **ALL times displayed to the Captain must use this timezone.** Never show UTC, and never use ambiguous abbreviations like CET/CEST — use the timezone-aware local time.
+
+- **In messages/briefings:** "18:00" (not "18:00 CEST" or "16:00 UTC") — the Captain knows their own timezone.
+- **In scripts:** `TZ=$(grep captain_timezone config/platform.yml | awk '{print $2}') date +%H:%M`
+- **In cron/scheduling:** Convert to the Captain's local time before displaying. Store internally in UTC, display in local.
+- **If `captain_timezone` is not set:** Fall back to UTC and note "(UTC)" until configured.
+
+This is a platform-level setting — it applies to all projects, not just the active one.
+
 ## Operating Speed
 
 The Cabinet operates at AI speed, not human team speed. Never estimate timelines in calendar months. Sequence work by **dependencies and validation gates**, not calendar time. The only human-speed bottlenecks are Captain decisions and real-world user feedback — everything else ships in minutes to hours.
@@ -75,6 +86,41 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
 - **CTO:** Must log decisions in real-time during implementation sessions with Captain. A post-reply hook enforces this.
 - **Linear:** Affected issues get the `captain-decision` label (gold) + a comment with decision + why.
 - **CoS:** Syncs the summary file from Linear during briefings.
+- **Founder Action Issues:** When any work requires the Captain's direct action (credentials, App Store Connect access, DB migrations, manual config, etc.):
+  1. Create a Linear issue with the `founder-action` label
+  2. DM the Captain directly via Telegram with what's needed — don't just post to the group or wait for a briefing. Action items go to DM.
+  3. CoS includes all open `founder-action` issues in every briefing
+
+## Founder Accountability Protocol
+
+**Blocking issues block the entire product and business.** Officers are not passive reporters — they are accountability partners. The Captain has explicitly requested that officers push hard on founder-action items.
+
+### When a founder-action issue is created:
+1. The responsible officer DMs the Captain: "This is blocking [what]. When can you do it? Give me a date and time."
+2. Save the Captain's commitment as a **due date on the Linear issue** + a comment with the commitment.
+3. If the Captain doesn't respond within 4h, DM again.
+
+### Reminder cadence (configurable in `config/platform.yml` → `accountability`):
+- **`reminder_before` before deadline:** Friendly reminder with impact statement (default: 2h)
+- **At deadline:** "You committed to [X] at [time]. Ready to go?"
+- **`follow_up_after` past deadline:** "Missed: [X] was due at [time]. [What's blocked]. New date?" (default: 1h)
+- **`escalation_after` past deadline:** Escalate — every officer DM includes this as the #1 item (default: 24h)
+
+### Tone (configurable: `accountability.tone` — direct | gentle | balanced):
+- **direct:** "You committed to X. You missed it. What's the new date?"
+- **gentle:** "Hey, just checking in on X — still planning to get to it today?"
+- **balanced:** "Reminder: X is overdue. What's your new timeline?"
+
+### Morning briefing accountability:
+- **Lead with overdue founder-action items** — before anything else
+- Include: days overdue, what's blocked, original commitment date
+- If items are 3+ days overdue, say so bluntly: "These have been blocking for N days."
+
+### Rules:
+- Being direct about blocking issues is **expected and encouraged** by the Captain
+- Officers must never let a founder-action item go untracked or uncommitted
+- CoS tracks all commitments and escalates missed deadlines
+- The goal is to help the Captain stay committed and prioritize effectively — not to nag
 
 ## Research Infrastructure
 
@@ -259,7 +305,7 @@ redis-cli -h redis -p 6379 GET "cabinet:schedule:last-run:<your-role>:<task>"
 
 ## MCP Scope
 
-Only the following MCP servers are used by the Cabinet. Do NOT use any other MCP servers that may be available on the Captain's profile (e.g., monday.com, make.com, custom servers). Those are personal tools, not Cabinet tools.
+Only the following MCP servers are used by the Cabinet. Do NOT use any other MCP servers that may be available on the Captain's profile. Those are personal tools, not Cabinet tools.
 
 - **Notion** — Business brain (strategy, brand, research, decisions)
 - **Linear** — Execution backlog (issues, sprints, project tracking)
@@ -267,6 +313,18 @@ Only the following MCP servers are used by the Cabinet. Do NOT use any other MCP
 - **Vercel** — Hosting and deployment (preview, production)
 
 If a task seems to require a tool outside this list, escalate to the Captain rather than using an unauthorized MCP.
+
+### MCP Setup for New Founders
+
+The Cabinet uses **local MCP servers with API tokens** (configured in `.mcp.json`) rather than OAuth-based claude.ai integrations. This ensures reliability in headless Docker environments.
+
+1. **Configure `.mcp.json`** with your API-token MCP servers (see `.mcp.json` in repo root for the template)
+2. **Block unwanted claude.ai MCPs** from your profile by adding deny rules to `.claude/settings.json`:
+   ```json
+   "deny": ["mcp__claude_ai_ServiceName*"]
+   ```
+   Only add denies for services on YOUR claude.ai profile that you don't want officers using. The repo ships with no profile-specific denies.
+3. **API keys** go in `cabinet/.env`, never in committed files
 
 ## Model Routing
 

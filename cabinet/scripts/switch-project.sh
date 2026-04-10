@@ -90,7 +90,7 @@ if command -v redis-cli &>/dev/null; then
         set +a
         bash "$CABINET_ROOT/cabinet/scripts/start-officer.sh" "$officer"
       )
-      sleep 2  # Stagger restarts
+      sleep 60  # Stagger restarts to avoid API rate limits
     fi
   done
 fi

@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "@notionhq/notion-mcp-server"],
+      "env": { "NOTION_TOKEN": "${NOTION_API_KEY}" }
+    },
+    "neon": {
+      "command": "bash",
+      "args": ["-c", "npx -y @neondatabase/mcp-server-neon start $NEON_API_KEY"],
+      "env": { "NEON_API_KEY": "${NEON_API_KEY}" }
+    },
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "@mseep/linear-mcp"],
+      "env": { "LINEAR_API_KEY": "${LINEAR_API_KEY}" }
+    },
+    "vercel": {
+      "command": "npx",
+      "args": ["-y", "@robinson_ai_systems/vercel-mcp"],
+      "env": { "VERCEL_TOKEN": "${VERCEL_API_KEY}" }
+    }
+  }
+}

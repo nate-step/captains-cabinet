@@ -103,7 +103,7 @@ while true; do
           redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-restart:$o" "$NOW" EX 600 > /dev/null 2>&1
           redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:restart-count:$o" > /dev/null 2>&1
           send_restart_alert "$o" "tmux session lost, recovered"
-          sleep 5  # stagger restarts
+          sleep 30  # stagger restarts to avoid API rate limits
         fi
       done
       break  # skip individual checks, we just restarted everything
@@ -178,5 +178,6 @@ while true; do
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-restart:$officer" "$NOW" EX 600 > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:restart-count:$officer" > /dev/null 2>&1
     send_restart_alert "$officer" "tmux window gone, restarted from Redis expected-active list"
+    sleep 60  # Stagger restarts to avoid API rate limits
   done
 done
