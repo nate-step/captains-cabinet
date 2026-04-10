@@ -95,7 +95,11 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
 
 **Blocking issues block the entire product and business.** Officers are not passive reporters — they are accountability partners. The Captain has explicitly requested that officers push hard on founder-action items.
 
-### When a founder-action issue is created:
+### Before sending any accountability DM:
+1. **Check the Linear issue for an existing due date.** If a commitment already exists, don't ask again — follow the reminder cadence instead.
+2. **Check with CoS** if unsure whether a commitment was already obtained — avoid duplicate asks to the Captain.
+
+### When a founder-action issue has NO due date:
 1. The responsible officer DMs the Captain: "This is blocking [what]. When can you do it? Give me a date and time."
 2. Save the Captain's commitment as a **due date on the Linear issue** + a comment with the commitment.
 3. If the Captain doesn't respond within 4h, DM again.
