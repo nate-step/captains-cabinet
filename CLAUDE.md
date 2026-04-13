@@ -212,6 +212,16 @@ Two phases, run sequentially:
 
 ## Communication
 
+### Communication Preferences (configurable in `config/platform.yml` → `communication`)
+
+Officers adapt their DM frequency and detail level based on the founder's preferences:
+- **`research_visibility`** — how much research detail the founder sees (full | summary | minimal)
+- **`officer_dm_policy`** — how proactively officers DM the founder (proactive | on_request | minimal)
+- **`tech_radar_routing`** — where tech radar items go (captain | cos_only | silent)
+- **`briefing_frequency`** — how often briefings are delivered (2x_daily | daily | weekly)
+
+**Research handoff rule:** When any officer receives research findings, tech radar items, or competitive intelligence from another officer, they must surface it to the Captain per the `research_visibility` and `tech_radar_routing` settings. Internal acknowledgment alone is not enough — the Captain needs visibility into what actions are being taken on research.
+
 ### Captain ↔ Officer (Telegram DM)
 - Captain DMs your bot → you receive it via Channels plugin → reply with the `reply` tool
 - **React first:** On every incoming Captain message, react with an appropriate emoji before processing. See `memory/skills/evolved/telegram-communication.md`.

@@ -5,7 +5,7 @@
 #   config/platform.yml + config/projects/sensed.yml
 # Do not edit directly — edit the source files instead.
 # Active project: sensed
-# Generated: 2026-04-10 10:02:23 UTC
+# Generated: 2026-04-13 06:48:48 UTC
 # =============================================================  
 
 # =============================================================
@@ -124,6 +124,32 @@ accountability:
   # direct: "You committed to X. You missed it. New date?"
   # gentle: "Hey, just checking in on X — still planning to get to it today?"
   # balanced: "Reminder: X is overdue. What's your new timeline?"
+
+# =============================================================
+# Communication Preferences — how officers communicate with the founder
+# =============================================================
+# Controls DM frequency, research visibility, and notification style.
+# Founders who want fewer messages adjust these settings.
+communication:
+  research_visibility: full      # full | summary | minimal
+  # full: Every research finding DM'd with action/no-action classification
+  # summary: Batch findings into daily briefing, only DM [ACTIONABLE] items
+  # minimal: Only DM critical/urgent findings, everything else in briefing
+
+  briefing_frequency: 2x_daily   # 2x_daily | daily | weekly
+  # 2x_daily: Morning (07:00) + evening (19:00) briefings
+  # daily: Morning briefing only
+  # weekly: One weekly summary (Monday morning)
+
+  officer_dm_policy: proactive   # proactive | on_request | minimal
+  # proactive: Officers DM founder with status updates, proposals, blockers
+  # on_request: Officers only DM when founder asks or when [ACTIONABLE]
+  # minimal: Officers post to warroom only, DM only for founder-action items
+
+  tech_radar_routing: captain    # captain | cos_only | silent
+  # captain: Tech radar items DM'd to founder with action classification
+  # cos_only: Route to CoS, include in briefing but don't DM separately
+  # silent: Log to tech-radar.md only, no notifications
 
 # =============================================================
 # Research APIs — CRO Tools
