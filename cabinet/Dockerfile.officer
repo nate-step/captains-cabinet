@@ -60,6 +60,11 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 # Install Playwright for E2E testing (COO uses this for browser automation)
 RUN npx playwright install chromium
 
+# Install MCP servers globally (instead of each officer installs them every startup)
+USER root
+RUN npm install -g @notionhq/notion-mcp-server @mseep/linear-mcp @neondatabase/mcp-server-neon @robinson_ai_systems/vercel-mcp
+USER cabinet
+
 # Create directories for Channels state (one per Officer)
 RUN mkdir -p \
     /home/cabinet/.claude-channels/cos \
