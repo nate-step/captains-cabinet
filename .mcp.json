@@ -19,6 +19,11 @@
       "command": "npx",
       "args": ["-y", "@robinson_ai_systems/vercel-mcp"],
       "env": { "VERCEL_TOKEN": "${VERCEL_API_KEY}" }
+    },
+    "redis-trigger-channel": {
+      "command": "bun",
+      "args": ["run", "/opt/founders-cabinet/cabinet/channels/redis-trigger-channel/index.ts"],
+      "env": { "OFFICER_NAME": "${OFFICER_NAME}", "REDIS_URL": "redis://redis:6379" }
     }
   }
 }
