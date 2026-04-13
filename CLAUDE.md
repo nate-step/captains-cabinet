@@ -357,6 +357,18 @@ The Cabinet uses **local MCP servers with API tokens** (configured in `.mcp.json
 - **Officers:** Opus 4.6 for strategic thinking and complex decisions
 - **Crew (Agent Teams):** Sonnet 4.6 for execution. Set explicitly in spawn prompts.
 
+## Compact Instructions
+
+When context is compacted (auto or manual), the summarizer should prioritize preserving:
+- **Current task**: What you are working on right now, including Linear issue IDs
+- **Recent Captain decisions**: Any decisions from the current session
+- **In-progress coordination**: Triggers sent/received, officer handoffs pending
+- **Blockers**: Anything blocking you or that you're blocking on
+- **Schedule state**: When your last briefing/reflection/retro ran
+- **Accountability items**: Any founder-action commitments with deadlines
+
+After compaction, re-read your Tier 2 working notes at `memory/tier2/<your-role>/working-notes.md` and check `.session-state.json` in the same directory for pre-compaction operational state.
+
 ## Safety
 
 - Check `cabinet:killswitch` Redis key before operations

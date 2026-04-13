@@ -228,5 +228,39 @@ if [ "$((CALL_COUNT % 50))" -eq "0" ] 2>/dev/null; then
   fi
 fi
 
+# ============================================================
+# 11. PERIODIC SESSION STATE SNAPSHOT (every 200 tool calls)
+# ============================================================
+# Writes operational state to local file for compaction recovery.
+# Same format as pre-compact.sh but runs periodically as a safety net.
+if [ "$((CALL_COUNT % 200))" -eq "0" ] 2>/dev/null; then
+  STATE_DIR="/opt/founders-cabinet/memory/tier2/$OFFICER"
+  STATE_FILE="$STATE_DIR/.session-state.json"
+  mkdir -p "$STATE_DIR"
+
+  SCHEDULE_JSON="{"
+  SFIRST=true
+  for skey in $(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null); do
+    stask="${skey##*:}"
+    sval=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$skey" 2>/dev/null)
+    if [ "$SFIRST" = true ]; then SFIRST=false; else SCHEDULE_JSON="$SCHEDULE_JSON,"; fi
+    SCHEDULE_JSON="$SCHEDULE_JSON\"$stask\":\"$sval\""
+  done
+  SCHEDULE_JSON="$SCHEDULE_JSON}"
+
+  TRIGGER_CT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+
+  cat > "$STATE_FILE" << SNAPEOF
+{
+  "officer": "$OFFICER",
+  "captured_at": "$TIMESTAMP",
+  "snapshot_type": "periodic",
+  "tool_calls": $CALL_COUNT,
+  "pending_triggers": $TRIGGER_CT,
+  "schedules": $SCHEDULE_JSON
+}
+SNAPEOF
+fi
+
 # Always exit 0 — post-hooks should never block
 exit 0

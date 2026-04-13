@@ -34,12 +34,14 @@
 - SEO descriptions for all categories
 
 ### Nate Action Items (founder-action label in Linear)
-- SEN-506: Google OAuth credentials (~15 min)
-- SEN-507: Apple Sign In config (~20 min)
-- SEN-508: TestFlight upload via Transporter (~30 min)
-- SEN-509: Create IAP products in App Store Connect (~30 min)
-- SEN-510: Enter SDK privacy labels (~20 min)
-- SEN-514: Configure 7-day trial introductory offer (~10 min)
+- ~~SEN-502: Google OAuth credentials~~ ✓ Done
+- ~~SEN-503: Apple Sign In credentials~~ ✓ Done
+- **SEN-508: TestFlight upload via Transporter (~30 min)** — P1, 3rd commitment: 19:00 Apr 13
+- ~~SEN-509: Create IAP products in App Store Connect~~ ✓ Done
+- ~~SEN-510: Enter SDK privacy labels~~ ✓ Done
+- ~~SEN-514: Configure 7-day trial introductory offer~~ ✓ Done
+- ~~SEN-515: StoreKit 2 introductory offer~~ ✓ Done
+- SEN-504: Run Apple reviewer test account seed script — P2, Backlog
 
 ### Shipped Today (Apr 7 cont.) — CPO-initiated + Captain testing
 - SEN-516: Trial activation prompts wired (PR #489) — P1, was dead code

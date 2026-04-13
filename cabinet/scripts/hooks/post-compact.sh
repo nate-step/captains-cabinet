@@ -30,7 +30,35 @@ else
 fi
 
 echo ""
-echo "Read these files now before doing anything else. Do not skip this step."
+
+# ============================================================
+# SESSION STATE RECOVERY — inject pre-compaction operational state
+# ============================================================
+STATE_FILE="/opt/founders-cabinet/memory/tier2/${OFFICER}/.session-state.json"
+if [ -f "$STATE_FILE" ]; then
+  CAPTURED=$(jq -r '.captured_at // "unknown"' "$STATE_FILE" 2>/dev/null)
+  TOOL_CT=$(jq -r '.tool_calls // 0' "$STATE_FILE" 2>/dev/null)
+  TRIGGERS=$(jq -r '.pending_triggers // 0' "$STATE_FILE" 2>/dev/null)
+
+  echo "SESSION STATE (captured at $CAPTURED, before compaction):"
+  echo "- Tool calls this session: $TOOL_CT"
+  echo "- Pending triggers at compaction: $TRIGGERS"
+
+  # Print schedule timestamps
+  SCHED=$(jq -r '.schedules // {} | to_entries[] | "  - \(.key): \(.value)"' "$STATE_FILE" 2>/dev/null)
+  if [ -n "$SCHED" ]; then
+    echo "- Schedule last-run timestamps:"
+    echo "$SCHED"
+  fi
+  echo ""
+  echo "Read your working notes for full context: memory/tier2/${OFFICER}/working-notes.md"
+  echo ""
+else
+  echo "No pre-compaction state file found. Read memory/tier2/${OFFICER}/working-notes.md for context."
+  echo ""
+fi
+
+echo "Read the files above now before doing anything else. Do not skip this step."
 echo ""
 echo "THEN:"
 echo "1. Check Redis for pending triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:${OFFICER} 0 -1"
