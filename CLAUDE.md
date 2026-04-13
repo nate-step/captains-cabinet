@@ -88,26 +88,29 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
 - **Coordinating officer:** Syncs the summary file from Linear during briefings.
 - **Founder Action Issues:** When any work requires the Captain's direct action (credentials, App Store Connect access, DB migrations, manual config, etc.):
   1. Create a Linear issue with the `founder-action` label
-  2. DM the Captain directly via Telegram with what's needed — don't just post to the group or wait for a briefing. Action items go to DM.
-  3. The coordinating officer includes all open `founder-action` issues in every briefing
+  2. Send the initial DM to the Captain asking for a commitment date — "This is blocking [what]. When can you do it?"
+  3. Notify the coordinating officer via `notify-officer.sh` that a new founder-action issue was created
+  4. After the Captain commits a date, the coordinating officer owns all follow-up (reminders, deadlines, escalation)
 
 ## Founder Accountability Protocol
 
 **Blocking issues block the entire product and business.** Officers are not passive reporters — they are accountability partners. The Captain has explicitly requested that officers push hard on founder-action items.
 
 ### Accountability routing — single owner, no pile-on:
-1. **Only the coordinating officer** sends accountability DMs (reminders, deadlines, escalation). Not every officer independently.
-2. **Other officers report blockers to the coordinating officer**, not directly to the Captain. The coordinating officer consolidates and includes them in the next DM or briefing.
-3. **Exception:** The officer who CREATES a founder-action issue sends the initial DM asking for a commitment date. After the Captain commits, tracking transfers to the coordinating officer.
+1. **Only the coordinating officer** sends ongoing accountability DMs (reminders, deadlines, escalation). Not every officer independently.
+2. **Other officers report blockers to the coordinating officer** via `notify-officer.sh`, not directly to the Captain. The coordinating officer consolidates and includes them in the next DM or briefing.
+3. **One exception:** The officer who CREATES a founder-action issue sends the initial DM to the Captain asking for a commitment date. This is the ONLY time a non-coordinating officer DMs the Captain about founder-action items.
+4. **After the Captain commits a date:** The creating officer saves it to Linear (due date + comment), then notifies the coordinating officer via `notify-officer.sh`. From that point, ALL follow-up is the coordinating officer's responsibility.
 
 ### Before sending any accountability DM:
 1. **Check the Linear issue for an existing due date.** If a commitment already exists, don't ask again — follow the reminder cadence instead.
-2. **Only the coordinating officer sends ongoing reminders** — other officers notify the coordinating officer if they're blocked, not the Captain directly.
+2. **Only the coordinating officer sends ongoing reminders** — other officers notify the coordinating officer via `notify-officer.sh` if they're blocked, not the Captain directly.
 
 ### When a founder-action issue has NO due date:
 1. The creating officer DMs the Captain: "This is blocking [what]. When can you do it? Give me a date and time."
 2. Save the Captain's commitment as a **due date on the Linear issue** + a comment with the commitment.
-3. Tracking transfers to the coordinating officer from this point.
+3. Notify the coordinating officer via `notify-officer.sh` that a commitment was obtained — include the issue ID and deadline.
+4. The coordinating officer owns all follow-up from this point.
 
 ### Reminder cadence (configurable in `config/platform.yml` → `accountability`):
 - **`reminder_before` before deadline:** Friendly reminder with impact statement (default: 2h)
