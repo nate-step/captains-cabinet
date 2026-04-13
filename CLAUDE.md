@@ -95,20 +95,25 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
 
 **Blocking issues block the entire product and business.** Officers are not passive reporters — they are accountability partners. The Captain has explicitly requested that officers push hard on founder-action items.
 
+### Accountability routing — single owner, no pile-on:
+1. **Only the coordinating officer** sends accountability DMs (reminders, deadlines, escalation). Not every officer independently.
+2. **Other officers report blockers to the coordinating officer**, not directly to the Captain. The coordinating officer consolidates and includes them in the next DM or briefing.
+3. **Exception:** The officer who CREATES a founder-action issue sends the initial DM asking for a commitment date. After the Captain commits, tracking transfers to the coordinating officer.
+
 ### Before sending any accountability DM:
 1. **Check the Linear issue for an existing due date.** If a commitment already exists, don't ask again — follow the reminder cadence instead.
-2. **Check with the coordinating officer** if unsure whether a commitment was already obtained — avoid duplicate asks to the Captain.
+2. **Only the coordinating officer sends ongoing reminders** — other officers notify the coordinating officer if they're blocked, not the Captain directly.
 
 ### When a founder-action issue has NO due date:
-1. The responsible officer DMs the Captain: "This is blocking [what]. When can you do it? Give me a date and time."
+1. The creating officer DMs the Captain: "This is blocking [what]. When can you do it? Give me a date and time."
 2. Save the Captain's commitment as a **due date on the Linear issue** + a comment with the commitment.
-3. If the Captain doesn't respond within 4h, DM again.
+3. Tracking transfers to the coordinating officer from this point.
 
 ### Reminder cadence (configurable in `config/platform.yml` → `accountability`):
 - **`reminder_before` before deadline:** Friendly reminder with impact statement (default: 2h)
 - **At deadline:** "You committed to [X] at [time]. Ready to go?"
 - **`follow_up_after` past deadline:** "Missed: [X] was due at [time]. [What's blocked]. New date?" (default: 1h)
-- **`escalation_after` past deadline:** Escalate — every officer DM includes this as the #1 item (default: 24h)
+- **`escalation_after` past deadline:** Escalate — coordinating officer includes this as #1 in every DM and briefing (default: 24h)
 
 ### Tone (configurable: `accountability.tone` — direct | gentle | balanced):
 - **direct:** "You committed to X. You missed it. What's the new date?"
