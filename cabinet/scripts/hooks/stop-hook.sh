@@ -41,17 +41,35 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
     CACHE_WRITE=$(echo "$USAGE" | jq -r '.cache_creation_input_tokens // 0' 2>/dev/null)
     CACHE_READ=$(echo "$USAGE" | jq -r '.cache_read_input_tokens // 0' 2>/dev/null)
 
-    # Store latest turn costs in Redis (real tokens, not byte estimates)
+    # Detect model for pricing (Opus vs Sonnet)
+    MODEL=$(tail -100 "$TRANSCRIPT_PATH" | jq -r 'select(.type == "assistant" and .message.model != null) | .message.model' 2>/dev/null | tail -1)
+
+    # Calculate dollar cost in microdollars (millionths of a dollar) for integer math
+    # Opus 4.6:  $15/MTok in, $75/MTok out, $3.75/MTok cache_write, $0.30/MTok cache_read
+    # Sonnet 4.6: $3/MTok in, $15/MTok out, $0.75/MTok cache_write, $0.06/MTok cache_read
+    case "$MODEL" in
+      *opus*)
+        COST_MICRO=$(( INPUT_TOKENS * 15 / 1000 + OUTPUT_TOKENS * 75 / 1000 + CACHE_WRITE * 3750 / 1000000 + CACHE_READ * 300 / 1000000 ))
+        ;;
+      *)
+        # Default to Sonnet pricing
+        COST_MICRO=$(( INPUT_TOKENS * 3 / 1000 + OUTPUT_TOKENS * 15 / 1000 + CACHE_WRITE * 750 / 1000000 + CACHE_READ * 60 / 1000000 ))
+        ;;
+    esac
+
+    # Store latest turn: tokens + cost
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HSET "cabinet:cost:tokens:$OFFICER" \
       last_input "$INPUT_TOKENS" \
       last_output "$OUTPUT_TOKENS" \
       last_cache_write "$CACHE_WRITE" \
       last_cache_read "$CACHE_READ" \
+      last_cost_micro "$COST_MICRO" \
+      last_model "$MODEL" \
       last_updated "$TIMESTAMP" \
       > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:tokens:$OFFICER" 86400 > /dev/null 2>&1
 
-    # Accumulate daily totals (actual tokens)
+    # Accumulate daily totals: tokens + cost
     TODAY=$(date -u +%Y-%m-%d)
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
       "${OFFICER}_input" "$INPUT_TOKENS" > /dev/null 2>&1
@@ -61,6 +79,8 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
       "${OFFICER}_cache_write" "$CACHE_WRITE" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
       "${OFFICER}_cache_read" "$CACHE_READ" > /dev/null 2>&1
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
+      "${OFFICER}_cost_micro" "$COST_MICRO" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:tokens:daily:$TODAY" 172800 > /dev/null 2>&1
   fi
 fi
