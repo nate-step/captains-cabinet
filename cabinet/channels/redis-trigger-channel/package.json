@@ -1,0 +1,9 @@
+{
+  "name": "redis-trigger-channel",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "redis": "^4.7.0"
+  }
+}
