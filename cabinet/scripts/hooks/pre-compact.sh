@@ -50,13 +50,15 @@ if [ -n "$NEON_CONNECTION_STRING" ]; then
   WORKING_NOTES=""
   [ -f "$NOTES_FILE" ] && WORKING_NOTES=$(tail -c 3000 "$NOTES_FILE")
 
-  # Use psql variables (:'var' syntax) for injection-safe parameterized insert
+  # Use psql variables (:'var' syntax) via heredoc for injection-safe parameterized insert
+  # Note: :'var' only works via stdin/heredoc, NOT with -c flag
   psql "$NEON_CONNECTION_STRING" -q \
     -v officer="$OFFICER" \
     -v content="$WORKING_NOTES" \
     -v state="$(cat "$STATE_FILE")" \
-    -c "INSERT INTO session_memories (officer, snapshot_type, content, structured_state) VALUES (:'officer', 'pre_compact', :'content', :'state'::jsonb);" \
-    2>/dev/null &
+    2>/dev/null <<'SQLEOF' &
+INSERT INTO session_memories (officer, snapshot_type, content, structured_state) VALUES (:'officer', 'pre_compact', :'content', :'state'::jsonb);
+SQLEOF
   # Run async — don't block compaction for a DB write
 fi
 
