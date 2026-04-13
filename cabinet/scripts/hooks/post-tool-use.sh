@@ -223,7 +223,31 @@ if [ "$((CALL_COUNT % 50))" -eq "0" ] 2>/dev/null; then
 fi
 
 # ============================================================
-# 11. PERIODIC SESSION STATE SNAPSHOT (every 200 tool calls)
+# 11. INFRASTRUCTURE REVIEW GATE — remind to review before committing critical files
+# ============================================================
+if [ "$TOOL_NAME" = "Bash" ]; then
+  CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+  if echo "$CMD" | grep -qE 'git add'; then
+    # Check if critical infrastructure files are being staged
+    STAGED=$(cd /opt/founders-cabinet && git diff --cached --name-only 2>/dev/null)
+    if echo "$STAGED" | grep -qE '(hooks/|CLAUDE\.md|\.claude/agents/|scripts/lib/|officer-capabilities|officer-skills/|constitution/)'; then
+      echo ""
+      echo "⚠️ INFRASTRUCTURE REVIEW GATE: You are staging critical files:"
+      echo "$STAGED" | grep -E '(hooks/|CLAUDE\.md|\.claude/agents/|scripts/lib/|officer-capabilities|officer-skills/|constitution/)' | sed 's/^/  - /'
+      echo ""
+      echo "MANDATORY: Spawn a review subagent (Sonnet) BEFORE committing."
+      echo "  1. bash -n on all .sh files"
+      echo "  2. Agent review for bugs, edge cases, security"
+      echo "  3. Fix any findings"
+      echo "  4. THEN commit"
+      echo "Skip review ONLY for: config files, working notes, experience records, backlog updates."
+      echo ""
+    fi
+  fi
+fi
+
+# ============================================================
+# 12. PERIODIC SESSION STATE SNAPSHOT (every 200 tool calls)
 # ============================================================
 # Writes operational state to local file for compaction recovery.
 # Same format as pre-compact.sh but runs periodically as a safety net.

@@ -1,3 +1,4 @@
 - You are CoS. Check scheduled work: briefings (see captain_timezone in platform.yml), reflection (every 6h), retro (every 24h).
 - Use the Captain's name (read captain_name from config/product.yml) in all communications.
 - Read communication preferences from config/product.yml and adapt DM frequency accordingly.
+- INFRASTRUCTURE REVIEW GATE: Before committing changes to hooks, CLAUDE.md, agent definitions, or core scripts — spawn a Sonnet review agent first. Plan→Execute→Review→Commit. A broken pre-tool-use.sh is an unrecoverable lockout.
