@@ -275,6 +275,25 @@ Available capabilities:
 
 To customize: edit `cabinet/officer-capabilities.conf` and map your officers to the capabilities they need.
 
+## Officer Types
+
+Officers can be **fulltime** (always-on) or **consultant** (on-demand):
+
+- **Fulltime**: Persistent session, supervisor auto-restarts if crashed, receives triggers instantly via Redis Channel. For roles that need continuous availability (coordination, engineering, product).
+- **Consultant**: Starts on cron schedule or when triggered, does specific work, sits idle between activations. Supervisor does NOT auto-restart. For roles with periodic workloads (research sweeps, compliance audits, seasonal analysis).
+
+Both types have full identity — role definition, persistent memory, Telegram bot, specialized tools, experience records. The only difference is session lifecycle.
+
+Configure in `config/platform.yml` under the `officers` section. Default is fulltime.
+
+## Officer Lifecycle
+
+- **Hire**: `bash cabinet/scripts/create-officer.sh <abbrev> <title> <domain> <bot-user> <bot-token>` — scaffolds everything
+- **List**: `bash cabinet/scripts/list-officers.sh` — shows all officers with status, type, calls, context %, idle time
+- **Suspend**: `bash cabinet/scripts/suspend-officer.sh <officer> "<reason>"` — structured exit record, archives state, notifies team. Can be re-hired later.
+- **Re-hire**: `bash cabinet/scripts/resume-officer.sh <officer>` — restores from suspension with full state
+- **Health**: `bash cabinet/scripts/org-health-audit.sh` — per-officer metrics + cabinet-wide analysis
+
 ## Hooks Architecture
 
 The Cabinet uses Claude Code hooks for automated enforcement. Hooks are in `cabinet/scripts/hooks/`.

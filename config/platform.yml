@@ -61,6 +61,27 @@ communication:
   # silent: Log to tech-radar.md only, no notifications
 
 # =============================================================
+# Officer Types — fulltime vs consultant
+# =============================================================
+# fulltime: always-on, persistent session, supervisor auto-restarts
+# consultant: on-demand, starts via cron/trigger, supervisor does NOT restart
+#
+# Consultant officers have full identity (role def, memory, Telegram, tools)
+# but aren't always running. They activate on schedule or when triggered,
+# do their work, then sit idle. Designed for low-frequency, non-interactive
+# roles (research sweeps, periodic audits, compliance checks).
+#
+# To configure: add officer key with type field. Officers not listed default to fulltime.
+# IMPORTANT: Use inline YAML format (single line per officer, 2-space indent).
+# The supervisor parses this with grep — multi-line block style will not be detected.
+# officers:
+#   cos: { type: fulltime }
+#   cto: { type: fulltime }
+#   cpo: { type: fulltime }
+#   coo: { type: fulltime }
+#   cro: { type: consultant, schedule: "0 */4 * * *" }
+
+# =============================================================
 # Organizational Health — officer governance and auditing
 # =============================================================
 organizational_health:

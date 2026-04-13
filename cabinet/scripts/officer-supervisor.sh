@@ -112,6 +112,12 @@ while true; do
       break  # skip individual checks, we just restarted everything
     fi
 
+    # Skip auto-restart for consultant officers — they start on demand via cron/triggers
+    OFFICER_TYPE=$(grep "^  ${officer}:.*type:" /opt/founders-cabinet/config/platform.yml 2>/dev/null | grep -oP 'type:\s*\K\w+' || echo "fulltime")
+    if [ "$OFFICER_TYPE" = "consultant" ]; then
+      continue
+    fi
+
     # Check if this officer's window exists
     if ! tmux list-windows -t cabinet -F '#{window_name}' 2>/dev/null | grep -q "^${WINDOW}$"; then
       log "Window '$WINDOW' missing — restarting $officer"
