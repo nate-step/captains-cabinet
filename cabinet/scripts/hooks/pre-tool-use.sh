@@ -107,6 +107,12 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
         esac
         ;;
     esac
+    # Block common Bash write patterns to product codebase (defense in depth)
+    # Two-condition check: command mentions product path AND contains a write operation
+    if echo "$CMD" | grep -q '/workspace/product/' && echo "$CMD" | grep -qE '(>\s|sed -i |tee |cp .+ |mv .+ )'; then
+      echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO."
+      exit 2
+    fi
   fi
 fi
 
