@@ -147,6 +147,41 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
 fi
 
 # ============================================================
+# 6b. CROSS-VALIDATION — notify reviewers when artifacts are created
+# ============================================================
+if [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "Edit" ]; then
+  FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
+  case "$FILE_PATH" in
+    *"product-specs/"*)
+      # Spec created/edited — notify reviewers (with dedup to prevent notification loops)
+      SPEC_BASE=$(basename "$FILE_PATH")
+      for target in $(officers_with "reviews_specs"); do
+        [ "$target" = "$OFFICER" ] && continue
+        DEDUP_KEY="cabinet:notified:spec:${SPEC_BASE}:${target}"
+        ALREADY=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$DEDUP_KEY" 2>/dev/null)
+        if [ -z "$ALREADY" ] || [ "$ALREADY" = "(nil)" ]; then
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$DEDUP_KEY" 1 EX 600 > /dev/null 2>&1
+          trigger_send "$target" "SPEC UPDATE by $OFFICER: $SPEC_BASE was created/modified. Review against research and product strategy."
+        fi
+      done
+      ;;
+    *"research-briefs/"*)
+      # Research brief created — notify reviewers (with dedup)
+      BRIEF_BASE=$(basename "$FILE_PATH")
+      for target in $(officers_with "reviews_research"); do
+        [ "$target" = "$OFFICER" ] && continue
+        DEDUP_KEY="cabinet:notified:brief:${BRIEF_BASE}:${target}"
+        ALREADY=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$DEDUP_KEY" 2>/dev/null)
+        if [ -z "$ALREADY" ] || [ "$ALREADY" = "(nil)" ]; then
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$DEDUP_KEY" 1 EX 600 > /dev/null 2>&1
+          trigger_send "$target" "RESEARCH BRIEF by $OFFICER: $BRIEF_BASE published. Review for actionable items and spec implications."
+        fi
+      done
+      ;;
+  esac
+fi
+
+# ============================================================
 # 7. EXPERIENCE RECORD NUDGE (count-based)
 # ============================================================
 CALL_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:toolcalls:$OFFICER" 2>/dev/null)

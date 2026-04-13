@@ -61,6 +61,21 @@ communication:
   # silent: Log to tech-radar.md only, no notifications
 
 # =============================================================
+# Organizational Health — officer governance and auditing
+# =============================================================
+organizational_health:
+  audit_cadence: auto            # auto | daily | weekly | manual
+  # auto: CoS runs audit during reflection (every 6h) when officer activity is high,
+  #   or during retro (every 24h) when activity is normal. Baseline: at least once per retro.
+  # daily: Run audit every 24h
+  # weekly: Run audit every 7 days
+  # manual: Only run when CoS or Captain requests
+
+  cross_validation: true         # Auto-notify reviewers when artifacts are created
+  trigger_ack_warning: 60        # Minutes before unACK'd trigger triggers a warning
+  correction_tracking: true      # Track correction frequency for role fitness signal
+
+# =============================================================
 # Research APIs — CRO Tools
 # =============================================================
 research:
