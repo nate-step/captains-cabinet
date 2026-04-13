@@ -35,23 +35,34 @@ echo ""
 # SESSION STATE RECOVERY — inject pre-compaction operational state
 # ============================================================
 STATE_FILE="/opt/founders-cabinet/memory/tier2/${OFFICER}/.session-state.json"
-if [ -f "$STATE_FILE" ]; then
-  CAPTURED=$(jq -r '.captured_at // "unknown"' "$STATE_FILE" 2>/dev/null)
-  TOOL_CT=$(jq -r '.tool_calls // 0' "$STATE_FILE" 2>/dev/null)
-  TRIGGERS=$(jq -r '.pending_triggers // 0' "$STATE_FILE" 2>/dev/null)
+if [ -f "$STATE_FILE" ] && PARSED=$(jq '.' "$STATE_FILE" 2>/dev/null); then
+  CAPTURED=$(echo "$PARSED" | jq -r '.captured_at // "unknown"')
+  TOOL_CT=$(echo "$PARSED" | jq -r '.tool_calls // 0')
+  TRIGGERS=$(echo "$PARSED" | jq -r '.pending_triggers // 0')
+
+  # Check staleness — warn if state file is older than 2 hours
+  CAPTURE_EPOCH=$(date -d "$CAPTURED" +%s 2>/dev/null || echo "0")
+  NOW_EPOCH=$(date -u +%s)
+  CAPTURE_AGE=$(( NOW_EPOCH - CAPTURE_EPOCH ))
 
   echo "SESSION STATE (captured at $CAPTURED, before compaction):"
+  if [ "$CAPTURE_AGE" -gt 7200 ] 2>/dev/null; then
+    echo "⚠️ WARNING: State is $((CAPTURE_AGE / 3600))h old — may not reflect current session."
+  fi
   echo "- Tool calls this session: $TOOL_CT"
   echo "- Pending triggers at compaction: $TRIGGERS"
 
   # Print schedule timestamps
-  SCHED=$(jq -r '.schedules // {} | to_entries[] | "  - \(.key): \(.value)"' "$STATE_FILE" 2>/dev/null)
+  SCHED=$(echo "$PARSED" | jq -r '.schedules // {} | to_entries[] | "  - \(.key): \(.value)"')
   if [ -n "$SCHED" ]; then
     echo "- Schedule last-run timestamps:"
     echo "$SCHED"
   fi
   echo ""
   echo "Read your working notes for full context: memory/tier2/${OFFICER}/working-notes.md"
+  echo ""
+elif [ -f "$STATE_FILE" ]; then
+  echo "⚠️ Pre-compaction state file exists but is corrupt. Read memory/tier2/${OFFICER}/working-notes.md for context."
   echo ""
 else
   echo "No pre-compaction state file found. Read memory/tier2/${OFFICER}/working-notes.md for context."

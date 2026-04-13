@@ -359,7 +359,7 @@ The Cabinet uses **local MCP servers with API tokens** (configured in `.mcp.json
 
 ## Compact Instructions
 
-When context is compacted (auto or manual), the summarizer should prioritize preserving:
+When context is compacted (auto or manual), prioritize preserving in the summary:
 - **Current task**: What you are working on right now, including Linear issue IDs
 - **Recent Captain decisions**: Any decisions from the current session
 - **In-progress coordination**: Triggers sent/received, officer handoffs pending
@@ -367,7 +367,17 @@ When context is compacted (auto or manual), the summarizer should prioritize pre
 - **Schedule state**: When your last briefing/reflection/retro ran
 - **Accountability items**: Any founder-action commitments with deadlines
 
-After compaction, re-read your Tier 2 working notes at `memory/tier2/<your-role>/working-notes.md` and check `.session-state.json` in the same directory for pre-compaction operational state.
+**After compaction, you will receive a system message** from `post-compact.sh` containing:
+1. Your officer-specific skill files to re-read
+2. Your pre-compaction operational state (schedule timestamps, tool calls, trigger count)
+3. Instructions to check triggers and restart your `/loop`
+
+**Immediately after compaction:**
+1. Read ALL files listed in the post-compact message — do not skip any
+2. Check the session state timestamps and compare against current time to find overdue work
+3. Re-read `memory/tier2/<your-role>/working-notes.md` for full context on what you were doing
+4. Verify your `/loop` is running — re-create it if not
+5. Check Redis for pending triggers: `redis-cli -h redis -p 6379 LRANGE cabinet:triggers:<your-role> 0 -1`
 
 ## Safety
 

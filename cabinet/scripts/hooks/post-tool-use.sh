@@ -101,7 +101,6 @@ if [ "$SIGNIFICANT_ACTION" = true ]; then
 fi
 
 # ============================================================
-# ============================================================
 # 4. TRIGGER DELIVERY — deliver and clear pending triggers
 # ============================================================
 # Instead of relying on polling loops (which truncate output),
@@ -157,6 +156,7 @@ fi
 # 7. EXPERIENCE RECORD NUDGE (count-based)
 # ============================================================
 CALL_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:toolcalls:$OFFICER" 2>/dev/null)
+[[ "$CALL_COUNT" =~ ^[0-9]+$ ]] || CALL_COUNT=1
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:toolcalls:$OFFICER" 86400 > /dev/null 2>&1
 
 if [ "$((CALL_COUNT % 50))" -eq "0" ] 2>/dev/null; then
@@ -238,28 +238,25 @@ if [ "$((CALL_COUNT % 200))" -eq "0" ] 2>/dev/null; then
   STATE_FILE="$STATE_DIR/.session-state.json"
   mkdir -p "$STATE_DIR"
 
-  SCHEDULE_JSON="{"
-  SFIRST=true
-  for skey in $(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null); do
+  SNAP_SCHEDULES="{}"
+  while read -r skey; do
+    [ -z "$skey" ] && continue
     stask="${skey##*:}"
     sval=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$skey" 2>/dev/null)
-    if [ "$SFIRST" = true ]; then SFIRST=false; else SCHEDULE_JSON="$SCHEDULE_JSON,"; fi
-    SCHEDULE_JSON="$SCHEDULE_JSON\"$stask\":\"$sval\""
-  done
-  SCHEDULE_JSON="$SCHEDULE_JSON}"
+    SNAP_SCHEDULES=$(echo "$SNAP_SCHEDULES" | jq --arg k "$stask" --arg v "$sval" '. + {($k): $v}')
+  done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null)
 
   TRIGGER_CT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
 
-  cat > "$STATE_FILE" << SNAPEOF
-{
-  "officer": "$OFFICER",
-  "captured_at": "$TIMESTAMP",
-  "snapshot_type": "periodic",
-  "tool_calls": $CALL_COUNT,
-  "pending_triggers": $TRIGGER_CT,
-  "schedules": $SCHEDULE_JSON
-}
-SNAPEOF
+  jq -n \
+    --arg officer "$OFFICER" \
+    --arg captured_at "$TIMESTAMP" \
+    --arg snapshot_type "periodic" \
+    --argjson tool_calls "$CALL_COUNT" \
+    --argjson pending_triggers "${TRIGGER_CT:-0}" \
+    --argjson schedules "$SNAP_SCHEDULES" \
+    '{officer: $officer, captured_at: $captured_at, snapshot_type: $snapshot_type, tool_calls: $tool_calls, pending_triggers: $pending_triggers, schedules: $schedules}' \
+    > "$STATE_FILE"
 fi
 
 # Always exit 0 — post-hooks should never block

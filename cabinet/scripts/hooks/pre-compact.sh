@@ -18,50 +18,44 @@ mkdir -p "$STATE_DIR"
 TOOL_CALLS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:toolcalls:$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
 TRIGGER_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
 
-# Collect schedule timestamps
-SCHEDULE_JSON="{"
-FIRST=true
-for key in $(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null); do
+# Collect schedule timestamps — use jq for safe JSON construction
+SCHEDULE_JSON="{}"
+while read -r key; do
+  [ -z "$key" ] && continue
   task="${key##*:}"
   val=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$key" 2>/dev/null)
-  if [ "$FIRST" = true ]; then
-    FIRST=false
-  else
-    SCHEDULE_JSON="$SCHEDULE_JSON,"
-  fi
-  SCHEDULE_JSON="$SCHEDULE_JSON\"$task\":\"$val\""
-done
-SCHEDULE_JSON="$SCHEDULE_JSON}"
+  SCHEDULE_JSON=$(echo "$SCHEDULE_JSON" | jq --arg k "$task" --arg v "$val" '. + {($k): $v}')
+done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null)
 
 # ============================================================
-# 2. Write local state file (fast — this is the critical path)
+# 2. Write local state file using jq (always valid JSON)
 # ============================================================
-cat > "$STATE_FILE" << STATEEOF
-{
-  "officer": "$OFFICER",
-  "captured_at": "$TIMESTAMP",
-  "tool_calls": $TOOL_CALLS,
-  "pending_triggers": $TRIGGER_COUNT,
-  "schedules": $SCHEDULE_JSON
-}
-STATEEOF
+jq -n \
+  --arg officer "$OFFICER" \
+  --arg captured_at "$TIMESTAMP" \
+  --argjson tool_calls "${TOOL_CALLS:-0}" \
+  --argjson pending_triggers "${TRIGGER_COUNT:-0}" \
+  --argjson schedules "$SCHEDULE_JSON" \
+  '{officer: $officer, captured_at: $captured_at, tool_calls: $tool_calls, pending_triggers: $pending_triggers, schedules: $schedules}' \
+  > "$STATE_FILE"
 
 # ============================================================
 # 3. Store to PostgreSQL for cross-session persistence (best-effort)
 # ============================================================
+# Source env if NEON_CONNECTION_STRING not already set
+[ -z "$NEON_CONNECTION_STRING" ] && source /opt/founders-cabinet/cabinet/.env 2>/dev/null
+
 if [ -n "$NEON_CONNECTION_STRING" ]; then
-  # Read working notes tail for content field (escaped for SQL)
   NOTES_FILE="/opt/founders-cabinet/memory/tier2/$OFFICER/working-notes.md"
-  if [ -f "$NOTES_FILE" ]; then
-    WORKING_NOTES=$(tail -c 3000 "$NOTES_FILE" | sed "s/'/''/g")
-  else
-    WORKING_NOTES="No working notes found."
-  fi
+  WORKING_NOTES=""
+  [ -f "$NOTES_FILE" ] && WORKING_NOTES=$(tail -c 3000 "$NOTES_FILE")
 
-  STATE_JSON=$(cat "$STATE_FILE" | sed "s/'/''/g")
-
-  psql "$NEON_CONNECTION_STRING" -q -c \
-    "INSERT INTO session_memories (officer, snapshot_type, content, structured_state) VALUES ('$OFFICER', 'pre_compact', '$WORKING_NOTES', '$STATE_JSON'::jsonb);" \
+  # Use psql variables (:'var' syntax) for injection-safe parameterized insert
+  psql "$NEON_CONNECTION_STRING" -q \
+    -v officer="$OFFICER" \
+    -v content="$WORKING_NOTES" \
+    -v state="$(cat "$STATE_FILE")" \
+    -c "INSERT INTO session_memories (officer, snapshot_type, content, structured_state) VALUES (:'officer', 'pre_compact', :'content', :'state'::jsonb);" \
     2>/dev/null &
   # Run async — don't block compaction for a DB write
 fi
