@@ -47,14 +47,42 @@ for (let i = 0; i < 30; i++) {
   }
 }
 
+// Mock hash store for HGETALL support
+const mockHashStore: Record<string, Record<string, string>> = {}
+
+// Populate mock token cost data (new system)
+for (let i = 0; i < 7; i++) {
+  const dateStr = daysAgo(i)
+  const hash: Record<string, string> = {}
+  for (const role of officers) {
+    const weight = officerWeights[role]
+    const base = 500000 + Math.round(Math.random() * 200000) // ~500K-700K output tokens
+    hash[`${role}_input`] = String(Math.round(base * 0.01))
+    hash[`${role}_output`] = String(Math.round(base * weight))
+    hash[`${role}_cache_write`] = String(Math.round(base * weight * 2.5))
+    hash[`${role}_cache_read`] = String(Math.round(base * weight * 50))
+    // Opus cost in microdollars: in*15 + out*75 + cw*3.75 + cr*0.30
+    const inp = Math.round(base * 0.01)
+    const out = Math.round(base * weight)
+    const cw = Math.round(base * weight * 2.5)
+    const cr = Math.round(base * weight * 50)
+    hash[`${role}_cost_micro`] = String(inp * 15 + out * 75 + Math.round(cw * 3.75) + Math.round(cr * 0.3))
+  }
+  mockHashStore[`cabinet:cost:tokens:daily:${dateStr}`] = hash
+}
+
 const mockRedis = {
   get: async (key: string) => mockStore[key] || null,
   set: async (key: string, value: string) => { mockStore[key] = value; return 'OK' },
   del: async (key: string) => { delete mockStore[key]; return 1 },
   keys: async (pattern: string) => {
     const prefix = pattern.replace('*', '')
-    return Object.keys(mockStore).filter(k => k.startsWith(prefix))
+    return [
+      ...Object.keys(mockStore).filter(k => k.startsWith(prefix)),
+      ...Object.keys(mockHashStore).filter(k => k.startsWith(prefix)),
+    ]
   },
+  hgetall: async (key: string) => mockHashStore[key] || null,
 }
 
 let redis: typeof mockRedis
@@ -100,6 +128,53 @@ export async function getCostHistory(days: number): Promise<DailyCostEntry[]> {
     }
 
     entries.push({ date: dateStr, total, officers: officerCosts })
+  }
+
+  return entries
+}
+
+export interface TokenCostEntry {
+  date: string
+  officers: Record<string, {
+    input: number
+    output: number
+    cacheWrite: number
+    cacheRead: number
+    costMicro: number
+  }>
+  totalCostMicro: number
+}
+
+export async function getTokenCostHistory(days: number): Promise<TokenCostEntry[]> {
+  const officerKeys = await redis.keys('cabinet:officer:expected:*')
+  const officers = officerKeys
+    .map(k => k.replace('cabinet:officer:expected:', ''))
+    .filter(k => !k.includes(':'))
+  if (officers.length === 0) officers.push('cos', 'cto', 'cpo', 'cro', 'coo')
+
+  const entries: TokenCostEntry[] = []
+
+  for (let i = 0; i < days; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const dateStr = d.toISOString().split('T')[0]
+
+    const hash = await redis.hgetall(`cabinet:cost:tokens:daily:${dateStr}`)
+    const officerData: TokenCostEntry['officers'] = {}
+    let totalCostMicro = 0
+
+    for (const role of officers) {
+      if (!hash || Object.keys(hash).length === 0) continue
+      const input = parseInt(hash[`${role}_input`] || '0', 10)
+      const output = parseInt(hash[`${role}_output`] || '0', 10)
+      const cacheWrite = parseInt(hash[`${role}_cache_write`] || '0', 10)
+      const cacheRead = parseInt(hash[`${role}_cache_read`] || '0', 10)
+      const costMicro = parseInt(hash[`${role}_cost_micro`] || '0', 10)
+      officerData[role] = { input, output, cacheWrite, cacheRead, costMicro }
+      totalCostMicro += costMicro
+    }
+
+    entries.push({ date: dateStr, officers: officerData, totalCostMicro })
   }
 
   return entries

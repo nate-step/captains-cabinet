@@ -32,28 +32,28 @@ fi
 # 2. Extract actual token costs from transcript (replaces byte estimation)
 # ============================================================
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  # Get the last assistant entry with usage data
-  USAGE=$(tail -100 "$TRANSCRIPT_PATH" | jq -r 'select(.type == "assistant" and .message.usage != null) | .message.usage' 2>/dev/null | tail -1)
+  # Get the last assistant entry with usage data (-c = compact, one JSON object per line)
+  # Extract usage + model in one pipeline to ensure they come from the same turn
+  LAST_ENTRY=$(tail -100 "$TRANSCRIPT_PATH" | jq -c 'select(.type == "assistant" and .message.usage != null) | {usage: .message.usage, model: .message.model}' 2>/dev/null | tail -1)
 
-  if [ -n "$USAGE" ] && [ "$USAGE" != "null" ]; then
-    INPUT_TOKENS=$(echo "$USAGE" | jq -r '.input_tokens // 0' 2>/dev/null)
-    OUTPUT_TOKENS=$(echo "$USAGE" | jq -r '.output_tokens // 0' 2>/dev/null)
-    CACHE_WRITE=$(echo "$USAGE" | jq -r '.cache_creation_input_tokens // 0' 2>/dev/null)
-    CACHE_READ=$(echo "$USAGE" | jq -r '.cache_read_input_tokens // 0' 2>/dev/null)
-
-    # Detect model for pricing (Opus vs Sonnet)
-    MODEL=$(tail -100 "$TRANSCRIPT_PATH" | jq -r 'select(.type == "assistant" and .message.model != null) | .message.model' 2>/dev/null | tail -1)
+  if [ -n "$LAST_ENTRY" ] && [ "$LAST_ENTRY" != "null" ]; then
+    INPUT_TOKENS=$(echo "$LAST_ENTRY" | jq -r '.usage.input_tokens // 0' 2>/dev/null)
+    OUTPUT_TOKENS=$(echo "$LAST_ENTRY" | jq -r '.usage.output_tokens // 0' 2>/dev/null)
+    CACHE_WRITE=$(echo "$LAST_ENTRY" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null)
+    CACHE_READ=$(echo "$LAST_ENTRY" | jq -r '.usage.cache_read_input_tokens // 0' 2>/dev/null)
+    MODEL=$(echo "$LAST_ENTRY" | jq -r '.model // "unknown"' 2>/dev/null)
 
     # Calculate dollar cost in microdollars (millionths of a dollar) for integer math
+    # $/MTok = microdollars per token. Cache prices are fractional, so scale via nanodollars.
     # Opus 4.6:  $15/MTok in, $75/MTok out, $3.75/MTok cache_write, $0.30/MTok cache_read
     # Sonnet 4.6: $3/MTok in, $15/MTok out, $0.75/MTok cache_write, $0.06/MTok cache_read
     case "$MODEL" in
       *opus*)
-        COST_MICRO=$(( INPUT_TOKENS * 15 / 1000 + OUTPUT_TOKENS * 75 / 1000 + CACHE_WRITE * 3750 / 1000000 + CACHE_READ * 300 / 1000000 ))
+        COST_MICRO=$(( INPUT_TOKENS * 15 + OUTPUT_TOKENS * 75 + CACHE_WRITE * 3750 / 1000 + CACHE_READ * 300 / 1000 ))
         ;;
       *)
         # Default to Sonnet pricing
-        COST_MICRO=$(( INPUT_TOKENS * 3 / 1000 + OUTPUT_TOKENS * 15 / 1000 + CACHE_WRITE * 750 / 1000000 + CACHE_READ * 60 / 1000000 ))
+        COST_MICRO=$(( INPUT_TOKENS * 3 + OUTPUT_TOKENS * 15 + CACHE_WRITE * 750 / 1000 + CACHE_READ * 60 / 1000 ))
         ;;
     esac
 
