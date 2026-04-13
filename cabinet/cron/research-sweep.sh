@@ -11,8 +11,8 @@ REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
 TRIGGER_MSG="[$TIMESTAMP] Scheduled research sweep. Review current product priorities in shared/backlog.md and Notion Product Hub, identify relevant research questions, and produce a research brief to Notion Research Hub."
 
-# PRIMARY: Push to Redis
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cro" "$TRIGGER_MSG" > /dev/null 2>&1
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cro" 21600 > /dev/null 2>&1
+# PRIMARY: Push to Redis Stream
+. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh
+OFFICER_NAME=cron trigger_send cro "$TRIGGER_MSG"
 
 echo "[$TIMESTAMP] Research sweep trigger pushed"

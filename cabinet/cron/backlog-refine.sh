@@ -11,8 +11,8 @@ REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
 TRIGGER_MSG="[$TIMESTAMP] Scheduled backlog refinement. Review Linear issues, incorporate recent research briefs from Notion Research Hub, update priorities in shared/backlog.md, and ensure top items have specs in Notion Product Hub."
 
-# PRIMARY: Push to Redis
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cpo" "$TRIGGER_MSG" > /dev/null 2>&1
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cpo" 21600 > /dev/null 2>&1
+# PRIMARY: Push to Redis Stream
+. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh
+OFFICER_NAME=cron trigger_send cpo "$TRIGGER_MSG"
 
 echo "[$TIMESTAMP] Backlog refinement trigger pushed"

@@ -101,23 +101,21 @@ if [ "$SIGNIFICANT_ACTION" = true ]; then
 fi
 
 # ============================================================
-# 4. TRIGGER DELIVERY — deliver and clear pending triggers
+# 4. TRIGGER DELIVERY — deliver pending triggers via Redis Streams
 # ============================================================
-# Instead of relying on polling loops (which truncate output),
-# deliver triggers directly in hook output. Officers see them
-# in their conversation after any tool call.
-TRIGGER_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$OFFICER" 2>/dev/null)
-if [ -n "$TRIGGER_COUNT" ] && [ "$TRIGGER_COUNT" -gt 0 ] 2>/dev/null; then
-  TRIGGERS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LRANGE "cabinet:triggers:$OFFICER" 0 -1 2>/dev/null)
+# Reads NEW messages from the officer's stream. Messages stay "pending"
+# until the officer ACKs them — crash recovery built in.
+. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh 2>/dev/null
+TRIG_MESSAGES=$(trigger_read "$OFFICER")
+TRIG_IDS=$(cat /tmp/.trigger_ids_${OFFICER} 2>/dev/null)
+if [ -n "$TRIG_MESSAGES" ]; then
+  TRIG_COUNT=$(echo "$TRIG_MESSAGES" | wc -l)
   echo ""
-  echo "PENDING TRIGGERS ($TRIGGER_COUNT):"
-  echo "$TRIGGERS"
+  echo "PENDING TRIGGERS ($TRIG_COUNT):"
+  echo "$TRIG_MESSAGES"
   echo ""
-  echo "Process these triggers now. When done, clear: redis-cli -h redis -p 6379 DEL cabinet:triggers:$OFFICER"
-  # Set a 1-hour expiry so stale triggers don't pile up forever, but do NOT
-  # auto-clear — the hook output may not reliably surface in the officer's
-  # conversation context, causing lost triggers.
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:$OFFICER" 3600 > /dev/null 2>&1
+  echo "Process these triggers now. Then ACK:"
+  echo "  . /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_ack $OFFICER \"$TRIG_IDS\""
 fi
 # ============================================================
 
@@ -129,14 +127,10 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
   if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge'; then
     for target in $(officers_with "validates_deployments"); do
-      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:$target" \
-        "[$TIMESTAMP] From $OFFICER: AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status." > /dev/null 2>&1
-      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:$target" 21600 > /dev/null 2>&1
+      trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
     done
     for target in $(officers_with "reviews_implementations"); do
-      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:$target" \
-        "[$TIMESTAMP] From $OFFICER: AUTO-DEPLOY DETECTED — push to main. Review the implementation against spec: screenshot the live result via Chromium, compare against spec design intent, confirm acceptance criteria met or file issues." > /dev/null 2>&1
-      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:$target" 21600 > /dev/null 2>&1
+      trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Review the implementation against spec: screenshot the live result via Chromium, compare against spec design intent, confirm acceptance criteria met or file issues."
     done
   fi
 fi
@@ -246,7 +240,7 @@ if [ "$((CALL_COUNT % 200))" -eq "0" ] 2>/dev/null; then
     SNAP_SCHEDULES=$(echo "$SNAP_SCHEDULES" | jq --arg k "$stask" --arg v "$sval" '. + {($k): $v}')
   done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null)
 
-  TRIGGER_CT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+  TRIGGER_CT=$(trigger_count "$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
 
   jq -n \
     --arg officer "$OFFICER" \

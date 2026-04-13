@@ -16,8 +16,8 @@ REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
 TRIGGER_MSG="[$TIMESTAMP] Daily $BRIEFING_TYPE briefing due. Compile status from all Officers and send briefing to Warroom Telegram group. Include: progress since last briefing, current blockers, upcoming priorities, decisions needed from Captain."
 
-# PRIMARY: Push to Redis — will be surfaced by post-tool-use hook
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cos" "$TRIGGER_MSG" > /dev/null 2>&1
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cos" 21600 > /dev/null 2>&1
+# PRIMARY: Push to Redis Stream — surfaced by post-tool-use hook, crash-safe
+. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh
+OFFICER_NAME=cron trigger_send cos "$TRIGGER_MSG"
 
 echo "[$TIMESTAMP] Briefing trigger pushed ($BRIEFING_TYPE)"

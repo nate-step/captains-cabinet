@@ -16,7 +16,8 @@ mkdir -p "$STATE_DIR"
 # 1. Collect Redis operational state
 # ============================================================
 TOOL_CALLS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:toolcalls:$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
-TRIGGER_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" LLEN "cabinet:triggers:$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh 2>/dev/null
+TRIGGER_COUNT=$(trigger_count "$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
 
 # Collect schedule timestamps — use jq for safe JSON construction
 SCHEDULE_JSON="{}"

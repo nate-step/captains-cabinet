@@ -11,8 +11,8 @@ REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
 TRIGGER_MSG="[$TIMESTAMP] Scheduled Cabinet retrospective. Run the Reflection Loop: 1) Review all experience records since last retro, 2) Identify recurring patterns (note at 2x, propose change at 3x), 3) Draft improvement proposals, 4) Validate against known-good scenarios, 5) Submit proposals to Captain via Telegram, 6) Update skill library."
 
-# PRIMARY: Push to Redis
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cos" "$TRIGGER_MSG" > /dev/null 2>&1
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cos" 21600 > /dev/null 2>&1
+# PRIMARY: Push to Redis Stream
+. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh
+OFFICER_NAME=cron trigger_send cos "$TRIGGER_MSG"
 
 echo "[$TIMESTAMP] Retrospective trigger pushed"
