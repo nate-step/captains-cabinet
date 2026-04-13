@@ -25,6 +25,17 @@ const mockStore: Record<string, string> = {
   'cabinet:officer:expected:cro': 'active',
   'cabinet:officer:expected:coo': 'active',
   'cabinet:killswitch': '',
+  // Health mock data — last-toolcall and daily tool call counts
+  'cabinet:last-toolcall:cos': new Date(Date.now() - 45000).toISOString(),
+  'cabinet:last-toolcall:cto': new Date(Date.now() - 180000).toISOString(),
+  'cabinet:last-toolcall:cpo': new Date(Date.now() - 420000).toISOString(),
+  'cabinet:last-toolcall:cro': new Date(Date.now() - 90000).toISOString(),
+  'cabinet:last-toolcall:coo': new Date(Date.now() - 960000).toISOString(),
+  'cabinet:toolcalls:cos': '312',
+  'cabinet:toolcalls:cto': '487',
+  'cabinet:toolcalls:cpo': '156',
+  'cabinet:toolcalls:cro': '203',
+  'cabinet:toolcalls:coo': '89',
   // Schedule last-run mock data
   'cabinet:schedule:last-run:cos:reflection': new Date(Date.now() - 3 * 3600000).toISOString(),
   'cabinet:schedule:last-run:cos:briefing': new Date(Date.now() - 7 * 3600000).toISOString(),
@@ -69,6 +80,17 @@ for (let i = 0; i < 7; i++) {
     hash[`${role}_cost_micro`] = String(inp * 15 + out * 75 + Math.round(cw * 3.75) + Math.round(cr * 0.3))
   }
   mockHashStore[`cabinet:cost:tokens:daily:${dateStr}`] = hash
+}
+
+// Mock context window data per officer (for health page)
+const mockContextPcts: Record<string, number> = { cos: 38.2, cto: 67.5, cpo: 22.1, cro: 45.8, coo: 81.4 }
+for (const role of officers) {
+  const pct = mockContextPcts[role]
+  mockHashStore[`cabinet:cost:tokens:${role}`] = {
+    last_context_pct: String(pct),
+    last_context_tokens: String(Math.round((pct / 100) * 1000000)),
+    last_updated: new Date(Date.now() - Math.round(Math.random() * 300000)).toISOString(),
+  }
 }
 
 const mockRedis = {
