@@ -57,7 +57,13 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
         ;;
     esac
 
-    # Store latest turn: tokens + cost
+    # Store context window percentage for health dashboard
+    CONTEXT_TOKENS=$(( INPUT_TOKENS + CACHE_READ + CACHE_WRITE ))
+    CONTEXT_WINDOW=${CONTEXT_WINDOW_SIZE:-1000000}
+    CONTEXT_PCT=0
+    [ "$CONTEXT_WINDOW" -gt 0 ] 2>/dev/null && CONTEXT_PCT=$(( CONTEXT_TOKENS * 100 / CONTEXT_WINDOW ))
+
+    # Store latest turn: tokens + cost + context
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HSET "cabinet:cost:tokens:$OFFICER" \
       last_input "$INPUT_TOKENS" \
       last_output "$OUTPUT_TOKENS" \
@@ -65,6 +71,8 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
       last_cache_read "$CACHE_READ" \
       last_cost_micro "$COST_MICRO" \
       last_model "$MODEL" \
+      last_context_tokens "$CONTEXT_TOKENS" \
+      last_context_pct "$CONTEXT_PCT" \
       last_updated "$TIMESTAMP" \
       > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:tokens:$OFFICER" 86400 > /dev/null 2>&1

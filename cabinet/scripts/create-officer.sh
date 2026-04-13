@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
     --voice-stability) VOICE_STABILITY="$2"; shift 2 ;;
     --voice-speed) VOICE_SPEED="$2"; shift 2 ;;
     --interface) INTERFACE_NAME="$2"; shift 2 ;;
-    --loop-prompt) LOOP_PROMPT_TEXT="$2"; shift 2 ;;
+    --loop-prompt) echo "WARNING: --loop-prompt is deprecated (Redis Channel delivers triggers now). Ignored."; shift 2 ;;
     --no-start) DO_START=false; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -68,10 +68,7 @@ if [ -z "$VOICE_PROMPT" ]; then
   VOICE_PROMPT="You are the ${TITLE}. Speak naturally and conversationally. Be professional but personable."
 fi
 
-# Default loop prompt if not provided
-if [ -z "$LOOP_PROMPT_TEXT" ]; then
-  LOOP_PROMPT_TEXT="Triggers auto-deliver via hook. Manual check: source /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read ${OFFICER}. Check if reflection is overdue (every 6h). Process anything that needs attention."
-fi
+# Loop prompts no longer needed — Redis Channel delivers triggers instantly
 
 # --- Validate inputs ---
 if ! echo "$OFFICER" | grep -qE '^[a-z]{2,4}$'; then
@@ -167,7 +164,7 @@ Notify other Officers: \`bash /opt/founders-cabinet/cabinet/scripts/notify-offic
 3. Read your Tier 2 working notes (\`memory/tier2/${OFFICER}/\`)
 4. Read foundation skills in \`memory/skills/\`
 5. Check for pending triggers and overdue work
-6. Set up your polling loop (see loop prompt)
+No permanent /loop needed — triggers and scheduled work deliver instantly via Redis Channel. Use /loop only for ad-hoc temporary tasks. Instead: pick proactive work from your role definition immediately.
 ROLEEOF
   log "Created: $ROLE_FILE"
 fi
@@ -176,7 +173,23 @@ fi
 TIER2_DIR="$CABINET_ROOT/memory/tier2/${OFFICER}"
 mkdir -p "$TIER2_DIR"
 touch "$TIER2_DIR/.gitkeep"
-log "Ensured: $TIER2_DIR/"
+# Seed working-notes.md so officers have something to read on first start
+if [ ! -f "$TIER2_DIR/working-notes.md" ]; then
+  cat > "$TIER2_DIR/working-notes.md" << NOTESEOF
+---
+title: ${TITLE} Working Notes
+updated: $(date -u +%Y-%m-%dT%H:%MZ)
+author: ${OFFICER_UPPER}
+---
+
+## Session: $(date -u +%Y-%m-%d) (First Session)
+
+### Initial State
+- Officer created. No prior context.
+- Read role definition and start building domain knowledge.
+NOTESEOF
+fi
+log "Ensured: $TIER2_DIR/ (with working-notes.md)"
 
 # === Step 3: Shared interface file ===
 if [ -n "$INTERFACE_NAME" ]; then
@@ -279,16 +292,36 @@ fi
 # Export token for immediate use
 export "${TOKEN_VAR}=${BOT_TOKEN}"
 
-# === Step 7: Loop prompt ===
-LOOP_DIR="$CABINET_ROOT/cabinet/loop-prompts"
-mkdir -p "$LOOP_DIR"
-LOOP_FILE="$LOOP_DIR/${OFFICER}.txt"
-if [ ! -f "$LOOP_FILE" ]; then
-  echo "$LOOP_PROMPT_TEXT" > "$LOOP_FILE"
-  log "Created loop prompt: $LOOP_FILE"
+# === Step 7: Officer skills file (post-compaction refresh) ===
+SKILLS_FILE="$CABINET_ROOT/cabinet/officer-skills/${OFFICER}.txt"
+if [ ! -f "$SKILLS_FILE" ]; then
+  cat > "$SKILLS_FILE" << SKILLEOF
+- Re-read your role definition at .claude/agents/${OFFICER}.md for your specific responsibilities.
+- Check your Tier 2 working notes in memory/tier2/${OFFICER}/ for recent context.
+SKILLEOF
+  log "Created officer skills file: $SKILLS_FILE"
 else
-  log "SKIP: Loop prompt already exists"
+  log "SKIP: Officer skills file already exists"
 fi
+
+# === Step 7b: Officer capabilities ===
+CAP_FILE="$CABINET_ROOT/cabinet/officer-capabilities.conf"
+if ! grep -q "^${OFFICER}:" "$CAP_FILE" 2>/dev/null; then
+  echo "" >> "$CAP_FILE"
+  echo "# ${TITLE}" >> "$CAP_FILE"
+  echo "# ${OFFICER}:deploys_code" >> "$CAP_FILE"
+  echo "# ${OFFICER}:validates_deployments" >> "$CAP_FILE"
+  echo "# ${OFFICER}:reviews_implementations" >> "$CAP_FILE"
+  echo "# ${OFFICER}:logs_captain_decisions" >> "$CAP_FILE"
+  log "Added ${OFFICER} capability placeholders to officer-capabilities.conf (commented — uncomment the ones that apply)"
+else
+  log "SKIP: ${OFFICER} already in officer-capabilities.conf"
+fi
+
+# === Step 7c: Channels state directory ===
+CHANNELS_DIR="/home/cabinet/.claude-channels/${OFFICER}"
+mkdir -p "$CHANNELS_DIR"
+log "Ensured: $CHANNELS_DIR/"
 
 # === Step 8: Mark as expected-active in Redis ===
 if command -v redis-cli &>/dev/null; then
@@ -322,8 +355,10 @@ log ""
 log "Created:"
 log "  Role definition:     .claude/agents/${OFFICER}.md"
 log "  Tier 2 memory:       memory/tier2/${OFFICER}/"
+log "  Skills file:         cabinet/officer-skills/${OFFICER}.txt"
+log "  Capabilities:        cabinet/officer-capabilities.conf (uncomment relevant ones)"
+log "  Channels dir:        ~/.claude-channels/${OFFICER}/"
 [ -n "$INTERFACE_NAME" ] && log "  Shared interface:    shared/interfaces/${INTERFACE_NAME}.md"
-log "  Loop prompt:         cabinet/loop-prompts/${OFFICER}.txt"
 log "  Voice config:        product.yml (model=eleven_v3, stability=${VOICE_STABILITY}, speed=${VOICE_SPEED})"
 [ -n "$VOICE_ID" ] && log "  Voice ID:            ${VOICE_ID}" || log "  Voice ID:            NOT SET — voice disabled until configured"
 log ""
