@@ -114,9 +114,11 @@ if [ -n "$TRIGGER_COUNT" ] && [ "$TRIGGER_COUNT" -gt 0 ] 2>/dev/null; then
   echo "PENDING TRIGGERS ($TRIGGER_COUNT):"
   echo "$TRIGGERS"
   echo ""
-  echo "Process these triggers now. When done, clear them: redis-cli -h redis -p 6379 DEL cabinet:triggers:$OFFICER"
-  # NOTE: Do NOT auto-clear here. The officer's loop handles clearing after processing.
-  # Auto-clearing caused a bug where triggers were deleted before the officer could read them.
+  echo "Process these triggers now."
+  # Auto-clear after delivery. The hook output IS the delivery — once printed to
+  # the officer's conversation, it's been read. Leaving triggers uncleaned caused
+  # infinite re-delivery (CRO P1 bug: triggers piled up for days).
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:triggers:$OFFICER" > /dev/null 2>&1
 fi
 # ============================================================
 
