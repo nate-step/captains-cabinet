@@ -49,11 +49,10 @@ if [ -d "/home/cabinet/.claude/projects/$ENCODED_PATH" ]; then
 fi
 
 # Build the claude command — use --continue only if a prior session exists
-CHANNELS="plugin:telegram@claude-plugins-official --dangerously-load-development-channels server:redis-trigger-channel"
 if [ "$HAS_SESSION" = true ]; then
-  CLAUDE_CMD="claude --continue --channels $CHANNELS --dangerously-skip-permissions --effort max"
+  CLAUDE_CMD="claude --continue --channels plugin:telegram@claude-plugins-official --dangerously-load-development-channels server:redis-trigger-channel --dangerously-skip-permissions --effort max"
 else
-  CLAUDE_CMD="claude --channels $CHANNELS --dangerously-skip-permissions --effort max"
+  CLAUDE_CMD="claude --channels plugin:telegram@claude-plugins-official --dangerously-load-development-channels server:redis-trigger-channel --dangerously-skip-permissions --effort max"
 fi
 
 # Kill any existing session for this officer
