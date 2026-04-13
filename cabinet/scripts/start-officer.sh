@@ -78,10 +78,10 @@ tmux send-keys -t "cabinet:$WINDOW" \
   if [ -f "$LOOP_FILE" ]; then
     LOOP_PROMPT=$(cat "$LOOP_FILE")
   else
-    LOOP_PROMPT="Triggers auto-deliver via hook. Manual check: source /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read ${OFFICER}. Check if reflection is overdue (every 6h). Process anything that needs attention."
+    LOOP_PROMPT="Triggers deliver instantly via Redis Channel — no polling needed. Check if reflection is overdue (every 6h). Process anything that needs attention."
   fi
 
-  tmux send-keys -t "cabinet:$WINDOW" "/loop 5m $LOOP_PROMPT" Enter
+  tmux send-keys -t "cabinet:$WINDOW" "/loop 2m $LOOP_PROMPT" Enter
 ) &
 
 echo "Started $OFFICER in cabinet:$WINDOW (has_session=$HAS_SESSION, loop in ~20s)"

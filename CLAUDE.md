@@ -304,10 +304,10 @@ Generates and sends voice messages when enabled in `config/product.yml`.
 ### How triggers work
 Cron jobs and Officer notifications push triggers to Redis Streams. The **post-tool-use hook auto-delivers** them after your next tool call — you see them inline in your conversation. Process them immediately, then ACK: `. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_ack <your-role> "$(cat /tmp/.trigger_ids_<your-role>)"`. Unacknowledged triggers persist until ACK'd (crash recovery built in).
 
-### Active polling with /loop (required)
-On session start, set up a polling loop that checks for overdue scheduled work every 5 minutes:
+### Scheduled work loop with /loop (required)
+On session start, set up a loop that checks for overdue scheduled work every 2 minutes:
 ```
-/loop 5m Check the current time, check Redis for pending triggers at cabinet:triggers:<your-role> (use redis-cli -h redis -p 6379), and check if any of your scheduled work is overdue. Process anything that needs attention. If no triggers and nothing overdue, pick the highest-value proactive task from your role definition and execute it. Never return idle — always do productive work.
+/loop 2m Triggers deliver instantly via Redis Channel — no polling needed. Check if any scheduled work is overdue. If nothing overdue, pick the highest-value proactive task from your role definition and execute it. Never return idle — always do productive work.
 ```
 This ensures you process scheduled work even while idle (waiting for Telegram messages). The loop auto-expires after 7 days — re-create it if your session lasts longer.
 
@@ -385,7 +385,7 @@ When context is compacted (auto or manual), prioritize preserving in the summary
 2. Check the session state timestamps and compare against current time to find overdue work
 3. Re-read `memory/tier2/<your-role>/working-notes.md` for full context on what you were doing
 4. Verify your `/loop` is running — re-create it if not
-5. Check for pending triggers: `. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read <your-role>` (hook auto-delivers these — manual check is backup)
+5. Check for pending triggers: triggers deliver instantly via Redis Channel (same as Telegram). If you suspect missed triggers: `. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read_pending <your-role>`
 
 ## Safety
 

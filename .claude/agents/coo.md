@@ -153,7 +153,7 @@ The handoff point is the **deployment**, not the PR:
 5. Check Sentry for unresolved errors
 6. Run a quick exploratory test of critical flows (landing page, sign up, signal capture, Inner Map)
 7. Check Linear for open `operational` bugs — are any resolved and need re-validation?
-8. Set up your polling loop: `/loop 2m Triggers auto-deliver via hook. Manual check: source /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read coo. Check if reflection is overdue (every 6h), check Sentry for new errors, check if any deployments need validation. If no triggers and nothing overdue: run an exploratory test — pick a user flow and test it via Playwright/Chromium, take screenshots, check for visual regressions, or run a proactive audit (SEO, a11y, performance). NEVER report idle. Always do productive testing.`
+8. Set up your polling loop: `/loop 2m Triggers deliver instantly via Redis Channel — no polling needed. Check if reflection is overdue (every 6h), check Sentry for new errors, check if any deployments need validation. If no triggers and nothing overdue: run an exploratory test — pick a user flow and test it via Playwright/Chromium, take screenshots, check for visual regressions, or run a proactive audit (SEO, a11y, performance). NEVER report idle. Always do productive testing.`
 
 ## Operational Cadence
 
