@@ -246,36 +246,8 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   fi
 fi
 
-# ============================================================
-# 12. PERIODIC SESSION STATE SNAPSHOT (every 200 tool calls)
-# ============================================================
-# Writes operational state to local file for compaction recovery.
-# Same format as pre-compact.sh but runs periodically as a safety net.
-if [ "$((CALL_COUNT % 200))" -eq "0" ] 2>/dev/null; then
-  STATE_DIR="/opt/founders-cabinet/memory/tier2/$OFFICER"
-  STATE_FILE="$STATE_DIR/.session-state.json"
-  mkdir -p "$STATE_DIR"
-
-  SNAP_SCHEDULES="{}"
-  while read -r skey; do
-    [ -z "$skey" ] && continue
-    stask="${skey##*:}"
-    sval=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$skey" 2>/dev/null)
-    SNAP_SCHEDULES=$(echo "$SNAP_SCHEDULES" | jq --arg k "$stask" --arg v "$sval" '. + {($k): $v}')
-  done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null)
-
-  TRIGGER_CT=$(trigger_count "$OFFICER" 2>/dev/null | grep -o '[0-9]*' || echo "0")
-
-  jq -n \
-    --arg officer "$OFFICER" \
-    --arg captured_at "$TIMESTAMP" \
-    --arg snapshot_type "periodic" \
-    --argjson tool_calls "$CALL_COUNT" \
-    --argjson pending_triggers "${TRIGGER_CT:-0}" \
-    --argjson schedules "$SNAP_SCHEDULES" \
-    '{officer: $officer, captured_at: $captured_at, snapshot_type: $snapshot_type, tool_calls: $tool_calls, pending_triggers: $pending_triggers, schedules: $schedules}' \
-    > "$STATE_FILE"
-fi
+# Section 12 removed — session snapshots now triggered by context window
+# percentage (50/75/90%) in stop-hook.sh instead of blind tool-call count.
 
 # Always exit 0 — post-hooks should never block
 exit 0

@@ -85,5 +85,79 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   fi
 fi
 
+# ============================================================
+# 3. CONTEXT-AWARE SESSION SNAPSHOTS
+# ============================================================
+# Snapshot when context window reaches 50%, 75%, 90% — smarter
+# than "every N tool calls" because it triggers exactly when
+# compaction is approaching.
+if [ -n "$LAST_ENTRY" ] && [ "$LAST_ENTRY" != "null" ]; then
+  # Total context = input_tokens + cache_write (input_tokens already includes cache_read)
+  CONTEXT_TOKENS=$(( INPUT_TOKENS + CACHE_WRITE ))
+  CONTEXT_WINDOW=${CONTEXT_WINDOW_SIZE:-1000000}  # 1M default (Opus 4.6 beta)
+
+  # Calculate percentage (integer math)
+  if [ "$CONTEXT_WINDOW" -gt 0 ] 2>/dev/null; then
+    CONTEXT_PCT=$(( CONTEXT_TOKENS * 100 / CONTEXT_WINDOW ))
+
+    # Determine threshold tier
+    THRESHOLD=""
+    if [ "$CONTEXT_PCT" -ge 90 ]; then
+      THRESHOLD="90"
+    elif [ "$CONTEXT_PCT" -ge 75 ]; then
+      THRESHOLD="75"
+    elif [ "$CONTEXT_PCT" -ge 50 ]; then
+      THRESHOLD="50"
+    fi
+
+    if [ -n "$THRESHOLD" ]; then
+      # Check if this threshold was already hit this session (avoid re-triggering)
+      LAST_HIT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:snapshot:threshold:$OFFICER" 2>/dev/null)
+      [[ "$LAST_HIT" =~ ^[0-9]+$ ]] || LAST_HIT=0
+
+      if [ "$LAST_HIT" -lt "$THRESHOLD" ] 2>/dev/null; then
+        # Mark threshold as hit
+        redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:snapshot:threshold:$OFFICER" "$THRESHOLD" EX 86400 > /dev/null 2>&1
+
+        # Write session state snapshot
+        STATE_DIR="/opt/founders-cabinet/memory/tier2/$OFFICER"
+        mkdir -p "$STATE_DIR"
+
+        SNAP_SCHEDULES="{}"
+        while read -r skey; do
+          [ -z "$skey" ] && continue
+          stask="${skey##*:}"
+          sval=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$skey" 2>/dev/null)
+          SNAP_SCHEDULES=$(echo "$SNAP_SCHEDULES" | jq --arg k "$stask" --arg v "$sval" '. + {($k): $v}')
+        done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" KEYS "cabinet:schedule:last-run:$OFFICER:*" 2>/dev/null)
+
+        jq -n \
+          --arg officer "$OFFICER" \
+          --arg captured_at "$TIMESTAMP" \
+          --arg snapshot_type "context_${THRESHOLD}pct" \
+          --argjson context_pct "$CONTEXT_PCT" \
+          --argjson context_tokens "$CONTEXT_TOKENS" \
+          --argjson schedules "$SNAP_SCHEDULES" \
+          '{officer: $officer, captured_at: $captured_at, snapshot_type: $snapshot_type, context_pct: $context_pct, context_tokens: $context_tokens, schedules: $schedules}' \
+          > "$STATE_DIR/.session-state.json"
+
+        # Store to PostgreSQL for cross-session persistence (best-effort, async)
+        [ -z "$NEON_CONNECTION_STRING" ] && source /opt/founders-cabinet/cabinet/.env 2>/dev/null
+        if [ -n "$NEON_CONNECTION_STRING" ]; then
+          WORKING_NOTES=""
+          [ -f "$STATE_DIR/working-notes.md" ] && WORKING_NOTES=$(tail -c 3000 "$STATE_DIR/working-notes.md")
+          psql "$NEON_CONNECTION_STRING" -q \
+            -v officer="$OFFICER" \
+            -v content="$WORKING_NOTES" \
+            -v state="$(cat "$STATE_DIR/.session-state.json")" \
+            2>/dev/null <<'SQLEOF' &
+INSERT INTO session_memories (officer, snapshot_type, content, structured_state) VALUES (:'officer', 'context_threshold', :'content', :'state'::jsonb);
+SQLEOF
+        fi
+      fi
+    fi
+  fi
+fi
+
 # Always exit 0
 exit 0
