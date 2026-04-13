@@ -302,14 +302,13 @@ Generates and sends voice messages when enabled in `config/product.yml`.
 ## Scheduled Work & Triggers
 
 ### How triggers work
-Cron jobs and Officer notifications push triggers to Redis Streams. The **post-tool-use hook auto-delivers** them after your next tool call — you see them inline in your conversation. Process them immediately, then ACK: `. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_ack <your-role> "$(cat /tmp/.trigger_ids_<your-role>)"`. Unacknowledged triggers persist until ACK'd (crash recovery built in).
+Cron jobs and Officer notifications push triggers to Redis Streams. The **Redis Trigger Channel** delivers them instantly into your session as `<channel>` tags — same as Telegram messages. No polling needed. Process them when they arrive, then ACK: `. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_ack <your-role> "$(cat /tmp/.trigger_ids_<your-role>)"`. Unacknowledged triggers persist until ACK'd (crash recovery built in).
 
-### Scheduled work loop with /loop (required)
-On session start, set up a loop that checks for overdue scheduled work every 2 minutes:
-```
-/loop 2m Triggers deliver instantly via Redis Channel — no polling needed. Check if any scheduled work is overdue. If nothing overdue, pick the highest-value proactive task from your role definition and execute it. Never return idle — always do productive work.
-```
-This ensures you process scheduled work even while idle (waiting for Telegram messages). The loop auto-expires after 7 days — re-create it if your session lasts longer.
+### Scheduled work
+Scheduled tasks (briefings, research sweeps, backlog refinement, retros) are triggered by system cron scripts that push to Redis Streams → delivered instantly via the Channel. **No permanent /loop is needed.** Officers receive scheduled work the moment it's due.
+
+### /loop for ad-hoc use only
+Use `/loop` for temporary, specific tasks — "remind me every 10 min," "watch this deploy for 30 min," "check PR status every 5 min." These are short-lived and purposeful. **Do NOT set up a permanent polling loop** — the Redis Channel handles all recurring delivery.
 
 ### No idling
 Officers must NEVER idle when work is available. If you have no assigned work:
@@ -378,13 +377,13 @@ When context is compacted (auto or manual), prioritize preserving in the summary
 **After compaction, you will receive a system message** from `post-compact.sh` containing:
 1. Your officer-specific skill files to re-read
 2. Your pre-compaction operational state (schedule timestamps, tool calls, trigger count)
-3. Instructions to check triggers and restart your `/loop`
+3. Instructions to check triggers and resume work
 
 **Immediately after compaction:**
 1. Read ALL files listed in the post-compact message — do not skip any
 2. Check the session state timestamps and compare against current time to find overdue work
 3. Re-read `memory/tier2/<your-role>/working-notes.md` for full context on what you were doing
-4. Verify your `/loop` is running — re-create it if not
+4. Pick up proactive work from your role definition immediately
 5. Check for pending triggers: triggers deliver instantly via Redis Channel (same as Telegram). If you suspect missed triggers: `. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read_pending <your-role>`
 
 ## Safety

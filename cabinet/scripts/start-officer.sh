@@ -64,24 +64,15 @@ tmux send-keys -t "cabinet:$WINDOW" \
   "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=$TELEGRAM_HQ_CHAT_ID && cd $OFFICER_DIR && $CLAUDE_CMD" \
   Enter
 
-# Wait for Claude Code to initialize, then send boot prompt + polling loop
+# Wait for Claude Code to initialize, then send boot prompt
 (
   sleep 20  # Give Claude Code time to load
 
   # Send boot prompt — tells the officer to initialize and announce
   tmux send-keys -t "cabinet:$WINDOW" "You are $OFFICER. Read your role definition at .claude/agents/$OFFICER.md and your session start checklist. Read your foundation skills in memory/skills/. Read your tier 2 notes in memory/tier2/$OFFICER/. Then announce yourself on the warroom: bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh '<b>$OFFICER online.</b> Session started. Checking for pending work.' — then check for pending triggers and overdue work immediately." Enter
 
-  sleep 30  # Give time to boot and announce
-
-  # Read loop prompt from file, fall back to generic default
-  LOOP_FILE="$CABINET_ROOT/cabinet/loop-prompts/${OFFICER}.txt"
-  if [ -f "$LOOP_FILE" ]; then
-    LOOP_PROMPT=$(cat "$LOOP_FILE")
-  else
-    LOOP_PROMPT="Triggers deliver instantly via Redis Channel — no polling needed. Check if reflection is overdue (every 6h). Process anything that needs attention."
-  fi
-
-  tmux send-keys -t "cabinet:$WINDOW" "/loop 2m $LOOP_PROMPT" Enter
+  # No permanent /loop needed — Redis Trigger Channel delivers all triggers
+  # and scheduled work instantly. /loop is available for ad-hoc use only.
 ) &
 
 echo "Started $OFFICER in cabinet:$WINDOW (has_session=$HAS_SESSION, loop in ~20s)"

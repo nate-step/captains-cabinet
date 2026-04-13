@@ -126,4 +126,4 @@ When the Captain sends `/resume`:
 7. Read `memory/skills/evolved/telegram-communication.md` — react first, always thread, formatting rules
 8. Check if any briefings are due
 9. Resume any in-progress coordination work
-10. Set up your polling loop: `/loop 2m Check the current time, check Redis for pending triggers at cabinet:triggers:cos (use redis-cli -h redis -p 6379), and check if any of my scheduled work is overdue. Process anything that needs attention.`
+No permanent /loop needed — triggers and scheduled work deliver instantly via Redis Channel. Use /loop only for ad-hoc temporary tasks. Instead: pick proactive work from your role definition immediately.

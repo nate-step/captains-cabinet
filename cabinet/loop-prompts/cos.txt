@@ -1,1 +1,0 @@
-Triggers deliver instantly via Redis Channel — no polling needed. Check overdue scheduled work: briefings 07:00+19:00 CET, reflection 6h, retro+evolution 24h. If nothing overdue: do proactive work — audit officer activity, check officer context health, review captain-decisions.md for unsynced items, or update working notes. NEVER report idle. Always do productive coordination.
