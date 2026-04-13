@@ -329,15 +329,40 @@ if command -v redis-cli &>/dev/null; then
   log "Set cabinet:officer:expected:${OFFICER} = active in Redis"
 fi
 
-# === Step 9: Start the officer ===
+# === Step 9: Reassemble config (voice changes need regeneration) ===
+if [ -f "$CABINET_ROOT/cabinet/scripts/assemble-config.sh" ]; then
+  bash "$CABINET_ROOT/cabinet/scripts/assemble-config.sh" > /dev/null 2>&1
+  log "Reassembled product.yml from platform + project config"
+fi
+
+# === Step 10: Start the officer ===
 if [ "$DO_START" = true ]; then
   log "Starting officer session..."
   bash "$CABINET_ROOT/cabinet/scripts/start-officer.sh" "$OFFICER"
+
+  # Boot verification — wait for heartbeat
+  log "Verifying boot (waiting up to 30s for heartbeat)..."
+  for i in $(seq 1 6); do
+    sleep 5
+    HB=$(redis-cli -h redis -p 6379 GET "cabinet:heartbeat:$OFFICER" 2>/dev/null)
+    if [ -n "$HB" ] && [ "$HB" != "(nil)" ]; then
+      log "Boot verified — heartbeat detected"
+      break
+    fi
+    [ "$i" -eq 6 ] && log "WARNING: No heartbeat after 30s — officer may still be loading"
+  done
 else
   log "SKIP: --no-start flag set, not starting officer session"
 fi
 
-# === Step 10: Announce ===
+# === Step 11: Notify CoS ===
+source "$CABINET_ROOT/cabinet/scripts/lib/triggers.sh" 2>/dev/null
+# Notify CoS (unless this IS CoS being created)
+if [ "$OFFICER" != "cos" ]; then
+  OFFICER_NAME=supervisor trigger_send cos "NEW OFFICER CREATED: ${OFFICER_UPPER} — ${TITLE}. Domain: ${DOMAIN}. Review their role definition and capabilities."
+fi
+
+# === Step 12: Announce ===
 if [ "$DO_START" = true ] && [ -n "${TELEGRAM_HQ_CHAT_ID:-}" ]; then
   VOICE_STATUS="disabled"
   [ -n "$VOICE_ID" ] && VOICE_STATUS="enabled"

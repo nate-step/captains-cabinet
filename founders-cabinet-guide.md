@@ -3,7 +3,7 @@
 *A framework for building autonomous AI organizations that ship, learn, and evolve.*
 
 **By Nathaniel Refslund**
-**Version 1.1 - March 2026**
+**Version 1.2 - April 2026**
 
 ---
 
@@ -67,6 +67,8 @@ A Founder's Cabinet is built on five non-negotiable pillars. Remove any one and 
 
 Every Officer in the Cabinet has a clearly defined domain of ownership - what it is responsible for, what it produces, and what it can decide autonomously. These roles are defined as living documents, not code. They can be created, modified, merged, split, or retired at any time by the Captain.
 
+**Officers have two employment modes.** A **fulltime** Officer maintains a persistent session and is always available - for coordination, implementation, and real-time response. A **consultant** Officer activates on demand - triggered by a schedule, a peer's request, or a Captain message - does specific work, and goes dormant until needed again. Both types have full identity: role definition, persistent memory, communication channels, and specialized tools. The difference is session lifecycle, not capability. A research Officer that runs periodic sweeps may be a consultant. A coordination Officer that must respond instantly is fulltime. The Captain decides which mode fits each role.
+
 **Roles define ownership, not workflows.** How Officers interact with each other - who feeds whom, who requests what - emerges organically and evolves over time. The Cabinet does not prescribe communication patterns between roles. It trusts that Officers with clear ownership and shared interfaces will find effective ways to collaborate.
 
 **Organic does not mean passive.** Officers are responsible for proactively pushing their outputs to whichever peers need to act on them. Shared interfaces are for artifacts - the durable outputs of work. But an artifact that sits unread creates no value. When an Officer completes work that another Officer should evaluate, build on, or respond to, the producing Officer must notify them directly. Which Officers to notify, and why, is a judgment call that belongs to the producing Officer - not a prescribed routing rule.
@@ -83,6 +85,8 @@ A role definition must not include:
 - Assumptions about which other Officers exist
 
 The org chart is a configuration file, not an org chart. The Captain can restructure the entire Cabinet in a single message.
+
+**Officer lifecycle.** Officers are hired, suspended, and re-hired - not deleted. Hiring scaffolds all required artifacts: role definition, memory space, communication channel, capabilities. Suspension produces a structured exit record documenting why the role was suspended, what it was working on, and recommendations for its successor or re-hire. All state is archived, not destroyed. A suspended Officer can be re-hired with full institutional memory intact. This makes organizational experimentation cheap - try a new role, suspend it if it does not work, re-hire it if you need it later.
 
 ### 2. The Founder as Captain
 
@@ -139,6 +143,8 @@ Each Officer periodically reviews their own accumulated experience records, iden
 
 **The Evolution Loop (batch-driven)**
 A heavier analysis cycle where the Cabinet evaluates its own performance against defined metrics, runs validation tests against proposed changes, and promotes improvements that pass. Changes that degrade performance are automatically reverted. The Cabinet can propose organizational restructuring - merging Officers, creating new specialists, retiring unused roles - but the Captain approves structural changes. Evolution runs after each Reflection cycle has produced enough data to warrant analysis. It can always decide not to promote anything if no improvements qualify.
+
+**Organizational health auditing.** Beyond individual reflection, the Cabinet periodically audits itself as an organization. Per-Officer metrics — output volume, responsiveness, idle time, context consumption — feed into a cabinet-wide analysis: workload distribution, capability coverage gaps, redundancies, and whether each Officer's actual work matches their role definition. The correction frequency from Captain feedback (not positive reinforcement, which creates bias) serves as a role fitness signal visible only to the coordinating Officer. Rising corrections indicate drift; falling corrections indicate calibration.
 
 **The iron rule of self-improvement: every change is an experiment with a rollback path.** The Cabinet modifies its own instructions on a branch, validates against a set of known-good scenarios, and only promotes changes that demonstrably improve outcomes. Self-improvement without validation is drift, not improvement.
 
@@ -214,7 +220,7 @@ A Cabinet operates continuously. The cadence of work is not measured in sprints 
 
 The most common failure modes:
 
-**Context rot.** Long-running sessions accumulate noise until agents make assumptions without checking. Mitigated by breaking work into atomic tasks with fresh context, aggressive memory consolidation, and independent verification.
+**Context rot.** Long-running sessions accumulate noise until agents make assumptions without checking. Mitigated by breaking work into atomic tasks with fresh context, aggressive memory consolidation, independent verification, and **proactive state preservation** — the Cabinet must ensure that when an agent's context is compressed, its operational awareness survives. An agent that forgets what it was working on after compression is functionally restarting from scratch.
 
 **Memory corruption.** Multiple agents writing to shared files simultaneously. Mitigated by atomic writes, file locking on coordination artifacts, and clear ownership of shared interfaces.
 
@@ -222,7 +228,9 @@ The most common failure modes:
 
 **Cost runaway.** Parallel agent sessions consume resources multiplicatively. Mitigated by per-session and per-day spending limits enforced at the infrastructure level, not by agent self-restraint.
 
-**Communication isolation.** Officers produce outputs but do not notify the peers who need to act on them. Work accumulates in shared interfaces but never reaches the right people, and the pipeline stalls despite every Officer being individually productive. Mitigated by making proactive notification an explicit responsibility of every Officer - not a prescribed workflow, but a cultural norm embedded in role definitions.
+**Communication isolation.** Officers produce outputs but do not notify the peers who need to act on them. Work accumulates in shared interfaces but never reaches the right people, and the pipeline stalls despite every Officer being individually productive. Mitigated by making proactive notification an explicit responsibility of every Officer and by **automatic review routing** — when an Officer produces an artifact, the system notifies whichever peer is responsible for reviewing that type of artifact, based on declared capabilities rather than hardcoded names.
+
+**Idle overhead.** Officers that wait for work by repeatedly checking for it consume resources proportional to their checking frequency, not their actual workload. The Cabinet should deliver work to Officers, not require Officers to discover it. Event-driven delivery — where notifications arrive the moment work is available — eliminates the cost of checking when there is nothing to find.
 
 **Safety erosion.** An improvement loop weakens safety boundaries to remove friction. Mitigated by making safety boundaries physically unmodifiable by any agent, including the improvement agent.
 
