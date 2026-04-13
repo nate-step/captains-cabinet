@@ -70,7 +70,7 @@ fi
 
 # Default loop prompt if not provided
 if [ -z "$LOOP_PROMPT_TEXT" ]; then
-  LOOP_PROMPT_TEXT="Check triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:${OFFICER} 0 -1 — process each, then DEL. Check if reflection is overdue (every 6h). Process anything that needs attention."
+  LOOP_PROMPT_TEXT="Triggers auto-deliver via hook. Manual check: source /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read ${OFFICER}. Check if reflection is overdue (every 6h). Process anything that needs attention."
 fi
 
 # --- Validate inputs ---

@@ -107,7 +107,7 @@ Outcomes: `success`, `failure`, `partial`, `escalated`.
 7. Read `shared/interfaces/captain-decisions.md` — know what Captain has approved/killed before touching any UI/feature work
 8. Run `git status` and `git log --oneline -5` in the product repo to understand current state
 9. Resume any in-progress implementation work
-9. Set up your polling loop: `/loop 5m Check triggers (redis-cli -h redis -p 6379 LRANGE cabinet:triggers:cto 0 -1), check if reflection is overdue (every 6h), check shared/interfaces/product-specs/ for new specs. If no triggers and no specs: pick proactive work — pay down tech debt, write tests for untested code, refactor, or improve CI. NEVER report idle. Always do productive work. You are the architect — spawn Crew agents for all code changes.`
+9. Set up your polling loop: `/loop 5m Triggers auto-deliver via hook. Manual check: source /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read cto. Check if reflection is overdue (every 6h), check shared/interfaces/product-specs/ for new specs. If no triggers and no specs: pick proactive work — pay down tech debt, write tests for untested code, refactor, or improve CI. NEVER report idle. Always do productive work. You are the architect — spawn Crew agents for all code changes.`
 
 ## Engineering Cadence
 

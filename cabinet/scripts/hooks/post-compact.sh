@@ -72,7 +72,7 @@ fi
 echo "Read the files above now before doing anything else. Do not skip this step."
 echo ""
 echo "THEN:"
-echo "1. Check Redis for pending triggers: redis-cli -h redis -p 6379 LRANGE cabinet:triggers:${OFFICER} 0 -1"
+echo "1. Check for pending triggers (hook auto-delivers, but manual: source /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read ${OFFICER})"
 echo "2. Re-create your /loop (safety net — will skip if already running):"
 
 # Read the officer's loop prompt from file
