@@ -92,8 +92,8 @@ fi
 # than "every N tool calls" because it triggers exactly when
 # compaction is approaching.
 if [ -n "$LAST_ENTRY" ] && [ "$LAST_ENTRY" != "null" ]; then
-  # Total context = input_tokens + cache_write (input_tokens already includes cache_read)
-  CONTEXT_TOKENS=$(( INPUT_TOKENS + CACHE_WRITE ))
+  # Total context = input + cache_read + cache_write (input_tokens is only the uncached portion)
+  CONTEXT_TOKENS=$(( INPUT_TOKENS + CACHE_READ + CACHE_WRITE ))
   CONTEXT_WINDOW=${CONTEXT_WINDOW_SIZE:-1000000}  # 1M default (Opus 4.6 beta)
 
   # Calculate percentage (integer math)
