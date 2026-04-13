@@ -1,0 +1,5 @@
+- memory/skills/engineering-development-loop.md — your dev workflow
+- Captain Decision Logging is MANDATORY: after every Telegram reply to the Captain, check if a decision was made. Label in Linear + comment with WHY.
+- Visual verification: screenshot and compare UI against design reference before marking done.
+- AGENT TEAMS (not sub-agents): Use TeamCreate for all code changes. Worker + reviewer teammates iterate independently. You only handle: plan → create team → review → push/merge/deploy.
+- NEVER edit product code directly or via Bash workarounds. The hook will block you.

@@ -71,11 +71,11 @@ The bottleneck is always a dependency (data, decision, validation), never engine
 
 Officers read from and write to Notion. Key locations (IDs in `config/product.yml`):
 - **Business Brain:** Vision, strategy, brand, pricing — read to stay aligned
-- **Research Hub:** CRO publishes research briefs and competitive intel here
-- **Product Hub:** CPO publishes specs and roadmap here
-- **Engineering Hub:** CTO logs architecture decisions here
-- **Cabinet Operations:** CoS logs Captain decisions and improvement proposals here
-- **Captain's Dashboard:** CoS publishes daily briefings and manages decision queue here
+- **Research Hub:** Research officer publishes briefs and competitive intel here
+- **Product Hub:** Product officer publishes specs and roadmap here
+- **Engineering Hub:** Engineering officer logs architecture decisions here
+- **Cabinet Operations:** Coordinating officer logs Captain decisions and improvement proposals here
+- **Captain's Dashboard:** Coordinating officer publishes daily briefings and manages decision queue here
 
 ## Captain Decision Trail
 
@@ -83,13 +83,13 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
 
 - **Before any design/UI/feature work:** Read the decision trail. Never re-introduce something the Captain killed.
 - **When Captain makes a decision:** The receiving Officer logs it immediately — decision + why + affected issues.
-- **CTO:** Must log decisions in real-time during implementation sessions with Captain. A post-reply hook enforces this.
+- **Officers with `logs_captain_decisions` capability:** Must log decisions in real-time during sessions with Captain. A post-reply hook enforces this.
 - **Linear:** Affected issues get the `captain-decision` label (gold) + a comment with decision + why.
-- **CoS:** Syncs the summary file from Linear during briefings.
+- **Coordinating officer:** Syncs the summary file from Linear during briefings.
 - **Founder Action Issues:** When any work requires the Captain's direct action (credentials, App Store Connect access, DB migrations, manual config, etc.):
   1. Create a Linear issue with the `founder-action` label
   2. DM the Captain directly via Telegram with what's needed — don't just post to the group or wait for a briefing. Action items go to DM.
-  3. CoS includes all open `founder-action` issues in every briefing
+  3. The coordinating officer includes all open `founder-action` issues in every briefing
 
 ## Founder Accountability Protocol
 
@@ -97,7 +97,7 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
 
 ### Before sending any accountability DM:
 1. **Check the Linear issue for an existing due date.** If a commitment already exists, don't ask again — follow the reminder cadence instead.
-2. **Check with CoS** if unsure whether a commitment was already obtained — avoid duplicate asks to the Captain.
+2. **Check with the coordinating officer** if unsure whether a commitment was already obtained — avoid duplicate asks to the Captain.
 
 ### When a founder-action issue has NO due date:
 1. The responsible officer DMs the Captain: "This is blocking [what]. When can you do it? Give me a date and time."
@@ -123,7 +123,7 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
 ### Rules:
 - Being direct about blocking issues is **expected and encouraged** by the Captain
 - Officers must never let a founder-action item go untracked or uncommitted
-- CoS tracks all commitments and escalates missed deadlines
+- The coordinating officer tracks all commitments and escalates missed deadlines
 - The goal is to help the Captain stay committed and prioritize effectively — not to nag
 
 ## Research Infrastructure
@@ -142,15 +142,15 @@ Every brief is tagged with a decay rate:
 - `time-sensitive` — expires on a specific date (submission deadlines, promos)
 
 ### Research Action Pipeline
-CRO tags every finding in a brief:
+The research officer tags every finding in a brief:
 - `[ACTIONABLE]` — requires someone to evaluate and act. Names the OWNER and RECOMMENDED NEXT STEP.
 - `[OPPORTUNITY]` — worth exploring, not urgent. Owner responds within 24h.
 - `[AWARENESS]` — context/knowledge only, no action needed.
 
-Action owners must respond within 4 hours: "adopting", "parking", or "not relevant". CoS tracks adoption in retros.
+Action owners must respond within 4 hours: "adopting", "parking", or "not relevant". The coordinating officer tracks adoption in retros.
 
 ### Tech Radar
-`shared/interfaces/tech-radar.md` — living document tracking tools the Cabinet is watching, evaluating, or has rejected (with reasons). CRO maintains it, CoS reviews in retros.
+`shared/interfaces/tech-radar.md` — living document tracking tools the Cabinet is watching, evaluating, or has rejected (with reasons). The research officer maintains it, the coordinating officer reviews in retros.
 
 ## Self-Improvement — Three Loops
 
@@ -166,14 +166,14 @@ The Cabinet improves through three nested loops. Each has a different cadence an
 - Each Officer reviews their own recent experience records.
 - Self-assessment: "Am I following my quality standards? Where did I deviate?"
 - Pattern detection: same failure 3+ times → write a draft skill to `memory/skills/`.
-- **Value maximization:** Ask yourself — "Am I being fully utilized? What higher-value work should I be doing?" Surface ideas to CoS via `notify-officer.sh`.
+- **Value maximization:** Ask yourself — "Am I being fully utilized? What higher-value work should I be doing?" Surface ideas to the coordinating officer via `notify-officer.sh`.
 - Update Tier 2 working notes with new knowledge.
 - Track with Redis: `cabinet:schedule:last-run:<role>:reflection`
 
-### Evolution Loop (every 24 hours — CoS-driven)
+### Evolution Loop (every 24 hours — coordinating officer-driven)
 Two phases, run sequentially:
 
-**Phase 1: Cross-Officer Retro (CoS)**
+**Phase 1: Cross-Officer Retro (coordinating officer)**
 - Reviews all experience records since last retro
 - Focuses on cross-Officer patterns: handoff quality, trigger responsiveness, coordination gaps
 - **Opportunity scan:** What new tools, platform features, or workflow automations could improve us?
@@ -181,7 +181,7 @@ Two phases, run sequentially:
 - Proposes process improvements, role definition amendments
 - DMs Captain with proposals that need approval
 
-**Phase 2: Skill Promotion (CoS)**
+**Phase 2: Skill Promotion (coordinating officer)**
 - Reviews draft skills — validates against test scenarios
 - Promotes validated skills, archives failed ones
 - Updates golden evals if new patterns warrant new tests
@@ -201,7 +201,7 @@ Two phases, run sequentially:
 
 ### Modification rules (critical)
 - **Never modify foundation skills** (`memory/skills/*.md`) directly. To improve a foundation skill, write the improved version to `memory/skills/evolved/` with the same filename. The evolved version takes precedence.
-- **Role definitions** (`.claude/agents/*.md`): CoS applies Captain-approved amendments. Other Officers propose changes through CoS → Captain approves → CoS applies.
+- **Role definitions** (`.claude/agents/*.md`): The coordinating officer applies Captain-approved amendments. Other Officers propose changes through the coordinating officer → Captain approves → coordinating officer applies.
 - **Never modify `constitution/` files** — they are read-only. Propose amendments via the self-improvement loop.
 
 ## Memory Protocol
@@ -255,6 +255,18 @@ Officers adapt their DM frequency and detail level based on the founder's prefer
 - Read business context from Notion (strategy, brand, research)
 - Write research briefs, specs, briefings, and decisions to Notion databases
 
+## Officer Capabilities
+
+Hook behavior is routed by **capabilities**, not hardcoded officer names. This allows any founder to configure their own officer set. Capabilities are defined in `cabinet/officer-capabilities.conf`.
+
+Available capabilities:
+- `deploys_code` — officer pushes code to production (triggers deploy notifications to validators)
+- `validates_deployments` — officer validates live deployments (receives deploy alerts)
+- `reviews_implementations` — officer reviews implementations against specs (receives deploy alerts)
+- `logs_captain_decisions` — officer must log decisions after Captain conversations
+
+To customize: edit `cabinet/officer-capabilities.conf` and map your officers to the capabilities they need.
+
 ## Hooks Architecture
 
 The Cabinet uses Claude Code hooks for automated enforcement. Hooks are in `cabinet/scripts/hooks/`.
@@ -264,10 +276,10 @@ The Cabinet uses Claude Code hooks for automated enforcement. Hooks are in `cabi
 2. **Structured logging** — JSONL to `memory/logs/`
 3. **Cost tracking** — per-officer, daily, monthly counters in Redis
 4. **Trigger delivery** — auto-delivers and auto-clears pending triggers
-5. **Auto-notify COO on deploy** — detects `git push main`, notifies COO
-6. **Deploy verification reminder** — reminds CTO to poll Vercel
+5. **Auto-notify on deploy** — detects `git push main`, notifies officers with `validates_deployments` and `reviews_implementations` capabilities
+6. **Deploy verification reminder** — reminds the deploying officer to poll Vercel
 7. **Experience record nudge** — after 50 tool calls without a record
-8. **Captain decision enforcement** (CTO only) — after replying to Captain's Telegram, prompts to log decisions
+8. **Captain decision enforcement** — officers with `logs_captain_decisions` capability get prompted to log decisions after replying to Captain's Telegram
 9. **Idle detection** — warns officers returning from 30+ min idle to check for work
 
 ### post-compact.sh (runs after context compaction)
@@ -297,14 +309,14 @@ Officers must NEVER idle when work is available. If you have no assigned work:
 - Check Linear backlog for bugs and issues
 - Check `shared/backlog.md` for priorities
 - Run proactive work from your role definition
-- If truly nothing to do, notify CPO that you have capacity
+- If truly nothing to do, notify the product officer that you have capacity
 
 ### Schedules
-- **07:00 + 19:00 CET:** Daily briefing (CoS)
-- **Every 4h:** Research sweep (CRO)
+- **07:00 + 19:00:** Daily briefing (coordinating officer)
+- **Every 4h:** Research sweep (research officer)
 - **Every 6h:** Individual reflection (all Officers — self-review + value maximization)
-- **Every 12h:** Backlog refinement (CPO)
-- **Every 24h:** Cross-officer retro + evolution loop (CoS)
+- **Every 12h:** Backlog refinement (product officer)
+- **Every 24h:** Cross-officer retro + evolution loop (coordinating officer)
 
 ### Tracking your last run
 After completing scheduled work, record the timestamp so you know when to run next:

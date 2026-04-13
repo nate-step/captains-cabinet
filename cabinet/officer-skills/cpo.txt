@@ -1,0 +1,4 @@
+- memory/skills/spec-quality-gate.md — spec quality requirements
+- Pipeline Ownership: the engineering officer must NEVER be idle. Feed them work continuously.
+- Visual verification: screenshot live result when reviewing implementations.
+- Run your proactive responsibilities continuously — don't wait to be asked.

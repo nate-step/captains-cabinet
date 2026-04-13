@@ -24,7 +24,10 @@ get_officers() {
 send_restart_alert() {
   local officer="$1"
   local reason="$2"
-  local token="${TELEGRAM_COS_TOKEN:-}"
+  # Use primary officer's token for alerts (configurable, defaults to CoS)
+  local primary="${PRIMARY_OFFICER:-cos}"
+  local token_var="TELEGRAM_${primary^^}_TOKEN"
+  local token="${!token_var:-}"
   local captain="${CAPTAIN_TELEGRAM_ID:-}"
   [ -z "$token" ] || [ -z "$captain" ] && return
 

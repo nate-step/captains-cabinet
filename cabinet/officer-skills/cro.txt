@@ -1,0 +1,5 @@
+- memory/skills/research-quality-gate.md — research brief quality
+- Check your research streams cadence table in your role definition.
+- Claude Code daily research is mandatory once per day.
+- Use search-research.sh to check prior research before each sweep.
+- Surface all findings to the Captain per communication.research_visibility in platform.yml.

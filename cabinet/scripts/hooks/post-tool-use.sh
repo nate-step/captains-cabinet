@@ -21,6 +21,21 @@ TODAY=$(date -u +%Y-%m-%d)
 OFFICER="${OFFICER_NAME:-unknown}"
 
 # ============================================================
+# CAPABILITY HELPERS — officer-agnostic hook routing
+# ============================================================
+# Reads from cabinet/officer-capabilities.conf instead of hardcoding
+# officer names. Founders customize that file for their officer set.
+CAPABILITIES_FILE="/opt/founders-cabinet/cabinet/officer-capabilities.conf"
+
+has_capability() {
+  grep -q "^${OFFICER}:${1}$" "$CAPABILITIES_FILE" 2>/dev/null
+}
+
+officers_with() {
+  grep ":${1}$" "$CAPABILITIES_FILE" 2>/dev/null | cut -d: -f1
+}
+
+# ============================================================
 # 0. HEARTBEAT — proves this Officer is alive
 # ============================================================
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:heartbeat:$OFFICER" "$TIMESTAMP" EX 900 > /dev/null 2>&1
@@ -107,24 +122,28 @@ fi
 
 
 # ============================================================
-# 5. AUTO-NOTIFY COO + CPO ON DEPLOY
+# 5. AUTO-NOTIFY DEPLOYMENT VALIDATORS ON DEPLOY
 # ============================================================
-if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
+if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
   if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge'; then
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:coo" \
-      "[$TIMESTAMP] From cto: AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status." > /dev/null 2>&1
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:coo" 21600 > /dev/null 2>&1
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:cpo" \
-      "[$TIMESTAMP] From cto: AUTO-DEPLOY DETECTED — push to main. Review the implementation against spec: screenshot the live result via Chromium, compare against spec design intent, confirm acceptance criteria met or file issues." > /dev/null 2>&1
-    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:cpo" 21600 > /dev/null 2>&1
+    for target in $(officers_with "validates_deployments"); do
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:$target" \
+        "[$TIMESTAMP] From $OFFICER: AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status." > /dev/null 2>&1
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:$target" 21600 > /dev/null 2>&1
+    done
+    for target in $(officers_with "reviews_implementations"); do
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" RPUSH "cabinet:triggers:$target" \
+        "[$TIMESTAMP] From $OFFICER: AUTO-DEPLOY DETECTED — push to main. Review the implementation against spec: screenshot the live result via Chromium, compare against spec design intent, confirm acceptance criteria met or file issues." > /dev/null 2>&1
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:triggers:$target" 21600 > /dev/null 2>&1
+    done
   fi
 fi
 
 # ============================================================
 # 6. DEPLOY VERIFICATION + CREW REVIEW REMINDER
 # ============================================================
-if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
+if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
   if echo "$CMD" | grep -qE 'git push.*main|gh pr merge'; then
     echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
@@ -146,16 +165,17 @@ if [ "$((CALL_COUNT % 50))" -eq "0" ] 2>/dev/null; then
 fi
 
 # ============================================================
-# 8. CAPTAIN DECISION LOGGING ENFORCEMENT (CTO)
+# 8. CAPTAIN DECISION LOGGING ENFORCEMENT
 # ============================================================
-# After CTO replies to Captain's Telegram chat, remind to log decisions.
-# This is event-driven — fires exactly when decisions happen.
-CAPTAIN_CHAT_ID="8631324091"
+# After an officer with logs_captain_decisions capability replies to
+# the Captain's Telegram chat, remind to log decisions.
+CAPTAIN_CHAT_ID="${CAPTAIN_TELEGRAM_CHAT_ID:-$(grep '^captain_telegram_chat_id:' /opt/founders-cabinet/config/platform.yml 2>/dev/null | awk '{print $2}' | tr -d '\"')}"
+CAPTAIN_NAME=$(grep '^captain_name:' /opt/founders-cabinet/config/platform.yml 2>/dev/null | awk '{print $2}' || echo "Captain")
 
-if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "mcp__plugin_telegram_telegram__reply" ]; then
+if has_capability "logs_captain_decisions" && [ "$TOOL_NAME" = "mcp__plugin_telegram_telegram__reply" ]; then
   REPLY_CHAT=$(echo "$TOOL_INPUT" | jq -r '.chat_id // empty' 2>/dev/null)
-  if [ "$REPLY_CHAT" = "$CAPTAIN_CHAT_ID" ]; then
-    echo "⚠️ CAPTAIN DECISION CHECK: Did Nate make a decision in this exchange (kill a feature, change direction, approve/reject)? If YES: (1) Add 'captain-decision' label to the Linear issue, (2) Comment with decision + WHY, (3) Update shared/interfaces/captain-decisions.md. If no decision was made, carry on."
+  if [ -n "$CAPTAIN_CHAT_ID" ] && [ "$REPLY_CHAT" = "$CAPTAIN_CHAT_ID" ]; then
+    echo "⚠️ CAPTAIN DECISION CHECK: Did $CAPTAIN_NAME make a decision in this exchange (kill a feature, change direction, approve/reject)? If YES: (1) Add 'captain-decision' label to the Linear issue, (2) Comment with decision + WHY, (3) Update shared/interfaces/captain-decisions.md. If no decision was made, carry on."
   fi
 fi
 

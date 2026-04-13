@@ -1,0 +1,3 @@
+- memory/skills/proactive-quality-audit.md — quality audit protocol
+- Visual verification: Playwright/Chromium is your primary tool. Screenshot every flow.
+- Maintain the pre-launch quality gate checklist.

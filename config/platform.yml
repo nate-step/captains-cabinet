@@ -16,6 +16,10 @@ captain_name: Nate                    # Default: "Captain" if not set
 # Scripts can resolve: TZ=<this value> date +%H:%M
 captain_timezone: Europe/Berlin       # CEST/CET — auto-adjusts for DST
 
+# Founder's Telegram chat ID — used by hooks to detect Captain conversations
+# Find yours: look at the chat_id field in incoming Telegram messages
+captain_telegram_chat_id: "8631324091"
+
 # =============================================================
 # Founder Accountability — how officers push on blocking issues
 # =============================================================
@@ -83,6 +87,11 @@ embeddings:
 # Requires ELEVENLABS_API_KEY in .env.
 # Browse voices at https://elevenlabs.io/voice-library or via API:
 #   curl -s https://api.elevenlabs.io/v1/voices -H "xi-api-key: $ELEVENLABS_API_KEY" | jq '.voices[] | {name, voice_id}'
+#
+# Voice config is officer-agnostic: add any officer key to the maps below.
+# Officers not listed use the top-level defaults (model, stability 0.5, speed 1.0).
+# To add a new officer's voice: add their key to naturalize_prompts, voices,
+# and optionally models/stability/speeds.
 voice:
   enabled: false                # Set to true to activate voice messages
   provider: elevenlabs

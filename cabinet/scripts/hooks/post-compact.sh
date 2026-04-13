@@ -20,36 +20,14 @@ ALL OFFICERS — read these immediately:
 OFFICER-SPECIFIC — also read:
 REFRESH
 
-case "$OFFICER" in
-  cos)
-    echo "- You are CoS. Check scheduled work: briefings (07:00 + 19:00 CET), reflection (every 6h), retro (every 24h at 03:00 UTC)."
-    echo "- Use 'Nate' not 'Captain' in all communications."
-    ;;
-  cto)
-    echo "- memory/skills/engineering-development-loop.md — your dev workflow"
-    echo "- Captain Decision Logging is MANDATORY: after every Telegram reply to Nate, check if a decision was made. Label in Linear + comment with WHY."
-    echo "- Visual verification: screenshot and compare UI against design reference before marking done."
-    echo "- AGENT TEAMS (not sub-agents): Use TeamCreate for all code changes. Worker + reviewer teammates iterate independently. You only handle: plan → create team → review → push/merge/deploy."
-    echo "- NEVER edit product code directly or via Bash workarounds. The hook will block you."
-    ;;
-  cpo)
-    echo "- memory/skills/spec-quality-gate.md — spec quality requirements"
-    echo "- Pipeline Ownership: CTO must NEVER be idle. Feed them work continuously."
-    echo "- Visual verification: screenshot live result when reviewing CTO implementations."
-    echo "- 8 proactive responsibilities — run them continuously, don't wait to be asked."
-    ;;
-  cro)
-    echo "- memory/skills/research-quality-gate.md — research brief quality"
-    echo "- You have 10 research streams with a cadence table in your role definition."
-    echo "- Claude Code daily research is mandatory once per day."
-    echo "- Use search-research.sh to check prior research before each sweep."
-    ;;
-  coo)
-    echo "- memory/skills/proactive-quality-audit.md — quality audit protocol"
-    echo "- Visual verification: Playwright/Chromium is your primary tool. Screenshot every flow."
-    echo "- Pre-launch quality gate document — maintain the go/no-go checklist."
-    ;;
-esac
+# Load officer-specific skill refresh from per-officer file (officer-agnostic)
+SKILLS_FILE="/opt/founders-cabinet/cabinet/officer-skills/${OFFICER}.txt"
+if [ -f "$SKILLS_FILE" ]; then
+  cat "$SKILLS_FILE"
+else
+  echo "- No officer-specific skills file found at ${SKILLS_FILE}."
+  echo "- Re-read your role definition at .claude/agents/${OFFICER}.md for your specific responsibilities."
+fi
 
 echo ""
 echo "Read these files now before doing anything else. Do not skip this step."
