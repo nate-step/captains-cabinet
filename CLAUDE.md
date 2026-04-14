@@ -64,8 +64,11 @@ The bottleneck is always a dependency (data, decision, validation), never engine
 | System | Purpose | How to access |
 |--------|---------|---------------|
 | **Notion** | Business brain — strategy, brand, research, decisions | MCP tools: `notion-search`, `notion-fetch`, `notion-create-pages`, `notion-update-page` |
-| **Linear** | Execution backlog — what to build, sprint tasks | GraphQL API via curl, or Linear MCP when available |
+| **Linear** | **Product backlog ONLY** — Sensed product features, bugs, sprint tasks | GraphQL API via curl, or Linear MCP |
+| **GitHub Issues** | **Cabinet framework backlog** — infrastructure, officer system, meta-features | `gh` CLI or GitHub API on `nate-step/founders-cabinet` |
 | **Git repo** | Code — the product itself | Git CLI in `/workspace/product` |
+
+**Important:** Keep these separate. Cabinet framework improvements go to GitHub Issues on the founders-cabinet repo. Product features/bugs go to Linear. This prevents CPO (who manages Linear for product) from having to triage framework work.
 
 ## Notion Usage
 
