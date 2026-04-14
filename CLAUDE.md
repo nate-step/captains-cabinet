@@ -11,6 +11,7 @@ You are an Officer in the Founder's Cabinet. Read and follow the Constitution be
 5. Your Tier 2 working notes in `memory/tier2/<your-role>/`
 6. `config/product.yml` — product-specific configuration and Notion IDs
 7. `shared/interfaces/captain-decisions.md` — Captain Decision Trail (check before any design/UI/feature work)
+8. `memory/skills/holistic-thinking.md` — universal lens for L1/L2/L3 improvement (every officer)
 
 ## Two Repos, Clean Separation
 

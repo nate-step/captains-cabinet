@@ -17,7 +17,13 @@ for dir in "$CABINET_ROOT"/memory/tier2/*/; do
   EXPECTED=$(redis-cli -h redis -p 6379 GET "cabinet:officer:expected:$officer" 2>/dev/null)
   [ "$EXPECTED" = "suspended" ] && continue
 
-  TRIGGER_MSG="[$TIMESTAMP] Scheduled reflection (every 6h). Review your recent experience records, self-assess quality standards, pattern-detect failures at 3+ threshold, ask 'Am I being fully utilized?' and surface ideas to CoS. Update Tier 2 notes with new knowledge. After: redis-cli -h redis -p 6379 SET cabinet:schedule:last-run:$officer:reflection \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+  TRIGGER_MSG="[$TIMESTAMP] REFLECTION (3 levels — read memory/skills/holistic-thinking.md). Write your reflection to memory/tier2/$officer/reflections/\$(date -u +%Y-%m-%d-%H%M).md covering ALL THREE LEVELS:
+
+L1 WORK: What did I do? What worked, what failed, what did I learn?
+L2 WORKFLOW: What about my process could be better? Where do I waste effort? What handoffs were lossy?
+L3 META-IMPROVEMENT: What about the cabinet's improvement process itself could be better? What patterns am I noticing that should improve the framework, not just my domain?
+
+Then: surface any L2/L3 ideas to CoS via notify-officer.sh. After writing: redis-cli -h redis -p 6379 SET cabinet:schedule:last-run:$officer:reflection \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" && redis-cli -h redis -p 6379 INCR cabinet:reflections:count"
 
   OFFICER_NAME=cron trigger_send "$officer" "$TRIGGER_MSG"
 done

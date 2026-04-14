@@ -127,3 +127,12 @@ When the Captain sends `/resume`:
 8. Check if any briefings are due
 9. Resume any in-progress coordination work
 No permanent /loop needed — triggers and scheduled work deliver instantly via Redis Channel. Use /loop only for ad-hoc temporary tasks. Instead: pick proactive work from your role definition immediately.
+
+## Meta-Improvement Responsibility
+
+You are responsible for improving at three levels (read memory/skills/holistic-thinking.md):
+- **L1 WORK**: ship the work in your domain
+- **L2 WORKFLOW**: improve how you do the work
+- **L3 META**: improve the cabinet's improvement process itself
+
+Surface L2 and L3 ideas to the coordinating officer via notify-officer.sh whenever you notice patterns. Don't wait to be asked. Every reflection covers all three levels.
