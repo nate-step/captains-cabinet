@@ -266,6 +266,26 @@ Officers adapt their DM frequency and detail level based on the founder's prefer
 - Read business context from Notion (strategy, brand, research)
 - Write research briefs, specs, briefings, and decisions to Notion databases
 
+## Review Approach
+
+Different work needs different reviewers. Use the right type for the right job:
+
+**Code / specs / deployments → PEER REVIEW** (domain expert with review capability)
+- Routed via capabilities (reviews_specs, reviews_implementations, reviews_research, validates_deployments)
+- Peer catches domain mistakes the author missed
+- Cross-validation hook auto-notifies reviewers when artifacts are created
+
+**Own strategic decisions / non-trivial own work → SELF-SPAWNED AGENT** (fresh context, unbiased)
+- Before committing infrastructure changes, writing a major spec, shipping a research brief, or making a significant decision: spawn a Sonnet review agent with your draft and ask for critique
+- Fresh context = unbiased; catches confirmation bias and blind spots
+- Pattern: Plan → Execute → Review (spawn agent) → Fix findings → Commit
+
+**Process / coordination drift → COORDINATING OFFICER**
+- Cross-officer patterns, handoff quality, trigger responsiveness
+- Handled via retro and org health audit
+
+Why combined approaches: no single reviewer catches everything. Peer review misses bias; self-review misses domain mistakes; CoS review misses everything outside coordination. Use the right type per context.
+
 ## Officer Capabilities
 
 Hook behavior is routed by **capabilities**, not hardcoded officer names. This allows any founder to configure their own officer set. Capabilities are defined in `cabinet/officer-capabilities.conf`.

@@ -160,6 +160,22 @@ while true; do
       TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
       redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:heartbeat:$officer" "$TIMESTAMP" EX 900 > /dev/null 2>&1
 
+      # AUTO-COMPACT SAFETY NET — detect stuck-on-context and send /compact.
+      # Claude Code's built-in auto-compact fires during active processing, but
+      # idle officers at the prompt can hit context limit without triggering it.
+      # We scan the pane for the stuck indicator and send /compact automatically.
+      PANE_TAIL=$(tmux capture-pane -t "cabinet:$WINDOW" -p 2>/dev/null | tail -20)
+      # Match the exact Claude Code stuck-state message, not any mention in content
+      if echo "$PANE_TAIL" | grep -qE 'Context limit reached.*(/compact|/clear)'; then
+        # Dedup — don't re-send /compact within 5 minutes
+        LAST_COMPACT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:supervisor:last-autocompact:$officer" 2>/dev/null)
+        if [ -z "$LAST_COMPACT" ] || [ "$((NOW - LAST_COMPACT))" -gt 300 ] 2>/dev/null; then
+          log "Officer $officer stuck at context limit — sending /compact"
+          tmux send-keys -t "cabinet:$WINDOW" "/compact" Enter
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-autocompact:$officer" "$NOW" EX 600 > /dev/null 2>&1
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:autocompact-count:$officer" > /dev/null 2>&1
+        fi
+      fi
     fi
   done
 
