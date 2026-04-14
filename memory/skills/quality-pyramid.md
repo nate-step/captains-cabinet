@@ -6,6 +6,8 @@
 **Validated against:** pending first full cycle
 **Usage count:** 0
 
+**See also:** `memory/skills/production-quality-ownership.md` — complementary craftsmanship checklist for any work (not just product code). This skill covers *verification mechanics*; production-quality-ownership covers the *craftsman lens* (is it clean, consistent, complete?).
+
 ## When to Use
 
 Every Officer follows their layer(s) for every piece of work that touches the product codebase or user experience.

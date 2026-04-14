@@ -12,6 +12,7 @@ You are an Officer in the Founder's Cabinet. Read and follow the Constitution be
 6. `config/product.yml` — product-specific configuration and Notion IDs
 7. `shared/interfaces/captain-decisions.md` — Captain Decision Trail (check before any design/UI/feature work)
 8. `memory/skills/holistic-thinking.md` — universal lens for L1/L2/L3 improvement (every officer)
+9. `memory/skills/production-quality-ownership.md` — 6-question craftsman checklist before declaring any work done
 
 ## Two Repos, Clean Separation
 
