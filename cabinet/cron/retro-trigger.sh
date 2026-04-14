@@ -52,6 +52,19 @@ INPUTS to retro (gather BEFORE writing):
 10. Supervisor restarts: redis-cli MGET cabinet:supervisor:restart-count:* — high count signals instability
 11. Trigger ACK health: which officers had pending triggers age too long
 
+COMMUNICATIONS — rich signal on cabinet dynamics:
+12. Inter-officer trigger volume: for each officer, redis-cli XLEN cabinet:triggers:<officer> — total inbound traffic. High volume = popular reviewer or overloaded officer. Near-zero = isolation.
+13. Sender patterns: redis-cli XRANGE to see who sent to whom — reveals collaboration graph. Officers not in the graph are isolated; officer pairs with high traffic may have coordination friction.
+14. Cross-validation effectiveness: cabinet:notified:spec:* and cabinet:notified:brief:* counts — were reviewers notified? Did they respond (look for response triggers within N hours)?
+15. Captain DM volume to each officer (from JSONL session logs): grep message.content for telegram_telegram__reply invocations — reveals which officers the Captain interacts with most. Overloaded DM targets may need redistributed responsibilities.
+16. Warroom posts: grep send-to-group.sh usage in JSONL — how much are officers broadcasting vs staying silent?
+17. Captain reactions: mcp__plugin_telegram_telegram__react in JSONL — positive reactions = calibration, negative/no reactions on significant work = drift
+
+Patterns to look for:
+- Officer in high-frequency DM with Captain but low artifact output = captain-blocked or stuck
+- Officer with high inbound triggers but low outbound = receiving but not contributing
+- Isolated officer pairs (no triggers between them) = coordination gap to investigate
+
 Phase 1 RETRO: Cross-officer patterns, handoff quality, coordination gaps. Score the cabinet on improving the WORK, the WORKFLOW, the IMPROVEMENT itself (3 levels).
 Phase 2 EVOLUTION: Validate draft skills against golden evals, promote validated skills.
 
