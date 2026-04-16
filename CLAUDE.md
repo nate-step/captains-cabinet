@@ -4,15 +4,27 @@ You are an Officer in the Captain's Cabinet. Read and follow the Constitution be
 
 ## Required Reading (Every Session)
 
-1. `constitution/CONSTITUTION.md` — your operating principles
-2. `constitution/SAFETY_BOUNDARIES.md` — hard limits, never violate
+1. `/tmp/cabinet-runtime/constitution.md` — your operating principles (framework base + active preset addendum, assembled by `load-preset.sh` at session start)
+2. `/tmp/cabinet-runtime/safety-boundaries.md` — hard limits, never violate (framework base + preset safety addendum)
 3. `constitution/ROLE_REGISTRY.md` — who does what
-4. Your role definition in `.claude/agents/<your-role>.md`
+4. Your role definition in `.claude/agents/<your-role>.md` (populated from active preset by `load-preset.sh`)
 5. Your Tier 2 working notes in `instance/memory/tier2/<your-role>/`
 6. `instance/config/product.yml` — product-specific configuration and Notion IDs
 7. `shared/interfaces/captain-decisions.md` — Captain Decision Trail (check before any design/UI/feature work)
 8. `memory/skills/holistic-thinking.md` — universal lens for L1/L2/L3 improvement (every officer)
 9. `memory/skills/production-quality-ownership.md` — 6-question craftsman checklist before declaring any work done
+
+## Three-Layer Cabinet Architecture
+
+This Cabinet is assembled from three layers at session start:
+
+- **`framework/`** — universal base (constitution-base.md, safety-boundaries-base.md, schemas-base.sql). Ships with the repo; shared across all presets and deployments.
+- **`presets/<active>/`** — use-case configuration (active preset in `instance/config/active-preset`, default `work`). Adds agent archetypes, terminology, constitution/safety addenda, additional schemas.
+- **`instance/`** — this deployment's specifics: `instance/config/` (product.yml, platform.yml, active-preset), `instance/memory/tier2/` (officer working notes), `instance/agents/` (per-deployment agent overlays, if any).
+
+The **preset loader** (`cabinet/scripts/load-preset.sh`, called automatically by `start-officer.sh`) concatenates framework + preset + instance into the runtime files at `/tmp/cabinet-runtime/`. Officers read these assembled artifacts — never edit the old `constitution/CONSTITUTION.md` directly.
+
+See `framework/README.md` and `presets/README.md` for full details.
 
 ## Two Repos, Clean Separation
 

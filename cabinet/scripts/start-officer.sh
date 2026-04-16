@@ -12,6 +12,11 @@ CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
 if [ -f "$CABINET_ROOT/cabinet/.env" ]; then
   set -a; source "$CABINET_ROOT/cabinet/.env" 2>/dev/null; set +a
 fi
+
+# Assemble runtime Cabinet state (framework + preset + instance) before
+# launching the officer's Claude Code session. Idempotent — safe to run on
+# every officer start. See cabinet/scripts/load-preset.sh.
+bash "$CABINET_ROOT/cabinet/scripts/load-preset.sh" 2>&1 | tail -3 >&2
 ACTIVE_SLUG=$(cat "$CABINET_ROOT/instance/config/active-project.txt" 2>/dev/null | tr -d '[:space:]')
 if [ -n "$ACTIVE_SLUG" ] && [ -f "$CABINET_ROOT/cabinet/env/${ACTIVE_SLUG}.env" ]; then
   set -a; source "$CABINET_ROOT/cabinet/env/${ACTIVE_SLUG}.env" 2>/dev/null; set +a
@@ -37,8 +42,10 @@ ln -sfn "$CABINET_ROOT/.claude" "$OFFICER_DIR/.claude"
 ln -sfn "$CABINET_ROOT/constitution" "$OFFICER_DIR/constitution"
 ln -sfn "$CABINET_ROOT/memory" "$OFFICER_DIR/memory"
 ln -sfn "$CABINET_ROOT/shared" "$OFFICER_DIR/shared"
-ln -sfn "$CABINET_ROOT/config" "$OFFICER_DIR/config"
 ln -sfn "$CABINET_ROOT/cabinet" "$OFFICER_DIR/cabinet"
+ln -sfn "$CABINET_ROOT/framework" "$OFFICER_DIR/framework"
+ln -sfn "$CABINET_ROOT/presets" "$OFFICER_DIR/presets"
+ln -sfn "$CABINET_ROOT/instance" "$OFFICER_DIR/instance"
 
 # Check if this officer has a previous session to continue
 # Claude Code stores sessions in ~/.claude/projects/<encoded-path>/
