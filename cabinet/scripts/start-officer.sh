@@ -73,9 +73,19 @@ tmux send-keys -t "cabinet:$WINDOW" \
 
 # Wait for Claude Code to initialize, then send boot prompt
 (
-  sleep 20  # Give Claude Code time to load
+  # Step 1: confirm the "--dangerously-load-development-channels" warning prompt
+  # that Claude Code shows whenever we load server:redis-trigger-channel. Prompt
+  # offers "1. I am using this for local development / 2. Exit" with Enter to confirm.
+  # Option 1 is pre-selected; a single Enter confirms. Without this, the session
+  # hangs at the prompt until a human presses Enter — which used to be every
+  # restart's manual step. Automating it means officer restarts are hands-free.
+  sleep 3
+  tmux send-keys -t "cabinet:$WINDOW" Enter
 
-  # Send boot prompt — tells the officer to initialize and announce
+  # Step 2: wait for Claude Code to finish loading (post-confirmation)
+  sleep 20
+
+  # Step 3: send boot prompt — tells the officer to initialize and announce
   tmux send-keys -t "cabinet:$WINDOW" "You are $OFFICER. Read your role definition at .claude/agents/$OFFICER.md and your session start checklist. Read your foundation skills in memory/skills/. Read your tier 2 notes in instance/memory/tier2/$OFFICER/. Then announce yourself on the warroom: bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh '<b>$OFFICER online.</b> Session started. Checking for pending work.' — then check for pending triggers and overdue work immediately." Enter
 
   # No permanent /loop needed — Redis Trigger Channel delivers all triggers
