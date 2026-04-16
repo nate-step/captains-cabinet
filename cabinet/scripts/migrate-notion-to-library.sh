@@ -4,8 +4,17 @@
 # Usage:
 #   bash cabinet/scripts/migrate-notion-to-library.sh <space-slug> [--dry-run]
 #
-# Supported space slugs (MVP):
-#   business-brain   — migrates notion.business_brain_db → "Business Brain" Space
+# Supported space slugs:
+#   business-brain         → "Business Brain" Space
+#   research-briefs        → "Research Archive" Space
+#   competitive-intel      → "Research Archive" Space
+#   market-trends          → "Research Archive" Space
+#   decision-journal       → "Decisions Log" Space
+#   decision-queue         → "Decisions Log" Space
+#   architecture-decisions → "Architecture Decision Records" Space
+#   user-feedback          → "Customer Insights" Space
+#   feature-specs          → "Playbooks" Space
+#   improvement-proposals  → "Playbooks" Space
 #
 # Idempotent: re-running updates changed records, skips unchanged, never duplicates.
 # Read-only on Notion side. Does not write back to Notion.
@@ -30,16 +39,16 @@ done
 if [ -z "$SPACE_SLUG" ]; then
   echo "Usage: migrate-notion-to-library.sh <space-slug> [--dry-run]"
   echo "Supported slugs:"
-  echo "  business-brain     → 'Business Brain' Space (from notion.business_brain)"
-  echo "  research-briefs    → 'Research Archive' Space (from notion.research_hub.research_briefs_db)"
-  echo "  competitive-intel  → 'Research Archive' Space (from notion.research_hub.competitive_intel_db)"
-  echo "  market-trends      → 'Research Archive' Space (from notion.research_hub.market_trends_db)"
-  echo "  decision-journal   → 'Decisions Log' Space (from notion.cabinet_operations.decision_journal_db)"
-  echo "  decision-queue     → 'Decisions Log' Space (from notion.dashboard.decision_queue_db)"
-  echo "  architecture-decisions → 'Architecture Decision Records' Space (from notion.engineering_hub.architecture_decisions_db)"
-  echo "  user-feedback      → 'Customer Insights' Space (from notion.product_hub.user_feedback_db)"
-  echo "  feature-specs      → 'Playbooks' Space (from notion.product_hub.feature_specs_db)"
-  echo "  improvement-proposals → 'Playbooks' Space (from notion.cabinet_operations.improvement_proposals_db)"
+  echo "  business-brain         → 'Business Brain' Space"
+  echo "  research-briefs        → 'Research Archive' Space"
+  echo "  competitive-intel      → 'Research Archive' Space"
+  echo "  market-trends          → 'Research Archive' Space"
+  echo "  decision-journal       → 'Decisions Log' Space"
+  echo "  decision-queue         → 'Decisions Log' Space"
+  echo "  architecture-decisions → 'Architecture Decision Records' Space"
+  echo "  user-feedback          → 'Customer Insights' Space"
+  echo "  feature-specs          → 'Playbooks' Space"
+  echo "  improvement-proposals  → 'Playbooks' Space"
   exit 1
 fi
 
@@ -78,7 +87,7 @@ case "$SPACE_SLUG" in
     ;;
   decision-journal)
     SPACE_DISPLAY_NAME="Decisions Log"
-    NOTION_DB_ID=$(extract_notion_id "cabinet_operations" "decision_journal_db")
+    NOTION_DB_ID=$(extract_notion_id "cabinet_ops" "decision_journal_db")
     ;;
   decision-queue)
     SPACE_DISPLAY_NAME="Decisions Log"
@@ -98,7 +107,7 @@ case "$SPACE_SLUG" in
     ;;
   improvement-proposals)
     SPACE_DISPLAY_NAME="Playbooks"
-    NOTION_DB_ID=$(extract_notion_id "cabinet_operations" "improvement_proposals_db")
+    NOTION_DB_ID=$(extract_notion_id "cabinet_ops" "improvement_proposals_db")
     ;;
   *)
     echo "Unsupported space slug: '$SPACE_SLUG'. Run without args for supported list."
@@ -108,7 +117,6 @@ esac
 
 if [ -z "$NOTION_DB_ID" ]; then
   echo "ERROR: Could not resolve Notion DB/page ID for slug '$SPACE_SLUG' from $CONFIG_FILE"
-  echo "Expected key: notion.business_brain_db (or notion.business_brain.page_id)"
   exit 1
 fi
 
@@ -238,11 +246,79 @@ blocks_to_markdown() {
 }
 
 # ---------------------------------------------------------------
+# Helper: render Notion page properties as a markdown table
+# Used as body fallback when a DB row has no block children
+# ---------------------------------------------------------------
+properties_to_markdown() {
+  local props_json="$1"
+  local md=""
+  md="| Property | Value |"$'\n'
+  md="${md}|----------|-------|"$'\n'
+
+  while IFS= read -r entry; do
+    local key val ptype
+    key=$(printf '%s' "$entry" | jq -r '.key' 2>/dev/null)
+    ptype=$(printf '%s' "$entry" | jq -r '.value.type' 2>/dev/null)
+
+    case "$ptype" in
+      title)
+        val=$(printf '%s' "$entry" | jq -r '[.value.title[] | .plain_text] | join("")' 2>/dev/null)
+        ;;
+      rich_text)
+        val=$(printf '%s' "$entry" | jq -r '[.value.rich_text[] | .plain_text] | join("")' 2>/dev/null)
+        ;;
+      select)
+        val=$(printf '%s' "$entry" | jq -r '.value.select.name // ""' 2>/dev/null)
+        ;;
+      status)
+        val=$(printf '%s' "$entry" | jq -r '.value.status.name // ""' 2>/dev/null)
+        ;;
+      multi_select)
+        val=$(printf '%s' "$entry" | jq -r '[.value.multi_select[].name] | join(", ")' 2>/dev/null)
+        ;;
+      date)
+        val=$(printf '%s' "$entry" | jq -r '.value.date.start // ""' 2>/dev/null)
+        ;;
+      created_time)
+        val=$(printf '%s' "$entry" | jq -r '.value.created_time // ""' 2>/dev/null | cut -c1-10)
+        ;;
+      last_edited_time)
+        val=$(printf '%s' "$entry" | jq -r '.value.last_edited_time // ""' 2>/dev/null | cut -c1-10)
+        ;;
+      url)
+        val=$(printf '%s' "$entry" | jq -r '.value.url // ""' 2>/dev/null)
+        ;;
+      number)
+        val=$(printf '%s' "$entry" | jq -r '.value.number // ""' 2>/dev/null)
+        ;;
+      checkbox)
+        val=$(printf '%s' "$entry" | jq -r 'if .value.checkbox then "Yes" else "No" end' 2>/dev/null)
+        ;;
+      unique_id)
+        val=$(printf '%s' "$entry" | jq -r '(.value.unique_id.prefix // "") + "-" + (.value.unique_id.number // 0 | tostring)' 2>/dev/null | sed 's/^-//')
+        ;;
+      people)
+        val=$(printf '%s' "$entry" | jq -r '[.value.people[].name // .value.people[].id] | join(", ")' 2>/dev/null)
+        ;;
+      *)
+        val=""
+        ;;
+    esac
+
+    [ -z "$val" ] && continue
+    # Escape pipe chars in val to not break markdown table
+    val="${val//|/\\|}"
+    md="${md}| ${key} | ${val} |"$'\n'
+  done < <(printf '%s' "$props_json" | jq -c 'to_entries[]' 2>/dev/null)
+
+  printf '%s' "$md"
+}
+
+# ---------------------------------------------------------------
 # Helper: find Notion page title from properties
 # ---------------------------------------------------------------
 get_page_title() {
   local props_json="$1"
-  # Find the property of type "title" (could be named anything)
   local title
   title=$(printf '%s' "$props_json" | jq -r '
     to_entries[]
@@ -255,8 +331,356 @@ get_page_title() {
 }
 
 # ---------------------------------------------------------------
+# Helper: extract labels from ALL multi_select properties
+# Returns CSV of option names (deduplicated)
+# ---------------------------------------------------------------
+extract_all_labels() {
+  local props_json="$1"
+  printf '%s' "$props_json" | jq -r '
+    [to_entries[]
+    | select(.value.type == "multi_select")
+    | .value.multi_select[].name]
+    | unique
+    | join(",")
+  ' 2>/dev/null || echo ""
+}
+
+# ---------------------------------------------------------------
+# Helper: extract rich_text property value as plain text
+# ---------------------------------------------------------------
+get_rich_text_prop() {
+  local props_json="$1" prop_name="$2"
+  printf '%s' "$props_json" | jq -r --arg p "$prop_name" '
+    .[$p]
+    | select(.type == "rich_text")
+    | [.rich_text[] | .plain_text]
+    | join("")
+  ' 2>/dev/null || echo ""
+}
+
+# ---------------------------------------------------------------
+# Per-slug schema_data mappers
+# Each function takes props_json, page_id, notion_url
+# and outputs a valid JSON object for schema_data
+# ---------------------------------------------------------------
+
+# Research Archive — research-briefs
+# Real props: Topic(select), Impact(select), Tags(multi_select), Created(created_time)
+map_schema_research_briefs() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local topic impact created
+  topic=$(printf '%s' "$props_json" | jq -r '.Topic.select.name // empty' 2>/dev/null | head -1)
+  [ -z "$topic" ] && topic="research-briefs"
+  impact=$(printf '%s' "$props_json" | jq -r '.Impact.select.name // empty' 2>/dev/null | head -1)
+  created=$(printf '%s' "$props_json" | jq -r '.Created.created_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg topic "$topic" \
+    --arg impact "$impact" \
+    --arg created "$created" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      topic: (if $topic == "" then null else $topic end),
+      action_classification: (if $impact == "" then null else $impact end),
+      captured_at: (if $created == "" then null else $created end)
+    }' 2>/dev/null
+}
+
+# Research Archive — competitive-intel
+# Real props: Category(select), Threat Level(select), URL(url), Last Updated(last_edited_time)
+map_schema_competitive_intel() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local category threat url last_updated
+  category=$(printf '%s' "$props_json" | jq -r '.Category.select.name // empty' 2>/dev/null | head -1)
+  threat=$(printf '%s' "$props_json" | jq -r '."Threat Level".select.name // empty' 2>/dev/null | head -1)
+  url=$(printf '%s' "$props_json" | jq -r '.URL.url // empty' 2>/dev/null | head -1)
+  last_updated=$(printf '%s' "$props_json" | jq -r '."Last Updated".last_edited_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg topic "competitive-intel" \
+    --arg category "$category" \
+    --arg threat "$threat" \
+    --arg source_url "$url" \
+    --arg last_updated "$last_updated" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      topic: $topic,
+      category: (if $category == "" then null else $category end),
+      action_classification: (if $threat == "" then null else $threat end),
+      source_url: (if $source_url == "" then null else $source_url end),
+      last_updated: (if $last_updated == "" then null else $last_updated end)
+    }' 2>/dev/null
+}
+
+# Research Archive — market-trends
+# Real props: Category(select), Relevance(select), First Spotted(date), Last Updated(last_edited_time)
+map_schema_market_trends() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local category relevance first_spotted last_updated
+  category=$(printf '%s' "$props_json" | jq -r '.Category.select.name // empty' 2>/dev/null | head -1)
+  relevance=$(printf '%s' "$props_json" | jq -r '.Relevance.select.name // empty' 2>/dev/null | head -1)
+  first_spotted=$(printf '%s' "$props_json" | jq -r '."First Spotted".date.start // empty' 2>/dev/null | head -1)
+  last_updated=$(printf '%s' "$props_json" | jq -r '."Last Updated".last_edited_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg topic "market-trends" \
+    --arg category "$category" \
+    --arg relevance "$relevance" \
+    --arg first_spotted "$first_spotted" \
+    --arg last_updated "$last_updated" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      topic: $topic,
+      category: (if $category == "" then null else $category end),
+      action_classification: (if $relevance == "" then null else $relevance end),
+      captured_at: (if $first_spotted == "" then null else $first_spotted end),
+      last_updated: (if $last_updated == "" then null else $last_updated end)
+    }' 2>/dev/null
+}
+
+# Decisions Log — decision-journal
+# Real props: Domain(select), Context(rich_text), Outcome(rich_text), Decided(date)
+map_schema_decision_journal() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local domain decided context outcome
+  domain=$(printf '%s' "$props_json" | jq -r '.Domain.select.name // empty' 2>/dev/null | head -1)
+  decided=$(printf '%s' "$props_json" | jq -r '.Decided.date.start // empty' 2>/dev/null | head -1)
+  context=$(get_rich_text_prop "$props_json" "Context")
+  outcome=$(get_rich_text_prop "$props_json" "Outcome")
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg domain "$domain" \
+    --arg decided "$decided" \
+    --arg why "$context" \
+    --arg outcome "$outcome" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      domain: (if $domain == "" then null else $domain end),
+      decision_date: (if $decided == "" then null else $decided end),
+      why: (if $why == "" then null else $why end),
+      affected: (if $outcome == "" then null else $outcome end)
+    }' 2>/dev/null
+}
+
+# Decisions Log — decision-queue
+# Real props: Status(select), Priority(select), Context(rich_text), Recommendation(rich_text),
+#             Requesting Officer(select), Captain Response(rich_text), Created(created_time)
+map_schema_decision_queue() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local status priority requesting_officer created context recommendation
+  status=$(printf '%s' "$props_json" | jq -r '.Status.select.name // empty' 2>/dev/null | head -1)
+  priority=$(printf '%s' "$props_json" | jq -r '.Priority.select.name // empty' 2>/dev/null | head -1)
+  requesting_officer=$(printf '%s' "$props_json" | jq -r '."Requesting Officer".select.name // empty' 2>/dev/null | head -1)
+  created=$(printf '%s' "$props_json" | jq -r '.Created.created_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+  context=$(get_rich_text_prop "$props_json" "Context")
+  recommendation=$(get_rich_text_prop "$props_json" "Recommendation")
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg status "$status" \
+    --arg priority "$priority" \
+    --arg owner "$requesting_officer" \
+    --arg decision_date "$created" \
+    --arg why "$context" \
+    --arg affected "$recommendation" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      status: (if $status == "" then null else $status end),
+      domain: (if $priority == "" then null else $priority end),
+      owner: (if $owner == "" then null else $owner end),
+      decision_date: (if $decision_date == "" then null else $decision_date end),
+      why: (if $why == "" then null else $why end),
+      affected: (if $affected == "" then null else $affected end)
+    }' 2>/dev/null
+}
+
+# ADR Space — architecture-decisions
+# Real props: Status(select), ADR ID(unique_id), Area(multi_select), Created(created_time)
+map_schema_adr() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local status adr_number area created
+  status=$(printf '%s' "$props_json" | jq -r '.Status.select.name // empty' 2>/dev/null | head -1)
+  adr_number=$(printf '%s' "$props_json" | jq -r '."ADR ID".unique_id | (.prefix // "") + "-" + (.number // 0 | tostring)' 2>/dev/null | sed 's/^-//' | head -1)
+  area=$(printf '%s' "$props_json" | jq -r '[.Area.multi_select[].name] | join(", ")' 2>/dev/null | head -1)
+  created=$(printf '%s' "$props_json" | jq -r '.Created.created_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg status "$status" \
+    --arg adr_number "$adr_number" \
+    --arg deciders "$area" \
+    --arg decided_at "$created" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      status: (if $status == "" then null else $status end),
+      adr_number: (if $adr_number == "" then null else $adr_number end),
+      deciders: (if $deciders == "" then null else $deciders end),
+      decided_at: (if $decided_at == "" then null else $decided_at end)
+    }' 2>/dev/null
+}
+
+# Customer Insights — user-feedback
+# Empty DB currently — build for schema completeness using any select/multi_select found
+map_schema_user_feedback() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local source theme created
+  source=$(printf '%s' "$props_json" | jq -r '(.Source // .source // ."Source Type" // empty) | select(.type == "select") | .select.name // empty' 2>/dev/null | head -1)
+  theme=$(printf '%s' "$props_json" | jq -r '(.Theme // .theme // .Tags // .tags // empty) | select(.type == "multi_select") | [.multi_select[].name] | join(", ")' 2>/dev/null | head -1)
+  created=$(printf '%s' "$props_json" | jq -r '.Created.created_time // ."Created Time".created_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg source "$source" \
+    --arg theme "$theme" \
+    --arg captured_at "$created" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      source: (if $source == "" then null else $source end),
+      theme: (if $theme == "" then null else $theme end),
+      captured_at: (if $captured_at == "" then null else $captured_at end)
+    }' 2>/dev/null
+}
+
+# Playbooks — feature-specs
+# Real props: Status(select), Priority(select), Created(created_time), Last Updated(last_edited_time)
+map_schema_feature_specs() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local status priority created last_updated
+  status=$(printf '%s' "$props_json" | jq -r '.Status.select.name // empty' 2>/dev/null | head -1)
+  priority=$(printf '%s' "$props_json" | jq -r '.Priority.select.name // empty' 2>/dev/null | head -1)
+  created=$(printf '%s' "$props_json" | jq -r '.Created.created_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+  last_updated=$(printf '%s' "$props_json" | jq -r '."Last Updated".last_edited_time // empty' 2>/dev/null | head -1 | cut -c1-10)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg status "$status" \
+    --arg priority "$priority" \
+    --arg created "$created" \
+    --arg last_updated "$last_updated" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      status: (if $status == "" then null else $status end),
+      trigger: (if $priority == "" then null else $priority end),
+      estimated_duration: null,
+      owner_role: null,
+      last_updated: (if $last_updated == "" then null else $last_updated end)
+    }' 2>/dev/null
+}
+
+# Playbooks — improvement-proposals (empty DB, generic fallback)
+map_schema_improvement_proposals() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local status priority
+  status=$(printf '%s' "$props_json" | jq -r '(.Status // .status // empty) | select(.type == "select" or .type == "status") | (.select.name // .status.name) // empty' 2>/dev/null | head -1)
+  priority=$(printf '%s' "$props_json" | jq -r '(.Priority // .priority // empty) | select(.type == "select") | .select.name // empty' 2>/dev/null | head -1)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg status "$status" \
+    --arg priority "$priority" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      status: (if $status == "" then null else $status end),
+      trigger: (if $priority == "" then null else $priority end),
+      owner_role: null,
+      estimated_duration: null
+    }' 2>/dev/null
+}
+
+# Business Brain — child pages (existing behavior extended for DB rows)
+# Real props (for DB rows if any): Category(select), Status(select/status),
+#   Effective From(date), Last Reviewed(date)
+map_schema_business_brain() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  local category status effective_from last_reviewed
+
+  category=$(printf '%s' "$props_json" | jq -r '
+    (.Category // .category // .Section // .section // empty)
+    | select(.type == "select")
+    | .select.name // empty
+  ' 2>/dev/null | head -1)
+
+  status=$(printf '%s' "$props_json" | jq -r '
+    (.Status // .status // empty)
+    | select(.type == "status" or .type == "select")
+    | (.status.name // .select.name) // empty
+  ' 2>/dev/null | head -1)
+  [ -z "$status" ] && status="Active"
+
+  effective_from=$(printf '%s' "$props_json" | jq -r '
+    (."Effective From" // ."Effective from" // ."Date" // empty)
+    | select(.type == "date")
+    | .date.start // empty
+  ' 2>/dev/null | head -1)
+
+  last_reviewed=$(printf '%s' "$props_json" | jq -r '
+    (."Last Reviewed" // ."Last reviewed" // ."Last Review" // empty)
+    | select(.type == "date")
+    | .date.start // empty
+  ' 2>/dev/null | head -1)
+
+  jq -n \
+    --arg npid "$page_id" \
+    --arg nurl "$notion_url" \
+    --arg cat "$category" \
+    --arg status "$status" \
+    --arg eff "$effective_from" \
+    --arg rev "$last_reviewed" \
+    '{
+      notion_page_id: $npid,
+      notion_url: $nurl,
+      category: (if $cat == "" then null else $cat end),
+      status: $status,
+      effective_from: (if $eff == "" then null else $eff end),
+      last_reviewed: (if $rev == "" then null else $rev end)
+    }' 2>/dev/null
+}
+
+# ---------------------------------------------------------------
+# Dispatch: pick the right mapper for this slug
+# ---------------------------------------------------------------
+build_schema_data() {
+  local props_json="$1" page_id="$2" notion_url="$3"
+  case "$SPACE_SLUG" in
+    research-briefs)       map_schema_research_briefs  "$props_json" "$page_id" "$notion_url" ;;
+    competitive-intel)     map_schema_competitive_intel "$props_json" "$page_id" "$notion_url" ;;
+    market-trends)         map_schema_market_trends    "$props_json" "$page_id" "$notion_url" ;;
+    decision-journal)      map_schema_decision_journal "$props_json" "$page_id" "$notion_url" ;;
+    decision-queue)        map_schema_decision_queue   "$props_json" "$page_id" "$notion_url" ;;
+    architecture-decisions) map_schema_adr             "$props_json" "$page_id" "$notion_url" ;;
+    user-feedback)         map_schema_user_feedback    "$props_json" "$page_id" "$notion_url" ;;
+    feature-specs)         map_schema_feature_specs    "$props_json" "$page_id" "$notion_url" ;;
+    improvement-proposals) map_schema_improvement_proposals "$props_json" "$page_id" "$notion_url" ;;
+    business-brain)        map_schema_business_brain   "$props_json" "$page_id" "$notion_url" ;;
+    *)                     echo '{}' ;;
+  esac
+}
+
+# ---------------------------------------------------------------
 # Helper: query existing Library record by notion_page_id
-# Returns lines: id / title / md5_of_content — tab-separated
+# Returns lines: id / title / md5_of_content / md5_of_schema_data — tab-separated
 # ---------------------------------------------------------------
 find_library_record() {
   local notion_page_id="$1"
@@ -264,7 +688,7 @@ find_library_record() {
     -v space_id="$LIBRARY_SPACE_ID" \
     -v notion_page_id="$notion_page_id" \
     2>/dev/null <<'SQLEOF'
-SELECT id, title, md5(content_markdown)
+SELECT id, title, md5(content_markdown), md5(schema_data::text)
 FROM library_records
 WHERE space_id = :'space_id'::bigint
   AND superseded_by IS NULL
@@ -314,7 +738,7 @@ if [ "$USE_CHILDREN_MODE" = true ]; then
   if [ "$CHILDREN_TYPE" = "error" ] || [ "$CHILDREN_TYPE" != "list" ]; then
     echo "ERROR: Could not fetch children of page $NOTION_DB_ID"
     printf '%s' "$CHILDREN_RESP" | jq '.' 2>/dev/null || printf '%s\n' "$CHILDREN_RESP"
-    echo "Ensure 'OpenClaw2' integration has access to the Business Brain page in Notion."
+    echo "Ensure 'OpenClaw2' integration has access to the page in Notion."
     exit 1
   fi
 
@@ -382,71 +806,27 @@ for page_json in "${ALL_PAGES[@]}"; do
     continue
   fi
 
+  # --- Top-level created_time from Notion page object ---
+  NOTION_CREATED_AT=$(printf '%s' "$page_json" | jq -r '.created_time // ""' 2>/dev/null)
+
   # --- Title ---
   PROPS=$(printf '%s' "$page_json" | jq -c '.properties // {}' 2>/dev/null)
   TITLE=$(get_page_title "$PROPS")
 
-  # --- schema_data fields ---
-  # notion_page_id (strip dashes for URL, keep with dashes as id)
+  # --- Notion URL ---
   PAGE_ID_CLEAN="${PAGE_ID//-/}"
   NOTION_URL="https://www.notion.so/${PAGE_ID_CLEAN}"
 
-  # category: look for "Category" or "Section" select property
-  CATEGORY=$(printf '%s' "$PROPS" | jq -r '
-    (.Category // .category // .Section // .section // empty)
-    | select(.type == "select")
-    | .select.name // empty
-  ' 2>/dev/null | head -1)
-  [ -z "$CATEGORY" ] && CATEGORY="null"
+  # --- Per-slug schema_data ---
+  SCHEMA_DATA=$(build_schema_data "$PROPS" "$PAGE_ID" "$NOTION_URL")
+  # Validate — fall back to minimal if mapper produced invalid JSON
+  if ! printf '%s' "$SCHEMA_DATA" | jq -e . >/dev/null 2>&1; then
+    SCHEMA_DATA=$(jq -n --arg npid "$PAGE_ID" --arg nurl "$NOTION_URL" \
+      '{notion_page_id: $npid, notion_url: $nurl}')
+  fi
 
-  # status: look for "Status" property
-  STATUS=$(printf '%s' "$PROPS" | jq -r '
-    (.Status // .status // empty)
-    | select(.type == "status" or .type == "select")
-    | (.status.name // .select.name) // empty
-  ' 2>/dev/null | head -1)
-  [ -z "$STATUS" ] && STATUS="Active"
-
-  # effective_from: look for date properties named "Date", "Created", "Effective From"
-  EFFECTIVE_FROM=$(printf '%s' "$PROPS" | jq -r '
-    (."Effective From" // ."Effective from" // ."Date" // empty)
-    | select(.type == "date")
-    | .date.start // empty
-  ' 2>/dev/null | head -1)
-  [ -z "$EFFECTIVE_FROM" ] && EFFECTIVE_FROM="null"
-
-  # last_reviewed: look for "Last Reviewed" or "Last Edited"
-  LAST_REVIEWED=$(printf '%s' "$PROPS" | jq -r '
-    (."Last Reviewed" // ."Last reviewed" // ."Last Review" // empty)
-    | select(.type == "date")
-    | .date.start // empty
-  ' 2>/dev/null | head -1)
-  [ -z "$LAST_REVIEWED" ] && LAST_REVIEWED="null"
-
-  # labels: look for "Tags" multi-select
-  LABELS_CSV=$(printf '%s' "$PROPS" | jq -r '
-    (.Tags // .tags // empty)
-    | select(.type == "multi_select")
-    | [.multi_select[].name]
-    | join(",")
-  ' 2>/dev/null | head -1)
-
-  # Build schema_data JSON
-  SCHEMA_DATA=$(jq -n \
-    --arg npid "$PAGE_ID" \
-    --arg nurl "$NOTION_URL" \
-    --arg cat "$CATEGORY" \
-    --arg status "$STATUS" \
-    --arg eff "$EFFECTIVE_FROM" \
-    --arg rev "$LAST_REVIEWED" \
-    '{
-      notion_page_id: $npid,
-      notion_url: $nurl,
-      category: (if $cat == "null" then null else $cat end),
-      status: $status,
-      effective_from: (if $eff == "null" then null else $eff end),
-      last_reviewed: (if $rev == "null" then null else $rev end)
-    }' 2>/dev/null)
+  # --- Generic labels: ALL multi_select properties ---
+  LABELS_CSV=$(extract_all_labels "$PROPS")
 
   # --- Body: fetch blocks ---
   sleep 0.3
@@ -456,11 +836,18 @@ for page_json in "${ALL_PAGES[@]}"; do
 
   BLOCKS_OBJ=$(printf '%s' "$BLOCKS_RESP" | jq -r '.object // "error"' 2>/dev/null)
   if [ "$BLOCKS_OBJ" = "error" ]; then
-    echo "  WARN: Could not fetch blocks for page '$TITLE' ($PAGE_ID) — skipping body"
-    BODY=""
+    echo "  WARN: Could not fetch blocks for page '$TITLE' ($PAGE_ID) — using properties fallback"
+    BODY=$(properties_to_markdown "$PROPS")
   else
     BLOCKS_JSON=$(printf '%s' "$BLOCKS_RESP" | jq -c '.results // []' 2>/dev/null)
-    BODY=$(blocks_to_markdown "$BLOCKS_JSON")
+    BLOCK_COUNT=$(printf '%s' "$BLOCKS_JSON" | jq 'length' 2>/dev/null || echo 0)
+
+    if [ "$BLOCK_COUNT" -eq 0 ]; then
+      # DB row with no block children — render properties as markdown table
+      BODY=$(properties_to_markdown "$PROPS")
+    else
+      BODY=$(blocks_to_markdown "$BLOCKS_JSON")
+    fi
   fi
 
   # --- Idempotency check ---
@@ -468,13 +855,15 @@ for page_json in "${ALL_PAGES[@]}"; do
   EXISTING_ID=$(printf '%s' "$EXISTING" | cut -f1)
   EXISTING_TITLE=$(printf '%s' "$EXISTING" | cut -f2)
   EXISTING_MD5=$(printf '%s' "$EXISTING" | cut -f3)
+  EXISTING_SCHEMA_MD5=$(printf '%s' "$EXISTING" | cut -f4)
 
-  # Compute md5 of current body for comparison
+  # Compute md5 of current body and schema_data for comparison
   BODY_MD5=$(printf '%s' "$BODY" | md5sum | awk '{print $1}')
+  SCHEMA_MD5=$(printf '%s' "$SCHEMA_DATA" | md5sum | awk '{print $1}')
 
   if [ -n "$EXISTING_ID" ]; then
-    # Record exists — check if title or body changed (compare by md5 to avoid whitespace issues)
-    if [ "$EXISTING_TITLE" = "$TITLE" ] && [ "$EXISTING_MD5" = "$BODY_MD5" ]; then
+    # Record exists — check if title, body, or schema_data changed
+    if [ "$EXISTING_TITLE" = "$TITLE" ] && [ "$EXISTING_MD5" = "$BODY_MD5" ] && [ "$EXISTING_SCHEMA_MD5" = "$SCHEMA_MD5" ]; then
       echo "  SKIP (unchanged): $TITLE"
       COUNT_SKIPPED=$((COUNT_SKIPPED + 1))
     else
@@ -484,7 +873,7 @@ for page_json in "${ALL_PAGES[@]}"; do
     fi
   else
     echo "  CREATE: $TITLE"
-    library_create_record "$LIBRARY_SPACE_ID" "$TITLE" "$BODY" "$SCHEMA_DATA" "$LABELS_CSV" > /dev/null
+    library_create_record "$LIBRARY_SPACE_ID" "$TITLE" "$BODY" "$SCHEMA_DATA" "$LABELS_CSV" "" "" "$NOTION_CREATED_AT" > /dev/null
     COUNT_NEW=$((COUNT_NEW + 1))
   fi
 done

@@ -273,6 +273,8 @@ export async function createRecord(params: {
   schema_data?: Record<string, unknown>
   labels?: string[]
   created_by_officer?: string
+  /** ISO 8601 timestamp to use as created_at instead of NOW(). Use for source-faithful imports. */
+  created_at?: string
 }): Promise<LibraryRecord> {
   // Try to get an embedding; if Voyage isn't available, insert without it
   const embedText = [
@@ -288,9 +290,9 @@ export async function createRecord(params: {
   const rows = await query<LibraryRecord>(
     `
     INSERT INTO library_records
-      (space_id, title, content_markdown, schema_data, labels, embedding, created_by_officer)
+      (space_id, title, content_markdown, schema_data, labels, embedding, created_by_officer, created_at)
     VALUES
-      ($1::bigint, $2, $3, $4::jsonb, $5::text[], $6, $7)
+      ($1::bigint, $2, $3, $4::jsonb, $5::text[], $6, $7, COALESCE($8::timestamptz, NOW()))
     RETURNING
       id::text, space_id::text, title, content_markdown, schema_data, labels,
       version, superseded_by::text, created_by_officer, created_at::text, updated_at::text
@@ -303,6 +305,7 @@ export async function createRecord(params: {
       params.labels ?? [],
       embedding ? `[${embedding.join(',')}]` : null,
       params.created_by_officer ?? 'captain',
+      params.created_at ?? null,
     ]
   )
   return rows[0]

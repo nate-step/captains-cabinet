@@ -90,7 +90,12 @@ SQLEOF
 # =============================================================
 
 # Create a record in a Space.
-# Args: space_id, title, content_markdown, schema_data_json, labels_comma_separated
+# Args: space_id, title, content_markdown, schema_data_json, labels_comma_separated,
+#       [officer], [source_created_at]
+# source_created_at (arg 8, positional — args 6+7 are officer placeholder and reserved):
+#   Pass an ISO 8601 timestamp (e.g. "2025-01-15T10:30:00.000Z") to override the
+#   created_at column with the original source date (Linear createdAt, Notion created_time).
+#   If omitted or empty, Postgres DEFAULT (NOW()) is used.
 # Returns: new record id
 library_create_record() {
   local space_id="$1"
@@ -99,6 +104,7 @@ library_create_record() {
   local schema_data="${4:-{\}}"
   local labels_csv="${5:-}"
   local officer="${OFFICER_NAME:-system}"
+  local source_created_at="${8:-}"  # arg 8; args 6+7 reserved for future use
 
   if [ -z "$space_id" ] || [ -z "$title" ]; then
     return 1
@@ -141,8 +147,9 @@ library_create_record() {
     -v labels="$labels_pg" \
     -v embedding="$embedding" \
     -v officer="$officer" \
+    -v source_created_at="$source_created_at" \
     2>/dev/null <<'SQLEOF'
-INSERT INTO library_records (space_id, title, content_markdown, schema_data, labels, embedding, created_by_officer)
+INSERT INTO library_records (space_id, title, content_markdown, schema_data, labels, embedding, created_by_officer, created_at)
 VALUES (
   :'space_id'::bigint,
   :'title',
@@ -150,7 +157,8 @@ VALUES (
   :'schema_data'::jsonb,
   :'labels'::text[],
   :'embedding'::vector,
-  NULLIF(:'officer', '')
+  NULLIF(:'officer', ''),
+  COALESCE(NULLIF(:'source_created_at', '')::timestamptz, NOW())
 )
 RETURNING id;
 SQLEOF

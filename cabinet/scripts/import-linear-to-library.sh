@@ -133,6 +133,7 @@ fetch_issues_page() {
     ) {
       nodes {
         identifier
+        createdAt
         title
         description
         priority
@@ -229,6 +230,7 @@ while $has_next; do
     fi
 
     identifier=$(echo "$issue" | jq -r '.identifier')
+    linear_created_at=$(echo "$issue" | jq -r '.createdAt // ""')
     title=$(echo "$issue" | jq -r '.title')
     description=$(echo "$issue" | jq -r '.description // ""')
     priority=$(echo "$issue" | jq -r '.priority')
@@ -325,7 +327,10 @@ while $has_next; do
         "$record_title" \
         "$content_md" \
         "$schema_data" \
-        "$labels_csv") || { echo "    ERROR creating $identifier" >&2; ((count_error++)) || true; ((processed++)) || true; continue; }
+        "$labels_csv" \
+        "" \
+        "" \
+        "$linear_created_at") || { echo "    ERROR creating $identifier" >&2; ((count_error++)) || true; ((processed++)) || true; continue; }
       echo "    → record id: $new_id"
       ((count_new++)) || true
     fi
