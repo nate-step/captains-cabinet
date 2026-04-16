@@ -175,13 +175,21 @@ The Cabinet improves through three nested loops. Each has a different cadence an
 - Include actionable lessons, not just "it worked."
 - Check `memory/skills/` before starting work — someone may have solved this before.
 
-### Reflection Loop (every 6 hours — each Officer individually)
-- Each Officer reviews their own recent experience records.
+### Reflection Loop (event-triggered — each Officer individually)
+Reflection fires when work happened, not on a fixed clock. Triggers:
+- **After compaction** — `post-compact.sh` injects a mandatory reflection prompt. Compaction means significant work was processed.
+- **After a completion milestone** — when you finish a material task, write a reflection alongside the experience record.
+- **On explicit nudge** — if the coordinating officer sends a reflection trigger via `notify-officer.sh`.
+
+Don't reflect on nothing. If you've been idle (Captain-blocked, no new work, no triggers), skip the cycle — there's nothing to review. Value-maximization ideas are still welcome any time via `notify-officer.sh`.
+
+What to do when reflecting:
+- Review your recent experience records.
 - Self-assessment: "Am I following my quality standards? Where did I deviate?"
-- Pattern detection: same failure 3+ times → write a draft skill to `memory/skills/`.
-- **Value maximization:** Ask yourself — "Am I being fully utilized? What higher-value work should I be doing?" Surface ideas to the coordinating officer via `notify-officer.sh`.
+- Pattern detection: same failure 3+ times → write a draft skill to `memory/skills/evolved/`.
+- **Value maximization:** "Am I being fully utilized? What higher-value work should I be doing?" Surface ideas to the coordinating officer.
 - Update Tier 2 working notes with new knowledge.
-- Track with Redis: `cabinet:schedule:last-run:<role>:reflection`
+- Stamp: `redis-cli -h redis -p 6379 SET cabinet:schedule:last-run:<role>:reflection "$(date -u +%Y-%m-%dT%H:%M:%SZ)"` and `INCR cabinet:reflections:count` (the retro-trigger watches the count).
 
 ### Evolution Loop (every 24 hours — coordinating officer-driven)
 Two phases, run sequentially:
@@ -202,7 +210,7 @@ Two phases, run sequentially:
 
 ### What goes where
 - **Captain directives** update standards/roles immediately — don't wait for a loop
-- **Individual improvements** happen in the 6h reflection loop
+- **Individual improvements** happen in the reflection loop (event-triggered)
 - **Cross-Officer improvements** happen in the 24h retro
 - **Skill promotion and structural changes** happen in the 24h evolution loop
 
@@ -365,9 +373,9 @@ Officers must NEVER idle when work is available. If you have no assigned work:
 ### Schedules
 - **07:00 + 19:00:** Daily briefing (coordinating officer)
 - **Every 4h:** Research sweep (research officer)
-- **Every 6h:** Individual reflection (all Officers — self-review + value maximization)
+- **Event-triggered:** Individual reflection (after compaction or completion milestones — not on a clock)
 - **Every 12h:** Backlog refinement (product officer)
-- **Every 24h:** Cross-officer retro + evolution loop (coordinating officer)
+- **Event-triggered + 48h safety floor:** Cross-officer retro + evolution loop (fires at 5 accumulated reflections or 48h since last, whichever first)
 
 ### Tracking your last run
 After completing scheduled work, record the timestamp so you know when to run next:
