@@ -389,27 +389,37 @@ export async function getRecordHistory(id: string): Promise<VersionHistoryEntry[
   // in the same chain by traversing backwards (superseded_by pointers) and forwards.
   // Simpler approach: fetch all records in the same space with the same chain root.
   // We find the chain by collecting all superseded_by links.
+  // Postgres recursive CTEs allow ONE recursive reference via UNION ALL —
+  // multiple recursive arms produce "recursive reference to query X must not
+  // appear within its non-recursive term" at runtime. So split the walk:
+  // first find HEAD (walk forward through superseded_by pointers), then walk
+  // backward from HEAD through the chain. Each row visited once per walk.
   const rows = await query<VersionHistoryEntry>(
     `
-    WITH RECURSIVE chain AS (
-      -- Anchor: the record we know about
-      SELECT id, version, title, superseded_by, created_at
-      FROM library_records
-      WHERE id = $1::bigint
-      UNION ALL
-      -- Walk forward: records that supersede something in the chain
-      SELECT r.id, r.version, r.title, r.superseded_by, r.created_at
-      FROM library_records r
-      JOIN chain c ON r.superseded_by = c.id
-      WHERE r.id != r.superseded_by  -- exclude soft-deleted self-references
-      UNION ALL
-      -- Walk backward: records superseded by something in the chain
-      SELECT r.id, r.version, r.title, r.superseded_by, r.created_at
-      FROM library_records r
-      JOIN chain c ON c.superseded_by = r.id
-      WHERE r.id != r.superseded_by
-    )
-    SELECT DISTINCT
+    WITH RECURSIVE
+      forward AS (
+        SELECT id, superseded_by
+        FROM library_records
+        WHERE id = $1::bigint
+        UNION ALL
+        SELECT r.id, r.superseded_by
+        FROM library_records r
+        JOIN forward f ON f.superseded_by = r.id
+        WHERE r.superseded_by IS NULL OR r.id != r.superseded_by
+      ),
+      head AS (
+        SELECT id FROM forward WHERE superseded_by IS NULL OR superseded_by = id
+      ),
+      chain AS (
+        SELECT id, version, title, superseded_by, created_at
+        FROM library_records
+        WHERE id = (SELECT id FROM head)
+        UNION ALL
+        SELECT r.id, r.version, r.title, r.superseded_by, r.created_at
+        FROM library_records r
+        JOIN chain c ON r.superseded_by = c.id AND r.id != c.id
+      )
+    SELECT
       id::text,
       version,
       title,
