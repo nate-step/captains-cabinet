@@ -6,6 +6,17 @@ cabinet/.env
 .claude/memory/
 .claude/scheduled_tasks.lock
 
+# Agent definitions at .claude/agents/ are derived by the preset loader
+# (copied from presets/<active>/agents/ with instance/agents/ overlays).
+# Source of truth lives in presets/ and instance/agents/ — do NOT track
+# the derived copies.
+.claude/agents/*.md
+!.claude/agents/.gitkeep
+
+# Runtime Cabinet state assembled by cabinet/scripts/load-preset.sh
+# Derived from framework/ + presets/<active>/ + instance/ on each start.
+# Do not commit.
+
 # Per-officer working directories (created at runtime for session isolation)
 officers/
 
