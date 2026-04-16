@@ -31,8 +31,10 @@ Officer sets are fully configurable per deployment — add, remove, or rename Of
 
 ### 1. Fork This Repo
 
+Click **Fork** on https://github.com/nate-step/founders-cabinet, then clone your fork:
+
 ```bash
-git clone https://github.com/YOUR-USERNAME/founders-cabinet.git
+git clone https://github.com/YOUR-GITHUB-USERNAME/founders-cabinet.git
 cd founders-cabinet
 ```
 
@@ -47,9 +49,12 @@ bash cabinet/scripts/bootstrap-notion.sh "YourProductName"
 
 This creates all pages and databases and writes the IDs to `config/product.yml`. Then add your strategy docs (vision, brand guidelines, etc.) to the Business Brain section.
 
-### 3. Configure Your Product
+### 3. Configure Your Product and Platform
 
-Edit `config/product.yml` — point it at your repo, Notion workspace, Linear team, and Neon project.
+Edit two config files:
+
+- `config/product.yml` — what you're building: product name, Notion IDs, Linear workspace, Neon project, voice settings, Telegram bots
+- `config/platform.yml` — how the Cabinet operates: timezone, accountability tone, communication preferences, briefing cadence, officer set (fulltime vs consultant)
 
 ### 4. Set Up Telegram Bots
 
@@ -88,9 +93,9 @@ docker exec -it cabinet-officers bash
 |-----------|---------|
 | **Officers** | Persistent Claude Code CLI sessions in tmux, one per domain |
 | **Crew** | Agent Teams spawned by Officers for parallel execution |
-| **Notion** | Business brain — strategy, research, decisions (required) |
-| **Linear** | Execution backlog — what to build |
-| **PostgreSQL + pgvector** | Episodic memory with semantic search |
+| **Notion** | Business brain — strategy, research, decisions (default; replaceable — see `config/product.yml`) |
+| **Linear** | Execution backlog — what to build (default; replaceable — see GitHub #16) |
+| **Neon (PostgreSQL + pgvector)** | Cabinet Memory layer — universal semantic search over all Cabinet-produced text (Telegram, triggers, decisions, specs, research, reflections). Query via `bash cabinet/scripts/search-memory.sh "<query>"`. |
 | **Redis** | Kill switch, rate limits, state flags |
 | **Watchdog** | Health checks, cost tracking, cron triggers, alerts |
 | **Telegram** | Captain's command interface |
@@ -98,7 +103,7 @@ docker exec -it cabinet-officers bash
 ## The Five Pillars
 
 1. **Dynamic Roles** — Officers are markdown files, not code. Restructure the org in one message.
-2. **The Founder as Captain** — You set direction. The Cabinet figures out how.
+2. **The Operator as Captain** — You set direction, the Cabinet figures out how. Works for founders, employees, team leads, solo operators — anyone running a system that benefits from always-on AI delegation.
 3. **Memory That Compounds** — Three tiers: always-loaded constitution, working notes, episodic recall.
 4. **Self-Improvement Loops** — Three nested loops: Task (per-task experience records), Reflection (event-triggered — after compaction or completion milestones), Evolution (cross-officer retro every 5 reflections or 48h, whichever first). Foundation skills ship with the repo and improve over time.
 5. **Safety Boundaries** — Hard limits enforced by hooks and Redis. Read-only constitution. Kill switch.
@@ -108,15 +113,23 @@ docker exec -it cabinet-officers bash
 ```
 founders-cabinet/
 ├── .claude/agents/          # Officer role definitions (identity, not procedures)
-├── cabinet/                 # Docker, scripts, hooks, cron
-├── config/product.yml       # Product-specific configuration
+├── cabinet/
+│   ├── scripts/             # All Cabinet tooling (hooks, supervisor, memory lib, notify, etc.)
+│   ├── sql/                 # Schema migrations (cabinet_memory.sql, future kb_spaces, ...)
+│   ├── cron/                # Scheduled triggers (briefings, research sweeps, retro)
+│   ├── channels/            # MCP plugins (Redis trigger channel, etc.)
+│   ├── dashboard/           # Next.js operator dashboard
+│   └── Dockerfile.officer   # Per-officer container image
+├── config/
+│   ├── product.yml          # What you're building (product name, Notion IDs, bots, voice)
+│   └── platform.yml         # How the Cabinet operates (timezone, comms, cadence, officer set)
 ├── constitution/            # Governance (read-only at runtime)
 ├── memory/
 │   ├── skills/              # Foundation + promoted skills (procedures, quality gates)
 │   ├── golden-evals/        # Validation scenarios for Cabinet changes
 │   ├── tier2/               # Officer working notes (per-role)
 │   └── tier3/               # Experience records, decision log, research archive
-├── shared/                  # Inter-Officer interfaces
+├── shared/                  # Inter-Officer interfaces (specs, decisions, tech radar)
 ├── CLAUDE.md                # Root context loaded every session
 └── founders-cabinet-guide.md # The theory document
 ```
@@ -139,6 +152,7 @@ voice:
     cto: "AMNzDFTtLuyoKAL3YPnu"
     cpo: "sgk995upfe3tYLvoGcBN"
     cro: "77aEIu0qStu8Jwv1EdhX"
+    coo: "YOUR_COO_VOICE_ID"
 ```
 
 Browse voices at [elevenlabs.io/voice-library](https://elevenlabs.io/voice-library) or via API. Requires `ELEVENLABS_API_KEY` in `.env`.
@@ -157,16 +171,18 @@ Ship with the repo in `memory/skills/`. Officers follow these as baseline proced
 
 ### What to Customize After Forking
 1. `config/product.yml` — your product name, Notion IDs, Linear workspace, Telegram bots, voice settings
-2. `cabinet/.env` — all API keys and tokens
-3. `constitution/CONSTITUTION.md` — your product's work principles (optional)
-4. `.claude/agents/*.md` — officer identity if you add domain-specific context (optional)
+2. `config/platform.yml` — your timezone, accountability tone, briefing cadence, officer set (fulltime vs consultant)
+3. `cabinet/.env` — all API keys and tokens (copy from `cabinet/.env.example`)
+4. `cabinet/officer-capabilities.conf` — map your officers to capabilities (deploys_code, reviews_specs, etc.)
+5. `constitution/CONSTITUTION.md` — your operating principles (optional)
+6. `.claude/agents/*.md` — officer identity if you add domain-specific context (optional)
 
 ## Requirements
 
 - **Server:** Ubuntu 24.04 with Docker (Hetzner CPX31 recommended)
 - **Claude:** Max 20x subscription ($200/mo) for 4–5 Officers
 - **Notion:** Business plan (for MCP integration)
-- **Telegram:** 4 bot tokens + group chat
+- **Telegram:** One bot token per Officer (default 5) + group chat
 - **APIs (required):** Linear, Neon, Voyage AI, Perplexity, Brave Search, Exa
 - **APIs (optional):** ElevenLabs (voice messages), Google Gemini (image generation)
 
