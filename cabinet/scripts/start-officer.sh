@@ -56,10 +56,13 @@ if [ -d "/home/cabinet/.claude/projects/$ENCODED_PATH" ]; then
 fi
 
 # Build the claude command — use --continue only if a prior session exists
+# Model pinned to claude-opus-4-7 (Captain approved fleet-wide Apr 16) —
+# 1M context is standard in 4.7 (no tier suffix). Override via CABINET_MODEL env.
+MODEL="${CABINET_MODEL:-claude-opus-4-7}"
 if [ "$HAS_SESSION" = true ]; then
-  CLAUDE_CMD="claude --continue --channels plugin:telegram@claude-plugins-official --dangerously-load-development-channels server:redis-trigger-channel --dangerously-skip-permissions --effort max"
+  CLAUDE_CMD="claude --continue --model $MODEL --channels plugin:telegram@claude-plugins-official --dangerously-load-development-channels server:redis-trigger-channel --dangerously-skip-permissions --effort max"
 else
-  CLAUDE_CMD="claude --channels plugin:telegram@claude-plugins-official --dangerously-load-development-channels server:redis-trigger-channel --dangerously-skip-permissions --effort max"
+  CLAUDE_CMD="claude --model $MODEL --channels plugin:telegram@claude-plugins-official --dangerously-load-development-channels server:redis-trigger-channel --dangerously-skip-permissions --effort max"
 fi
 
 # Kill any existing session for this officer
