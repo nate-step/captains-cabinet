@@ -125,7 +125,8 @@ fi
 # ============================================================
 if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge'; then
+  # Matches: git push to main, gh pr merge, and curl-based GitHub API merges (pulls/N/merge)
+  if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge|pulls/[0-9]+/merge'; then
     for target in $(officers_with "validates_deployments"); do
       trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
     done
@@ -140,7 +141,7 @@ fi
 # ============================================================
 if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE 'git push.*main|gh pr merge'; then
+  if echo "$CMD" | grep -qE 'git push.*main|gh pr merge|pulls/[0-9]+/merge'; then
     echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
     echo "REMINDER: Update shared/interfaces/deployment-status.md with current deploy state."
   fi
