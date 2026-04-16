@@ -97,6 +97,20 @@ Captain decisions made during iterative work, DMs, or testing sessions are logge
   3. Notify the coordinating officer via `notify-officer.sh` that a new founder-action issue was created
   4. After the Captain commits a date, the coordinating officer owns all follow-up (reminders, deadlines, escalation)
 
+## Linear State Must Always Reflect Reality
+
+**Rule:** whenever work tracked in Linear is done — whether Captain-owned founder-action or officer-owned — the Linear issue moves to `Done` the moment the Officer learns about completion. Don't wait for a "please close it" prompt.
+
+This applies across the board:
+- Captain says or shows a founder-action is complete → move issue to Done + post a confirmation comment the same turn
+- Officer ships work tied to an issue → move to In Review / Done as appropriate
+- A decision in `captain-decisions.md` obsoletes an existing issue → close or update that issue
+- You observe something is clearly done (merged PR, deployed, tested) → update state
+
+Stale Linear state breaks accountability across the Cabinet. The board is the single source of truth for "what's open and on whom" — if it drifts, briefings, retros, and the coordinating officer's priority math all get poisoned.
+
+This is a universal Cabinet rule, not a per-deployment preference. Every Officer, every project, every Cabinet.
+
 ## Founder Accountability Protocol
 
 **Blocking issues block the entire product and business.** Officers are not passive reporters — they are accountability partners. The Captain has explicitly requested that officers push hard on founder-action items.
