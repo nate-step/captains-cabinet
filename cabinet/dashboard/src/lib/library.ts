@@ -10,7 +10,10 @@ import { query } from './db'
 // Types
 // ============================================================
 
+// Index signature on each row type — pg's QueryResultRow constraint requires
+// Record<string, unknown>. Without it, TS strict mode rejects query<Row>() calls.
 export interface LibrarySpace {
+  [key: string]: unknown
   id: string
   name: string
   description: string | null
@@ -25,6 +28,7 @@ export interface LibrarySpace {
 }
 
 export interface LibraryRecord {
+  [key: string]: unknown
   id: string
   space_id: string
   title: string
@@ -39,6 +43,7 @@ export interface LibraryRecord {
 }
 
 export interface LibraryRecordSummary {
+  [key: string]: unknown
   id: string
   title: string
   labels: string[]
@@ -50,6 +55,7 @@ export interface LibraryRecordSummary {
 }
 
 export interface SearchResult {
+  [key: string]: unknown
   space_id: string
   record_id: string
   title: string
@@ -60,6 +66,7 @@ export interface SearchResult {
 }
 
 export interface VersionHistoryEntry {
+  [key: string]: unknown
   id: string
   version: number
   title: string
@@ -367,7 +374,7 @@ export async function updateRecord(
 }
 
 export async function deleteRecord(id: string): Promise<boolean> {
-  const rows = await query<{ id: string }>(
+  const rows = await query<{ id: string; [key: string]: unknown }>(
     `UPDATE library_records
      SET superseded_by = id
      WHERE id = $1::bigint AND superseded_by IS NULL
