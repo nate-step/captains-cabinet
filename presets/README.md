@@ -55,6 +55,22 @@ Default: `work`. Forkers who don't change this get the current Sensed-shaped beh
 
 Schema migrations are additive-only (per Captain directive 2026-04-16) — switching presets preserves existing data. To wholesale reset, use `cabinet/scripts/reset-preset-schemas.sh` (opt-in, does NOT run automatically).
 
+## Editing an existing preset
+
+Preset source files (`presets/<slug>/...`) are NOT the runtime artifacts officers read. The loader assembles runtime state at session start:
+
+- `presets/<slug>/constitution-addendum.md` → concatenated into `/tmp/cabinet-runtime/constitution.md`
+- `presets/<slug>/safety-addendum.md` → concatenated into `/tmp/cabinet-runtime/safety-boundaries.md`
+- `presets/<slug>/agents/*.md` → copied into `.claude/agents/*.md`
+
+When you edit any preset source file mid-session, the runtime copies stay stale until either `load-preset.sh` runs again or officers restart. To propagate edits immediately:
+
+```
+bash cabinet/scripts/load-preset.sh
+```
+
+The loader is idempotent — safe to run at any time. Running officers won't pick up the change until their next post-compact refresh or restart, but at least the on-disk runtime state matches the source.
+
 ## Creating a new preset
 
 ```
