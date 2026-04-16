@@ -391,7 +391,7 @@ Use `/loop` for temporary, specific tasks — "remind me every 10 min," "watch t
 ### No idling
 When no assigned work is available, check in this order and stop at the first item that produces actionable work:
 1. Check `shared/interfaces/product-specs/` for ready specs
-2. Check Linear backlog for bugs and issues in Ready or Triage state
+2. Check Linear backlog for unclaimed bugs and issues eligible for pickup (check your workspace's workflow states — typical names are Todo, Triage, or Ready)
 3. Check `shared/backlog.md` for queued priorities
 4. Run proactive work from your role definition
 5. If all four checks return nothing actionable, notify the product officer that you have capacity and wait for a trigger. Do not loop back through the list until a new trigger or message arrives.
