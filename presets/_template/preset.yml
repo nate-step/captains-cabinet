@@ -1,0 +1,24 @@
+# presets/_template/preset.yml
+# Template preset — copy this directory to presets/<your-name>/ and customize.
+
+name: REPLACE_ME  # preset slug (lowercase, no spaces)
+description: >
+  One-paragraph description of what this preset is for and who would use it.
+
+# Agent archetypes that ship pre-scaffolded with this preset.
+agent_archetypes:
+  - REPLACE_ME_agent_1
+  # - REPLACE_ME_agent_2
+
+# Terminology defaults — see terminology.yml for the full mapping.
+terminology:
+  agent_role: REPLACE_ME    # e.g. officer, coach, mentor, specialist
+  work_unit: REPLACE_ME     # e.g. task, session, goal, checkpoint
+  output_store: REPLACE_ME  # where outputs are persisted
+
+# Default autonomy level: execution_high | execution_medium | execution_low | consent_gated
+# Lower levels require more Captain check-ins per action.
+autonomy_level: execution_medium
+
+# Where the preset expects the primary workspace (may be overridden per-instance)
+workspace_mount: REPLACE_ME

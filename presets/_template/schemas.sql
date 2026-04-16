@@ -1,0 +1,10 @@
+-- presets/_template/schemas.sql
+-- Additional tables specific to this preset.
+-- Additive-only — never DROP framework tables.
+-- Use CREATE TABLE IF NOT EXISTS for idempotency.
+--
+-- Example:
+-- CREATE TABLE IF NOT EXISTS my_preset_data (
+--   id BIGSERIAL PRIMARY KEY,
+--   ...
+-- );

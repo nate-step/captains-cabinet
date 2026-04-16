@@ -1,0 +1,33 @@
+# presets/work/preset.yml
+# Work preset — product-team shape for founders, team leads, and operators
+# shipping a product (or a service, a research program, a consulting engagement).
+
+name: work
+description: >
+  Product-team shape. Officers as domain owners (CoS, CTO, CPO, CRO, COO),
+  Linear-or-Library backlog, Notion-or-Library business brain, product repo
+  mounted as workspace. Default shape for anyone building and shipping work.
+
+# Agent archetypes shipped with this preset. Captains can add, remove, or
+# rename via instance/agents/ overlays.
+agent_archetypes:
+  - cos   # Chief of Staff — orchestration, briefings, self-improvement
+  - cto   # Chief Technology Officer — engineering, code, deploys
+  - cpo   # Chief Product Officer — specs, backlog, prioritization
+  - cro   # Chief Research Officer — market research, competitive intel, trends
+  - coo   # Chief Operating Officer — deployment validation, uptime, operations
+
+# Default terminology for this preset. See terminology.yml for the full mapping.
+terminology:
+  agent_role: officer
+  work_unit: task
+  output_store: shared_interfaces
+  backlog: linear_or_library
+
+# Default autonomy level for Officers in this preset.
+# Higher = more execution without Captain check-in.
+# Personal preset overrides to lower (consent-gated).
+autonomy_level: execution_high
+
+# Where this preset expects the workspace (instance config overrides).
+workspace_mount: /workspace/product

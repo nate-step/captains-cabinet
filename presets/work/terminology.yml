@@ -1,0 +1,30 @@
+# presets/work/terminology.yml
+# Term mappings for the work preset.
+# Other presets (e.g. personal) remap "agent" → "coach", "Captain" → "client", etc.
+
+agent_role: officer
+agents: officers
+
+captain_title: Captain
+captain_context: leadership
+
+crew_title: Crew
+crew_context: agent team
+
+# The generic "work unit" — what a ticket/issue/task is called in this preset
+work_unit: task
+work_units: tasks
+
+# What the long-running body of work is called
+work_body: product
+alternate_work_bodies:  # acceptable synonyms when the Captain's work is broader
+  - operation
+  - program
+  - practice
+  - engagement
+
+# What we call the authoritative backlog surface
+backlog: Linear (or the Library Issues Space after Phase 0+)
+
+# What we call the authoritative business-context surface
+business_brain: Notion Business Brain (or the Library Business Brain Space after Phase 0+)

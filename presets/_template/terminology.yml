@@ -1,0 +1,19 @@
+# presets/_template/terminology.yml
+# Term mappings. Customize for your preset.
+
+agent_role: REPLACE_ME
+agents: REPLACE_ME_plural
+
+captain_title: Captain
+captain_context: REPLACE_ME  # e.g. leadership, coaching-client, mentee, operator
+
+crew_title: Crew
+crew_context: agent team
+
+work_unit: REPLACE_ME
+work_units: REPLACE_ME_plural
+
+work_body: REPLACE_ME  # e.g. product, practice, research-program, coaching-engagement
+
+backlog: REPLACE_ME       # where the backlog lives for this preset
+business_brain: REPLACE_ME # where strategic context lives
