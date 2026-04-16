@@ -14,7 +14,7 @@ set -euo pipefail
 
 SLUG="${1:?Usage: switch-project.sh <project-slug>}"
 CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
-PROJECTS_DIR="$CABINET_ROOT/config/projects"
+PROJECTS_DIR="$CABINET_ROOT/instance/config/projects"
 PROJECT_FILE="$PROJECTS_DIR/${SLUG}.yml"
 ENV_DIR="$CABINET_ROOT/cabinet/env"
 PROJECT_ENV="$ENV_DIR/${SLUG}.env"

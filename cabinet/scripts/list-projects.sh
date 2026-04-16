@@ -3,7 +3,7 @@
 # Shows slug, product name, and active status.
 
 CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
-PROJECTS_DIR="$CABINET_ROOT/config/projects"
+PROJECTS_DIR="$CABINET_ROOT/instance/config/projects"
 ACTIVE_FILE="$CABINET_ROOT/instance/config/active-project.txt"
 REDIS_HOST="${REDIS_HOST:-redis}"
 REDIS_PORT="${REDIS_PORT:-6379}"

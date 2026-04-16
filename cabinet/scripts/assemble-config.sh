@@ -5,7 +5,7 @@
 
 CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
 PLATFORM_FILE="$CABINET_ROOT/instance/config/platform.yml"
-PROJECTS_DIR="$CABINET_ROOT/config/projects"
+PROJECTS_DIR="$CABINET_ROOT/instance/config/projects"
 OUTPUT_FILE="$CABINET_ROOT/instance/config/product.yml"
 ACTIVE_FILE="$CABINET_ROOT/instance/config/active-project.txt"
 
