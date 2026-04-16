@@ -1,10 +1,10 @@
-# The Founder's Cabinet
+# Captain's Cabinet
 
 An autonomous AI organization that builds, ships, and improves your product — while you steer from Telegram.
 
 ## What This Is
 
-The Founder's Cabinet is a framework for running a 24/7 AI development organization. You are the Captain. AI Officers own domains (product, engineering, research). They coordinate, execute, learn, and improve — continuously.
+The Captain's Cabinet is a framework for running a 24/7 AI development organization. You are the Captain. AI Officers own domains (product, engineering, research). They coordinate, execute, learn, and improve — continuously.
 
 This repo is the **infrastructure**. It contains the organizational framework, memory system, safety boundaries, and Docker configuration. Your product repo is separate — the Cabinet mounts it as a workspace.
 
@@ -31,11 +31,11 @@ Officer sets are fully configurable per deployment — add, remove, or rename Of
 
 ### 1. Fork This Repo
 
-Click **Fork** on https://github.com/nate-step/founders-cabinet, then clone your fork:
+Click **Fork** on https://github.com/nate-step/captains-cabinet, then clone your fork:
 
 ```bash
-git clone https://github.com/YOUR-GITHUB-USERNAME/founders-cabinet.git
-cd founders-cabinet
+git clone https://github.com/YOUR-GITHUB-USERNAME/captains-cabinet.git
+cd captains-cabinet
 ```
 
 ### 2. Set Up Notion
@@ -71,7 +71,8 @@ cp cabinet/.env.example cabinet/.env
 
 ```bash
 # On your server (Hetzner/DO/AWS, Ubuntu 24.04)
-cd /opt/founders-cabinet/cabinet
+# Clone into the location you want — we use /opt/cabinet as an example
+cd /opt/cabinet/cabinet
 docker compose build
 docker compose up -d postgres redis
 docker compose up -d officers watchdog
@@ -105,7 +106,7 @@ docker exec -it cabinet-officers bash
 1. **Dynamic Roles** — Officers are markdown files, not code. Restructure the org in one message.
 2. **The Operator as Captain** — You set direction, the Cabinet figures out how. Works for founders, employees, team leads, solo operators — anyone running a system that benefits from always-on AI delegation.
 3. **Memory That Compounds** — Three tiers: always-loaded constitution, working notes, episodic recall.
-4. **Self-Improvement Loops** — Three nested loops: Task (per-task experience records), Reflection (event-triggered — after compaction or completion milestones), Evolution (cross-officer retro every 5 reflections or 48h, whichever first). Foundation skills ship with the repo and improve over time.
+4. **Self-Improvement Loops** — Three nested loops: Task (per-task log entries), Reflection (event-triggered — after compaction or completion milestones), Evolution (cross-officer retro every 5 reflections or 48h, whichever first). Foundation skills ship with the repo and improve over time.
 5. **Safety Boundaries** — Hard limits enforced by hooks and Redis. Read-only constitution. Kill switch.
 
 ## Repo Structure

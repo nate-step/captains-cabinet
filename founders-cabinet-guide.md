@@ -1,4 +1,4 @@
-# The Founder's Cabinet
+# Captain's Cabinet
 
 *A framework for building autonomous AI organizations that ship, learn, and evolve.*
 
@@ -9,15 +9,15 @@
 
 ## Purpose of This Guide
 
-The Founder's Cabinet is a framework for organizing autonomous AI agents into a self-improving workforce that operates continuously under human direction. It is designed for solo founders and small teams who want to multiply their output without multiplying their headcount.
+The Captain's Cabinet is a framework for organizing autonomous AI agents into a self-improving workforce that operates continuously under human direction. It is designed for operators — founders, managers, solo professionals, team leads — who want to multiply their output without multiplying their headcount.
 
-This guide defines the principles, structure, and dynamics of a Founder's Cabinet. It does not prescribe specific tools, platforms, or technologies. It is intentionally incomplete - the Cabinet fills in the gaps itself over time, and that is the point.
+This guide defines the principles, structure, and dynamics of a Captain's Cabinet. It does not prescribe specific tools, platforms, or technologies. It is intentionally incomplete - the Cabinet fills in the gaps itself over time, and that is the point.
 
 ---
 
 ## Definition
 
-A **Founder's Cabinet** is a continuously running organization of AI agents that builds, ships, and improves a product under the strategic direction of a human **Captain**. The Cabinet operates autonomously within defined safety boundaries. It compounds institutional knowledge over time. It adapts its own structure to the work at hand.
+A **Captain's Cabinet** is a continuously running organization of AI agents that builds, ships, and improves a product under the strategic direction of a human **Captain**. The Cabinet operates autonomously within defined safety boundaries. It compounds institutional knowledge over time. It adapts its own structure to the work at hand.
 
 The Cabinet is not a chatbot. It is not a pipeline. It is not a script. It is an organization - with roles, memory, judgment, and the capacity to reorganize itself. The founder is its Captain. The agents are its Officers and Crew.
 
@@ -37,13 +37,13 @@ Officers set the direction within their domain. Crew do the work.
 
 ### The Operator's Role Changes
 
-In a traditional organization, the operator — founder, manager, team lead, solo professional, whoever holds the role — does the work, delegates the work, or manages people who do the work. In a Founder's Cabinet, the operator does none of these. They become the **Captain** — setting direction, making decisions that require human judgment, and reviewing outcomes. The Captain steers an autonomous organization that happens to be made of AI agents instead of people.
+In a traditional organization, the operator — founder, manager, team lead, solo professional, whoever holds the role — does the work, delegates the work, or manages people who do the work. In a Captain's Cabinet, the operator does none of these. They become the **Captain** — setting direction, making decisions that require human judgment, and reviewing outcomes. The Captain steers an autonomous organization that happens to be made of AI agents instead of people.
 
-This is not a delegation framework. Delegation implies the Captain knows how the work should be done and instructs others to do it. In a Founder's Cabinet, the Officers determine how to execute within their domains. The Captain determines what matters and why.
+This is not a delegation framework. Delegation implies the Captain knows how the work should be done and instructs others to do it. In a Captain's Cabinet, the Officers determine how to execute within their domains. The Captain determines what matters and why.
 
 ### Why It Works
 
-Three converging capabilities make the Founder's Cabinet viable:
+Three converging capabilities make the Captain's Cabinet viable:
 
 1. **AI agents can now use tools, write code, and coordinate with each other** without custom orchestration frameworks. The infrastructure cost of running multiple cooperating agents has collapsed.
 
@@ -61,7 +61,7 @@ The Captain's scarcest resource is no longer time. It is judgment. The Cabinet g
 
 ## The Five Pillars
 
-A Founder's Cabinet is built on five non-negotiable pillars. Remove any one and the system degrades into either chaos or stagnation.
+A Captain's Cabinet is built on five non-negotiable pillars. Remove any one and the system degrades into either chaos or stagnation.
 
 ### 1. Dynamic Roles
 
@@ -121,7 +121,7 @@ Loaded into every agent at session start. Contains the Cabinet's constitution - 
 Notes that agents write for themselves - corrections, preferences, accumulated context. Automatically managed and curated. Each Officer maintains its own working knowledge within its domain.
 
 **Tier 3: Institutional Memory**
-The full corpus of experience records, decision logs, research archives, and postmortems. Not loaded automatically - retrieved on demand when relevant. This is the Cabinet's long-term memory. It grows continuously and is periodically consolidated to extract patterns and prune noise.
+The full corpus of log entries, decision logs, research archives, and postmortems. Not loaded automatically - retrieved on demand when relevant. This is the Cabinet's long-term memory. It grows continuously and is periodically consolidated to extract patterns and prune noise.
 
 The critical design rule: **only Tier 1 is always loaded.** Everything else is pulled on demand. An agent that loads its entire memory into every session will drown in context and lose focus.
 
@@ -136,10 +136,10 @@ The Cabinet gets measurably better at its job over time - not through model impr
 **Captain directives vs. retrospective-discovered improvements.** The Captain can update operational standards, role definitions, and processes at any time — this is Captain authority, not micromanagement. The self-improvement loops exist for improvements that Officers discover autonomously through experience. These are complementary mechanisms: Captain directives set and raise the bar; improvement loops optimize how Officers meet it.
 
 **The Task Loop (event-driven)**
-Every task follows: plan, execute, verify, record. Verification must be independent - the agent that built something is not the agent that confirms it works. Every completed task produces an experience record: what was attempted, what succeeded or failed, and what to do differently next time. The Task Loop is enforced, not optional — a task without a recorded experience is not complete.
+Every task follows: plan, execute, verify, record. Verification must be independent - the agent that built something is not the agent that confirms it works. Every completed task produces an log entry: what was attempted, what succeeded or failed, and what to do differently next time. The Task Loop is enforced, not optional — a task without a recorded experience is not complete.
 
 **The Reflection Loop (throughput-driven)**
-Each Officer periodically reviews their own accumulated experience records, identifies patterns in their own work, and self-corrects. Additionally, the orchestrating Officer reviews all Officers' experience records for cross-Officer coordination patterns — handoff quality, responsiveness, communication gaps. Reflection cadence should match the rate at which new experience records accumulate. If ten records appear in six hours, reflect every six hours. If one record appears per day, daily reflection is sufficient. The principle: reflect often enough that patterns are caught before they compound, but not so often that every cycle finds nothing.
+Each Officer periodically reviews their own accumulated log entries, identifies patterns in their own work, and self-corrects. Additionally, the orchestrating Officer reviews all Officers' log entries for cross-Officer coordination patterns — handoff quality, responsiveness, communication gaps. Reflection cadence should match the rate at which new log entries accumulate. If ten records appear in six hours, reflect every six hours. If one record appears per day, daily reflection is sufficient. The principle: reflect often enough that patterns are caught before they compound, but not so often that every cycle finds nothing.
 
 **The Evolution Loop (batch-driven)**
 A heavier analysis cycle where the Cabinet evaluates its own performance against defined metrics, runs validation tests against proposed changes, and promotes improvements that pass. Changes that degrade performance are automatically reverted. The Cabinet can propose organizational restructuring - merging Officers, creating new specialists, retiring unused roles - but the Captain approves structural changes. Evolution runs after each Reflection cycle has produced enough data to warrant analysis. It can always decide not to promote anything if no improvements qualify.
@@ -148,7 +148,7 @@ A heavier analysis cycle where the Cabinet evaluates its own performance against
 
 **The iron rule of self-improvement: every change is an experiment with a rollback path.** The Cabinet modifies its own instructions on a branch, validates against a set of known-good scenarios, and only promotes changes that demonstrably improve outcomes. Self-improvement without validation is drift, not improvement.
 
-**Cadence scales with operating speed.** The improvement loops must match the pace of the Cabinet's work, not a fixed clock. A Cabinet running on powerful models that complete 50 tasks per day needs rapid reflection and frequent evolution cycles. A Cabinet running on smaller models with lower throughput can reflect less often. The principle: improvement loops should never be the bottleneck, and accumulated experience records should never sit unreviewed long enough for bad patterns to compound. Set cadences aggressively and adjust based on whether each cycle produces actionable output.
+**Cadence scales with operating speed.** The improvement loops must match the pace of the Cabinet's work, not a fixed clock. A Cabinet running on powerful models that complete 50 tasks per day needs rapid reflection and frequent evolution cycles. A Cabinet running on smaller models with lower throughput can reflect less often. The principle: improvement loops should never be the bottleneck, and accumulated log entries should never sit unreviewed long enough for bad patterns to compound. Set cadences aggressively and adjust based on whether each cycle produces actionable output.
 
 ### 5. Safety Boundaries
 
@@ -174,7 +174,7 @@ The Cabinet also maintains a self-healing escalation chain: when an agent fails,
 
 ## Artifacts
 
-A Founder's Cabinet produces and maintains three essential artifacts:
+A Captain's Cabinet produces and maintains three essential artifacts:
 
 ### The Constitution
 
@@ -234,9 +234,9 @@ The most common failure modes:
 
 ---
 
-## Implementing a Founder's Cabinet
+## Implementing a Captain's Cabinet
 
-This guide deliberately does not prescribe implementation. Any technology stack that provides the following capabilities can host a Founder's Cabinet:
+This guide deliberately does not prescribe implementation. Any technology stack that provides the following capabilities can host a Captain's Cabinet:
 
 - **AI agents** that can read files, write code, execute commands, and use external tools
 - **Multi-agent coordination** that allows Officers to work in parallel with independent context and peer-to-peer communication, and to spawn Crew for task execution
@@ -253,7 +253,7 @@ The Cabinet is the framework. The tools are the implementation. Neither defines 
 
 ## End Note
 
-The Founder's Cabinet is not a product. It is not a tool. It is an organizational pattern - a way of structuring autonomous AI agents so that a single human can direct an organization that builds, learns, and evolves continuously.
+The Captain's Cabinet is not a product. It is not a tool. It is an organizational pattern - a way of structuring autonomous AI agents so that a single human can direct an organization that builds, learns, and evolves continuously.
 
 The models will change. The tools will change. The capabilities will expand. What will not change is the fundamental dynamic: a Captain setting direction, Officers owning domains, Crew executing work, and a memory system ensuring that every lesson learned is a lesson kept.
 
@@ -261,6 +261,6 @@ The Cabinet is always in session.
 
 ---
 
-*The Founder's Cabinet is authored by Nathaniel Refslund. This is a living document and will evolve as the framework matures through real-world application.*
+*The Captain's Cabinet is authored by Nathaniel Refslund. This is a living document and will evolve as the framework matures through real-world application.*
 
 *© 2026 Nathaniel Refslund. All rights reserved.*

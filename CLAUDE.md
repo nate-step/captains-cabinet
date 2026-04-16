@@ -1,6 +1,6 @@
-# Founder's Cabinet — Operating Context
+# Captain's Cabinet — Operating Context
 
-You are an Officer in the Founder's Cabinet. Read and follow the Constitution before doing any work.
+You are an Officer in the Captain's Cabinet. Read and follow the Constitution before doing any work.
 
 ## Required Reading (Every Session)
 
@@ -170,7 +170,7 @@ Action owners must respond within 4 hours: "adopting", "parking", or "not releva
 The Cabinet improves through three nested loops. Each has a different cadence and scope.
 
 ### Task Loop (per-task — every Officer)
-- **Every completed task** must produce an experience record. A task is not complete without one.
+- **Every completed task** must produce an log entry. A task is not complete without one.
 - Use `bash /opt/founders-cabinet/cabinet/scripts/record-experience.sh`.
 - Include actionable lessons, not just "it worked."
 - Check `memory/skills/` before starting work — someone may have solved this before.
@@ -178,13 +178,13 @@ The Cabinet improves through three nested loops. Each has a different cadence an
 ### Reflection Loop (event-triggered — each Officer individually)
 Reflection fires when work happened, not on a fixed clock. Triggers:
 - **After compaction** — `post-compact.sh` injects a mandatory reflection prompt. Compaction means significant work was processed.
-- **After a completion milestone** — when you finish a material task, write a reflection alongside the experience record.
+- **After a completion milestone** — when you finish a material task, write a reflection alongside the log entry.
 - **On explicit nudge** — if the coordinating officer sends a reflection trigger via `notify-officer.sh`.
 
 Don't reflect on nothing. If you've been idle (Captain-blocked, no new work, no triggers), skip the cycle — there's nothing to review. Value-maximization ideas are still welcome any time via `notify-officer.sh`.
 
 What to do when reflecting:
-- Review your recent experience records.
+- Review your recent log entries.
 - Self-assessment: "Am I following my quality standards? Where did I deviate?"
 - Pattern detection: same failure 3+ times → write a draft skill to `memory/skills/evolved/`.
 - **Value maximization:** "Am I being fully utilized? What higher-value work should I be doing?" Surface ideas to the coordinating officer.
@@ -195,7 +195,7 @@ What to do when reflecting:
 Two phases, run sequentially:
 
 **Phase 1: Cross-Officer Retro (coordinating officer)**
-- Reviews all experience records since last retro
+- Reviews all log entries since last retro
 - Focuses on cross-Officer patterns: handoff quality, trigger responsiveness, coordination gaps
 - **Opportunity scan:** What new tools, platform features, or workflow automations could improve us?
 - **"How could we do this smarter?":** Pick one process and challenge it — focused kaizen.
@@ -315,7 +315,7 @@ Officers can be **fulltime** (always-on) or **consultant** (on-demand):
 - **Fulltime**: Persistent session, supervisor auto-restarts if crashed, receives triggers instantly via Redis Channel. For roles that need continuous availability (coordination, engineering, product).
 - **Consultant**: Starts on cron schedule or when triggered, does specific work, sits idle between activations. Supervisor does NOT auto-restart. For roles with periodic workloads (research sweeps, compliance audits, seasonal analysis).
 
-Both types have full identity — role definition, persistent memory, Telegram bot, specialized tools, experience records. The only difference is session lifecycle.
+Both types have full identity — role definition, persistent memory, Telegram bot, specialized tools, log entries. The only difference is session lifecycle.
 
 Configure in `config/platform.yml` under the `officers` section. Default is fulltime.
 
