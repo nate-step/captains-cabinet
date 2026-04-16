@@ -99,23 +99,28 @@ mv "$SAFETY_TMP" "$RUNTIME_DIR/safety-boundaries.md"
 log "Assembled safety boundaries → $RUNTIME_DIR/safety-boundaries.md"
 
 # ---------------------------------------------------------------
-# Apply framework base + preset schemas to Neon (idempotent)
+# Apply framework base + preset schemas (idempotent)
+# Phase 1 CP1 (Captain 2026-04-16): no contexts DB table. YAML files at
+# instance/config/contexts/*.yml are source of truth. Target tables carry
+# a context_slug column; validation in pre-tool-use hook (CP2).
 # ---------------------------------------------------------------
+
+# Product Neon schemas (external)
 if [ -n "${NEON_CONNECTION_STRING:-}" ]; then
-  # Framework base schemas (all CREATE TABLE IF NOT EXISTS via the individual files)
   for schema in \
     "$CABINET_ROOT/cabinet/sql/cabinet_memory.sql" \
-    "$CABINET_ROOT/cabinet/sql/library.sql"; do
+    "$CABINET_ROOT/cabinet/sql/library.sql" \
+    "$CABINET_ROOT/cabinet/sql/contexts-neon-phase1.sql"; do
     if [ -f "$schema" ]; then
       if psql "$NEON_CONNECTION_STRING" -q -f "$schema" > /dev/null 2>&1; then
-        log "Applied framework schema: $(basename "$schema")"
+        log "Applied framework schema (neon): $(basename "$schema")"
       else
-        log "WARN: failed to apply $schema (Cabinet will still boot; fix before new Spaces created)"
+        log "WARN: failed to apply $schema to Neon (Cabinet will still boot; fix before new records)"
       fi
     fi
   done
 
-  # Preset-specific schemas
+  # Preset-specific schemas (Neon)
   if [ -f "$PRESET_DIR/schemas.sql" ]; then
     if psql "$NEON_CONNECTION_STRING" -q -f "$PRESET_DIR/schemas.sql" > /dev/null 2>&1; then
       log "Applied preset schema: $ACTIVE_PRESET/schemas.sql"
@@ -124,7 +129,23 @@ if [ -n "${NEON_CONNECTION_STRING:-}" ]; then
     fi
   fi
 else
-  log "WARN: NEON_CONNECTION_STRING not set — skipping schema application"
+  log "WARN: NEON_CONNECTION_STRING not set — skipping Neon schema application"
+fi
+
+# Cabinet postgres schemas (internal) — additive migrations for Phase 1+
+if [ -n "${DATABASE_URL:-}" ]; then
+  for schema in \
+    "$CABINET_ROOT/cabinet/sql/contexts-cabinet-phase1.sql"; do
+    if [ -f "$schema" ]; then
+      if psql "$DATABASE_URL" -q -f "$schema" > /dev/null 2>&1; then
+        log "Applied framework schema (cabinet-pg): $(basename "$schema")"
+      else
+        log "WARN: failed to apply $schema to cabinet postgres"
+      fi
+    fi
+  done
+else
+  log "WARN: DATABASE_URL not set — skipping cabinet postgres schema application"
 fi
 
 # ---------------------------------------------------------------
