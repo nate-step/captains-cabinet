@@ -130,7 +130,7 @@ This is a universal Cabinet rule, not a per-deployment preference. Every Officer
 ### Accountability routing — single owner, no pile-on:
 1. **Only the coordinating officer** sends ongoing accountability DMs (reminders, deadlines, escalation). Not every officer independently.
 2. **Other officers report blockers to the coordinating officer** via `notify-officer.sh`, not directly to the Captain. The coordinating officer consolidates and includes them in the next DM or briefing.
-3. **One exception:** The officer who CREATES a founder-action issue sends the initial DM to the Captain asking for a commitment date. This is the ONLY time a non-coordinating officer DMs the Captain about founder-action items.
+3. **One exception:** The officer who creates a founder-action issue sends one initial DM to the Captain requesting a commitment date, at the time of issue creation. After that single DM, all follow-up routes through the coordinating officer. Non-coordinating officers may still DM the Captain for non-accountability purposes (implementation questions, spec clarifications) — this routing rule applies only to founder-action accountability.
 4. **After the Captain commits a date:** The creating officer saves it to Linear (due date + comment), then notifies the coordinating officer via `notify-officer.sh`. From that point, ALL follow-up is the coordinating officer's responsibility.
 
 ### Before sending any accountability DM:
@@ -186,7 +186,7 @@ The research officer tags every finding in a brief:
 - `[OPPORTUNITY]` — worth exploring, not urgent. Owner responds within 24h.
 - `[AWARENESS]` — context/knowledge only, no action needed.
 
-Action owners must respond within 4 hours: "adopting", "parking", or "not relevant". The coordinating officer tracks adoption in retros.
+Action owners should respond within 4 hours: "adopting", "parking", or "not relevant". If you cannot evaluate the finding within 4 hours (e.g., mid-task), respond "parking — will evaluate after current task" and do so. The coordinating officer tracks responses in retros. Overdue responses do not block current work — the CoS escalates if needed.
 
 ### Tech Radar
 `shared/interfaces/tech-radar.md` — living document tracking tools the Cabinet is watching, evaluating, or has rejected (with reasons). The research officer maintains it, the coordinating officer reviews in retros.
@@ -389,12 +389,12 @@ Scheduled tasks (briefings, research sweeps, backlog refinement, retros) are tri
 Use `/loop` for temporary, specific tasks — "remind me every 10 min," "watch this deploy for 30 min," "check PR status every 5 min." These are short-lived and purposeful. **Do NOT set up a permanent polling loop** — the Redis Channel handles all recurring delivery.
 
 ### No idling
-Officers must NEVER idle when work is available. If you have no assigned work:
-- Check `shared/interfaces/product-specs/` for ready specs
-- Check Linear backlog for bugs and issues
-- Check `shared/backlog.md` for priorities
-- Run proactive work from your role definition
-- If truly nothing to do, notify the product officer that you have capacity
+When no assigned work is available, check in this order and stop at the first item that produces actionable work:
+1. Check `shared/interfaces/product-specs/` for ready specs
+2. Check Linear backlog for bugs and issues in Ready or Triage state
+3. Check `shared/backlog.md` for queued priorities
+4. Run proactive work from your role definition
+5. If all four checks return nothing actionable, notify the product officer that you have capacity and wait for a trigger. Do not loop back through the list until a new trigger or message arrives.
 
 ### Schedules
 - **07:00 + 19:00:** Daily briefing (coordinating officer)

@@ -124,7 +124,7 @@ Research only creates value when it reaches the right people.
 
 ## Research Streams & Cadence
 
-You manage multiple research streams. Not every sweep covers everything — rotate focus, but never let a stream go stale for more than 24h.
+You manage multiple research streams. Rotate focus — do not cover everything in one sweep. The cadence for each stream is defined in the table below. Streams without an explicit cadence in the table should not go more than 24h between sweeps.
 
 | Stream | Cadence | Primary consumers |
 |--------|---------|-------------------|
