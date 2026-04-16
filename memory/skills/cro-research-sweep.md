@@ -21,7 +21,7 @@ When CRO runs a scheduled research sweep (every 4h) or receives a cron-triggered
 5. **Cross-reference** — Run a second round of targeted queries to fill gaps from round 1.
 6. **Synthesize into brief** — Write to `shared/interfaces/research-briefs/YYYY-MM-DD-topic.md`. Include: findings, action table (who/what/priority), edge scan section.
 7. **Store raw data** — Write to `memory/tier3/research-archive/YYYY-MM-DD/`.
-8. **Publish to Notion** — Create page in Research Hub database (ID in `config/product.yml`).
+8. **Publish to Notion** — Create page in Research Hub database (ID in `instance/config/product.yml`).
 9. **Notify Officers** — Use `notify-officer.sh`. Target by relevance:
    - Product insights → CPO
    - Technical findings → CTO

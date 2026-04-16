@@ -25,7 +25,7 @@ else
 fi
 
 # Auto-send voice if enabled (non-blocking)
-CONFIG_FILE="/opt/founders-cabinet/config/product.yml"
+CONFIG_FILE="/opt/founders-cabinet/instance/config/product.yml"
 VOICE_ENABLED=$(grep -A1 "^voice:" "$CONFIG_FILE" 2>/dev/null | grep "enabled:" | awk '{print $2}' | tr -d ' ')
 VOICE_MODE=$(grep -A4 "^voice:" "$CONFIG_FILE" 2>/dev/null | grep "mode:" | awk '{print $2}' | tr -d ' ')
 

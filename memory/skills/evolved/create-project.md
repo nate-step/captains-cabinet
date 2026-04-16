@@ -72,7 +72,7 @@ Or use the Telegram Bot API to get the chat ID after adding a bot.
 
 ```bash
 # Copy template
-cp /opt/founders-cabinet/config/projects/_template.yml /opt/founders-cabinet/config/projects/<slug>.yml
+cp /opt/founders-cabinet/instance/config/projects/_template.yml /opt/founders-cabinet/instance/config/projects/<slug>.yml
 
 # Edit with the IDs collected above
 # Fill in: product.name, product.description, product.repo, all notion.* IDs, linear.*, neon.*, telegram.*

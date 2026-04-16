@@ -7,7 +7,7 @@ HOOK_INPUT=$(cat)
 OFFICER="${OFFICER_NAME:-unknown}"
 
 # Check if voice is enabled
-CONFIG_FILE="/opt/founders-cabinet/config/product.yml"
+CONFIG_FILE="/opt/founders-cabinet/instance/config/product.yml"
 VOICE_ENABLED=$(grep -A1 "^voice:" "$CONFIG_FILE" 2>/dev/null | grep "enabled:" | awk '{print $2}' | tr -d ' ')
 if [ "$VOICE_ENABLED" != "true" ]; then
   exit 0

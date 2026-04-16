@@ -21,7 +21,7 @@ The product repo is at `/workspace/product`. Map the full structure:
 - Entry points (web, mobile, API)
 - Shared code / libraries
 
-Write findings to `memory/tier2/cto/codebase-map.md`.
+Write findings to `instance/memory/tier2/cto/codebase-map.md`.
 
 ### 2. Understand the Database
 
@@ -31,7 +31,7 @@ Query the Neon database:
 - Row counts per table (gauge data maturity)
 - Any migrations pending or migration history
 
-Write findings to `memory/tier2/cto/database-schema.md`.
+Write findings to `instance/memory/tier2/cto/database-schema.md`.
 
 ### 3. Assess Build & Deploy Pipeline
 

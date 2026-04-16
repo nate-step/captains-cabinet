@@ -74,7 +74,7 @@ export async function deleteOfficer(role: string) {
     await dockerExec(`rm -f /opt/founders-cabinet/cabinet/loop-prompts/${role}.txt`)
 
     // Remove from product.yml voice sections
-    const CONFIG_PATH = '/opt/founders-cabinet/config/product.yml'
+    const CONFIG_PATH = '/opt/founders-cabinet/instance/config/product.yml'
     const sections = ['voices', 'naturalize_prompts', 'stability', 'speeds', 'models']
     for (const section of sections) {
       await dockerExec(

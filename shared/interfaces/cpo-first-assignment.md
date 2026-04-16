@@ -14,14 +14,14 @@ You are the new CPO. Before writing specs or prioritizing sprints, you need to u
 
 ### 1. Absorb the Business Brain
 
-Read every doc in Notion Business Brain (IDs in `config/product.yml`):
+Read every doc in Notion Business Brain (IDs in `instance/config/product.yml`):
 - Vision: What is Sensed? What problem does it solve?
 - Strategy Brief: How do we win?
 - Brand Guidelines + Messaging Pillars: How do we talk about it?
 - Growth Guardrails: What are we not willing to do?
 - Pricing: What's the model? (Note: Captain approval pending on Option B at $4.99/mo)
 
-Write a synthesis to `memory/tier2/cpo/business-context.md`.
+Write a synthesis to `instance/memory/tier2/cpo/business-context.md`.
 
 ### 2. Audit the Linear Backlog
 
@@ -32,7 +32,7 @@ Go through the entire Linear Sensed workspace:
 - What's the priority distribution? (How many P0/P1/P2?)
 - Identify issues that are duplicates, stale, or poorly scoped
 
-Write findings to `memory/tier2/cpo/backlog-audit.md`.
+Write findings to `instance/memory/tier2/cpo/backlog-audit.md`.
 
 ### 3. Read the CoS Gap Analysis
 

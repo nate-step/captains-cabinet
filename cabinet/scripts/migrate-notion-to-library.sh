@@ -24,7 +24,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CABINET_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$CABINET_DIR/cabinet/.env"
-CONFIG_FILE="$CABINET_DIR/config/product.yml"
+CONFIG_FILE="$CABINET_DIR/instance/config/product.yml"
 LIB_FILE="$SCRIPT_DIR/lib/library.sh"
 
 # ---------------------------------------------------------------

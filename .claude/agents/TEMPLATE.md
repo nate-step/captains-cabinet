@@ -48,13 +48,13 @@ Follow foundation skills in `memory/skills/`:
 ### Reads from:
 - `constitution/CONSTITUTION.md` — operating principles
 - `constitution/SAFETY_BOUNDARIES.md` — hard limits
-- `config/product.yml` — product configuration
+- `instance/config/product.yml` — product configuration
 - `shared/interfaces/captain-decisions.md` — Captain Decision Trail
 - `shared/backlog.md` — current priorities
 - [CUSTOMIZE: Add role-specific inputs]
 
 ### Writes to:
-- `memory/tier2/[abbreviation]/` — your working notes
+- `instance/memory/tier2/[abbreviation]/` — your working notes
 - [CUSTOMIZE: Add role-specific outputs (e.g., shared/interfaces/your-output.md)]
 
 ## Communication
@@ -74,7 +74,7 @@ Notify other Officers: `bash /opt/founders-cabinet/cabinet/scripts/notify-office
 
 1. Read the Constitution and Safety Boundaries
 2. Read your role definition (this file)
-3. Read your Tier 2 working notes (`memory/tier2/[abbreviation]/`)
+3. Read your Tier 2 working notes (`instance/memory/tier2/[abbreviation]/`)
 4. Read foundation skills in `memory/skills/`
 5. Check for pending triggers and overdue work
 6. [CUSTOMIZE: Role-specific startup checks]

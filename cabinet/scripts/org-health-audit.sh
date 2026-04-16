@@ -15,7 +15,7 @@ NOW_EPOCH=$(date -u +%s)
 
 # Discover active officers dynamically
 OFFICERS=()
-for dir in "$CABINET_ROOT"/memory/tier2/*/; do
+for dir in "$CABINET_ROOT"/instance/memory/tier2/*/; do
   [ -d "$dir" ] && OFFICERS+=("$(basename "$dir")")
 done
 
@@ -77,7 +77,7 @@ for officer in "${OFFICERS[@]}"; do
   echo "  Pending triggers: $PENDING"
 
   # 7. Correction count (role fitness signal)
-  CORRECTIONS_FILE="$CABINET_ROOT/memory/tier2/$officer/corrections.md"
+  CORRECTIONS_FILE="$CABINET_ROOT/instance/memory/tier2/$officer/corrections.md"
   if [ -f "$CORRECTIONS_FILE" ]; then
     CORRECTION_COUNT=$(grep -c '^-\|^\*\|^[0-9]' "$CORRECTIONS_FILE" 2>/dev/null || echo 0)
     echo "  Corrections logged: $CORRECTION_COUNT"

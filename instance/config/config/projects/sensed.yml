@@ -2,8 +2,8 @@
 # Project: Sensed
 # =============================================================
 # Dual-map product for meaningful and anomalous human experiences.
-# This file is merged with config/platform.yml to produce
-# config/product.yml when this project is active.
+# This file is merged with instance/config/platform.yml to produce
+# instance/config/product.yml when this project is active.
 # =============================================================
 
 product:

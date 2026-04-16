@@ -1,7 +1,7 @@
 # =============================================================
 # Project: [PROJECT NAME]
 # =============================================================
-# Copy this template to config/projects/<slug>.yml
+# Copy this template to instance/config/projects/<slug>.yml
 # Fill in all IDs from your Notion, Linear, and Neon setup.
 # Then run: bash cabinet/scripts/switch-project.sh <slug>
 # =============================================================

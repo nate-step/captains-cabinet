@@ -3,7 +3,7 @@
 import { dockerExec } from '@/lib/docker'
 import { revalidatePath } from 'next/cache'
 
-const CONFIG_PATH = '/opt/founders-cabinet/config/product.yml'
+const CONFIG_PATH = '/opt/founders-cabinet/instance/config/product.yml'
 
 const PRODUCT_FIELDS = ['name', 'description', 'repo', 'repo_branch', 'captain_name', 'mount_path']
 const VOICE_FIELDS = ['enabled', 'provider', 'model', 'mode', 'naturalize']

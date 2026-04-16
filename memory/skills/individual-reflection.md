@@ -25,7 +25,7 @@ Every Officer runs this every 6 hours. Tracked via Redis: `cabinet:schedule:last
    - If you can't answer these, you weren't doing enough real work.
 
 3. **Detect patterns:**
-   - Same failure 2x → note it in `memory/tier2/<your-role>/patterns.md`
+   - Same failure 2x → note it in `instance/memory/tier2/<your-role>/patterns.md`
    - Same failure 3+ times → write a draft skill to `memory/skills/evolved/`
 
 4. **Value maximization — produce at least ONE actionable idea:**

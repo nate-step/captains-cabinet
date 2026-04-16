@@ -200,8 +200,8 @@ fi
 # ============================================================
 # After an officer with logs_captain_decisions capability replies to
 # the Captain's Telegram chat, remind to log decisions.
-CAPTAIN_CHAT_ID="${CAPTAIN_TELEGRAM_CHAT_ID:-$(grep '^captain_telegram_chat_id:' /opt/founders-cabinet/config/platform.yml 2>/dev/null | awk '{print $2}' | tr -d '\"')}"
-CAPTAIN_NAME=$(grep '^captain_name:' /opt/founders-cabinet/config/platform.yml 2>/dev/null | awk '{print $2}' || echo "Captain")
+CAPTAIN_CHAT_ID="${CAPTAIN_TELEGRAM_CHAT_ID:-$(grep '^captain_telegram_chat_id:' /opt/founders-cabinet/instance/config/platform.yml 2>/dev/null | awk '{print $2}' | tr -d '\"')}"
+CAPTAIN_NAME=$(grep '^captain_name:' /opt/founders-cabinet/instance/config/platform.yml 2>/dev/null | awk '{print $2}' || echo "Captain")
 
 if has_capability "logs_captain_decisions" && [ "$TOOL_NAME" = "mcp__plugin_telegram_telegram__reply" ]; then
   REPLY_CHAT=$(echo "$TOOL_INPUT" | jq -r '.chat_id // empty' 2>/dev/null)

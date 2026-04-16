@@ -105,7 +105,7 @@ log "Queueing shared interfaces..."
 SI_COUNT=0
 for f in /opt/founders-cabinet/shared/backlog.md \
          /opt/founders-cabinet/shared/interfaces/tech-radar.md \
-         /opt/founders-cabinet/memory/tier2/*/working-notes.md; do
+         /opt/founders-cabinet/instance/memory/tier2/*/working-notes.md; do
   if [ -f "$f" ]; then
     content=$(cat "$f")
     [ -z "$(printf '%s' "$content" | tr -d '[:space:]')" ] && continue

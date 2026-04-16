@@ -191,7 +191,7 @@ This applies to: AI-generated images (Gemini), screenshots, logos, mockups, diag
 
 ## Voice Messages (optional — disabled by default)
 
-When enabled in `config/product.yml`, officers send a voice message alongside text replies. Each officer has their own voice (configured by voice_id).
+When enabled in `instance/config/product.yml`, officers send a voice message alongside text replies. Each officer has their own voice (configured by voice_id).
 
 ```bash
 # Send a voice message to the Captain or group
@@ -204,7 +204,7 @@ The script:
 3. Generates audio via ElevenLabs API
 4. Sends via Telegram's sendVoice API
 
-**Config in `config/product.yml`:**
+**Config in `instance/config/product.yml`:**
 ```yaml
 voice:
   enabled: false              # Set to true to activate

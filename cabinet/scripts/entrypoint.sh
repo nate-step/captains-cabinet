@@ -26,7 +26,7 @@ exec su cabinet -s /bin/bash -c '
   bash /opt/founders-cabinet/cabinet/scripts/assemble-config.sh || echo "WARNING: Config assembly failed — using existing product.yml"
 
   # Seed Redis with active project if not set
-  ACTIVE_SLUG=$(cat /opt/founders-cabinet/config/active-project.txt 2>/dev/null | tr -d "[:space:]")
+  ACTIVE_SLUG=$(cat /opt/founders-cabinet/instance/config/active-project.txt 2>/dev/null | tr -d "[:space:]")
   if [ -n "$ACTIVE_SLUG" ]; then
     redis-cli -h redis -p 6379 SETNX cabinet:active-project "$ACTIVE_SLUG" > /dev/null 2>&1 || true
   fi

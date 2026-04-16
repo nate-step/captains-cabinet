@@ -38,7 +38,7 @@ export async function getActiveProject(): Promise<string> {
   try {
     const redisValue = await redis.get('cabinet:active-project')
     if (redisValue) return redisValue
-    const { stdout } = await dockerExec('cat /opt/founders-cabinet/config/active-project.txt 2>/dev/null || echo sensed')
+    const { stdout } = await dockerExec('cat /opt/founders-cabinet/instance/config/active-project.txt 2>/dev/null || echo sensed')
     return stdout.trim() || 'sensed'
   } catch {
     return 'sensed'
@@ -56,7 +56,7 @@ export async function getProjects(): Promise<ProjectInfo[]> {
   try {
     const activeSlug = await getActiveProject()
     const { stdout } = await dockerExec(
-      `for f in /opt/founders-cabinet/config/projects/*.yml; do
+      `for f in /opt/founders-cabinet/instance/config/projects/*.yml; do
         slug=$(basename "$f" .yml)
         name=$(grep -m1 "^  name:" "$f" 2>/dev/null | sed 's/.*name: *//')
         [ -z "$name" ] && name=$(grep -m1 "name:" "$f" 2>/dev/null | sed 's/.*name: *//')

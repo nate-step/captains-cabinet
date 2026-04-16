@@ -23,7 +23,7 @@ if [ "$STATUS" != "suspended" ]; then
 fi
 
 # === Check exit record ===
-EXIT_RECORD="$CABINET_ROOT/memory/tier2/$OFFICER/.exit-record.md"
+EXIT_RECORD="$CABINET_ROOT/instance/memory/tier2/$OFFICER/.exit-record.md"
 if [ -f "$EXIT_RECORD" ]; then
   log "Exit record found. Reason for suspension:"
   grep "^**Reason:**" "$EXIT_RECORD" 2>/dev/null || echo "  (no reason recorded)"
@@ -32,7 +32,7 @@ fi
 
 # === Verify required files exist ===
 ROLE_FILE="$CABINET_ROOT/.claude/agents/$OFFICER.md"
-TIER2_DIR="$CABINET_ROOT/memory/tier2/$OFFICER"
+TIER2_DIR="$CABINET_ROOT/instance/memory/tier2/$OFFICER"
 SKILLS_FILE="$CABINET_ROOT/cabinet/officer-skills/$OFFICER.txt"
 
 MISSING=false
@@ -67,7 +67,7 @@ bash "$CABINET_ROOT/cabinet/scripts/start-officer.sh" "$OFFICER"
 
 # === Notify other officers ===
 source "$CABINET_ROOT/cabinet/scripts/lib/triggers.sh" 2>/dev/null
-for other in $(ls "$CABINET_ROOT/memory/tier2/" 2>/dev/null); do
+for other in $(ls "$CABINET_ROOT/instance/memory/tier2/" 2>/dev/null); do
   [ "$other" = "$OFFICER" ] && continue
   EXPECTED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:officer:expected:$other" 2>/dev/null)
   [ "$EXPECTED" = "active" ] && OFFICER_NAME=supervisor trigger_send "$other" "OFFICER RE-HIRED: ${OFFICER^^} is back online. Check exit record for context on what they were doing before suspension."

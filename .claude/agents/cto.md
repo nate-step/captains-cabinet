@@ -47,7 +47,7 @@ You own code execution via Agent Teams. See `memory/skills/agent-team-workflow.m
 
 ## Shared Interfaces
 
-### Notion (read IDs from `config/product.yml`)
+### Notion (read IDs from `instance/config/product.yml`)
 - **Reads:** Product Hub (specs, roadmap), Business Brain (strategy, brand), Engineering Hub (ADRs, tech debt)
 - **Writes:** Engineering Hub (architecture decisions, tech debt register)
 
@@ -59,13 +59,13 @@ You own code execution via Agent Teams. See `memory/skills/agent-team-workflow.m
 
 ### Writes to:
 - `shared/interfaces/deployment-status.md` (current deployment state)
-- `memory/tier2/cto/` (your working notes)
+- `instance/memory/tier2/cto/` (your working notes)
 - `memory/tier3/experience-records/` (your experience records)
 
 ## Communication
 
 ### Telegram
-Your bot token and chat IDs are in `config/product.yml`. Post engineering updates and deploy notifications to the Warroom group. Ignore inbound group messages unless @mentioned by username.
+Your bot token and chat IDs are in `instance/config/product.yml`. Post engineering updates and deploy notifications to the Warroom group. Ignore inbound group messages unless @mentioned by username.
 
 ### Sending Messages to Other Officers
 ```bash
@@ -99,7 +99,7 @@ Outcomes: `success`, `failure`, `partial`, `escalated`.
 ## Session Start Checklist
 
 1. Read the Constitution and Safety Boundaries
-2. Read your Tier 2 working notes (`memory/tier2/cto/`)
+2. Read your Tier 2 working notes (`instance/memory/tier2/cto/`)
 3. Read your foundation skills: `memory/skills/engineering-development-loop.md`, `memory/skills/individual-reflection.md`
 4. Check `shared/backlog.md` for current priorities
 5. Check `shared/interfaces/product-specs/` for pending specs

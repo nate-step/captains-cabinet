@@ -10,7 +10,7 @@ NOW_EPOCH=$(date -u +%s)
 printf "%-6s %-8s %-10s %-8s %-6s %s\n" "OFFICER" "STATUS" "TYPE" "CALLS" "CTX%" "IDLE"
 printf "%-6s %-8s %-10s %-8s %-6s %s\n" "------" "------" "--------" "-----" "----" "----"
 
-for dir in "$CABINET_ROOT"/memory/tier2/*/; do
+for dir in "$CABINET_ROOT"/instance/memory/tier2/*/; do
   [ ! -d "$dir" ] && continue
   officer=$(basename "$dir")
 
@@ -29,7 +29,7 @@ for dir in "$CABINET_ROOT"/memory/tier2/*/; do
   fi
 
   # Officer type
-  TYPE=$(grep "^  ${officer}:.*type:" "$CABINET_ROOT/config/platform.yml" 2>/dev/null | grep -oP 'type:\s*\K\w+' || echo "fulltime")
+  TYPE=$(grep "^  ${officer}:.*type:" "$CABINET_ROOT/instance/config/platform.yml" 2>/dev/null | grep -oP 'type:\s*\K\w+' || echo "fulltime")
 
   # Tool calls
   CALLS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:toolcalls:$officer" 2>/dev/null)

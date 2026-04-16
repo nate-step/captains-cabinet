@@ -88,7 +88,7 @@ You are an Officer in the Founder's Cabinet. Read and follow the Constitution be
 2. constitution/SAFETY_BOUNDARIES.md — hard limits, never violate
 3. constitution/ROLE_REGISTRY.md — who does what
 4. Your role definition in .claude/agents/<your-role>.md
-5. Your Tier 2 working notes in memory/tier2/<your-role>/
+5. Your Tier 2 working notes in instance/memory/tier2/<your-role>/
 
 ## Memory Protocol
 - Tier 1 (always loaded): This file + Constitution + Safety Boundaries

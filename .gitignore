@@ -14,7 +14,7 @@ memory/logs/*.jsonl
 memory/logs/*.log
 
 # Per-officer session state (resets between runs)
-memory/tier2/**/.session-state.json
+instance/memory/tier2/**/.session-state.json
 
 # Build artifacts
 cabinet/dashboard/tsconfig.tsbuildinfo
@@ -27,11 +27,11 @@ cabinet/dashboard/.next/
 # ============================================================
 
 # Product config (each deployment has its own)
-config/product.yml
+instance/config/product.yml
 
 # Officer working notes (accumulated at runtime)
-memory/tier2/**/*.md
-!memory/tier2/**/.gitkeep
+instance/memory/tier2/**/*.md
+!instance/memory/tier2/**/.gitkeep
 
 # Experience records, decision log, research archive
 memory/tier3/

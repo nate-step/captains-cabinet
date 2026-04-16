@@ -1,9 +1,9 @@
 import fs from 'fs'
 import yaml from 'js-yaml'
 
-const CONFIG_PATH = process.env.CONFIG_PATH || '/opt/founders-cabinet/config/product.yml'
-const PROJECTS_DIR = process.env.PROJECTS_DIR || '/opt/founders-cabinet/config/projects'
-const ACTIVE_PROJECT_FILE = process.env.ACTIVE_PROJECT_FILE || '/opt/founders-cabinet/config/active-project.txt'
+const CONFIG_PATH = process.env.CONFIG_PATH || '/opt/founders-cabinet/instance/config/product.yml'
+const PROJECTS_DIR = process.env.PROJECTS_DIR || '/opt/founders-cabinet/instance/config/projects'
+const ACTIVE_PROJECT_FILE = process.env.ACTIVE_PROJECT_FILE || '/opt/founders-cabinet/instance/config/active-project.txt'
 const AGENTS_DIR = process.env.AGENTS_DIR || '/opt/founders-cabinet/.claude/agents'
 const LOOP_PROMPTS_DIR = process.env.LOOP_PROMPTS_DIR || '/opt/founders-cabinet/cabinet/loop-prompts'
 const IS_MOCK = process.env.MOCK_DATA === 'true' || !fs.existsSync(CONFIG_PATH)
@@ -397,7 +397,7 @@ const mockProjectConfig: Record<string, unknown> = {
 }
 
 /**
- * Read the active project's source YAML (config/projects/<slug>.yml).
+ * Read the active project's source YAML (instance/config/projects/<slug>.yml).
  * Falls back to mock data when running outside Docker.
  */
 export function getProjectConfig(): Record<string, unknown> {

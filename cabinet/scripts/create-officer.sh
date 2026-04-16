@@ -56,7 +56,7 @@ while [ $# -gt 0 ]; do
 done
 
 CABINET_ROOT="/opt/founders-cabinet"
-CONFIG_FILE="$CABINET_ROOT/config/product.yml"
+CONFIG_FILE="$CABINET_ROOT/instance/config/product.yml"
 ENV_FILE="$CABINET_ROOT/cabinet/.env"
 ENV_EXAMPLE="$CABINET_ROOT/cabinet/.env.example"
 REGISTRY_FILE="$CABINET_ROOT/constitution/ROLE_REGISTRY.md"
@@ -138,11 +138,11 @@ Follow foundation skills in \`memory/skills/\`:
 ### Reads from:
 - \`constitution/CONSTITUTION.md\` — operating principles
 - \`constitution/SAFETY_BOUNDARIES.md\` — hard limits
-- \`config/product.yml\` — product configuration
+- \`instance/config/product.yml\` — product configuration
 - \`shared/interfaces/\` — cross-officer artifacts
 
 ### Writes to:
-- \`memory/tier2/${OFFICER}/\` — your working notes
+- \`instance/memory/tier2/${OFFICER}/\` — your working notes
 ${INTERFACE_LINE}
 
 ## Communication
@@ -161,7 +161,7 @@ Notify other Officers: \`bash /opt/founders-cabinet/cabinet/scripts/notify-offic
 
 1. Read the Constitution and Safety Boundaries
 2. Read your role definition (this file)
-3. Read your Tier 2 working notes (\`memory/tier2/${OFFICER}/\`)
+3. Read your Tier 2 working notes (\`instance/memory/tier2/${OFFICER}/\`)
 4. Read foundation skills in \`memory/skills/\`
 5. Check for pending triggers and overdue work
 No permanent /loop needed — triggers and scheduled work deliver instantly via Redis Channel. Use /loop only for ad-hoc temporary tasks. Instead: pick proactive work from your role definition immediately.
@@ -170,7 +170,7 @@ ROLEEOF
 fi
 
 # === Step 2: Tier 2 memory directory ===
-TIER2_DIR="$CABINET_ROOT/memory/tier2/${OFFICER}"
+TIER2_DIR="$CABINET_ROOT/instance/memory/tier2/${OFFICER}"
 mkdir -p "$TIER2_DIR"
 touch "$TIER2_DIR/.gitkeep"
 # Seed working-notes.md so officers have something to read on first start
@@ -269,7 +269,7 @@ else
   log "Adding $OFFICER to ROLE_REGISTRY.md..."
   LAST_ROW=$(grep -n "^|.*Active" "$REGISTRY_FILE" | tail -1 | cut -d: -f1)
   if [ -n "$LAST_ROW" ]; then
-    sed -i "${LAST_ROW}a\\| ${TITLE} (${OFFICER_UPPER}) | ${TITLE} | See config/product.yml | ${DOMAIN} | Active |" "$REGISTRY_FILE"
+    sed -i "${LAST_ROW}a\\| ${TITLE} (${OFFICER_UPPER}) | ${TITLE} | See instance/config/product.yml | ${DOMAIN} | Active |" "$REGISTRY_FILE"
   fi
   log "Added to ROLE_REGISTRY.md"
 fi
@@ -297,7 +297,7 @@ SKILLS_FILE="$CABINET_ROOT/cabinet/officer-skills/${OFFICER}.txt"
 if [ ! -f "$SKILLS_FILE" ]; then
   cat > "$SKILLS_FILE" << SKILLEOF
 - Re-read your role definition at .claude/agents/${OFFICER}.md for your specific responsibilities.
-- Check your Tier 2 working notes in memory/tier2/${OFFICER}/ for recent context.
+- Check your Tier 2 working notes in instance/memory/tier2/${OFFICER}/ for recent context.
 SKILLEOF
   log "Created officer skills file: $SKILLS_FILE"
 else
@@ -379,7 +379,7 @@ log "=========================================="
 log ""
 log "Created:"
 log "  Role definition:     .claude/agents/${OFFICER}.md"
-log "  Tier 2 memory:       memory/tier2/${OFFICER}/"
+log "  Tier 2 memory:       instance/memory/tier2/${OFFICER}/"
 log "  Skills file:         cabinet/officer-skills/${OFFICER}.txt"
 log "  Capabilities:        cabinet/officer-capabilities.conf (uncomment relevant ones)"
 log "  Channels dir:        ~/.claude-channels/${OFFICER}/"

@@ -25,10 +25,10 @@ case "$FILE_PATH" in
   */shared/backlog.md)
     SOURCE_TYPE="working_note"
     ;;
-  */memory/tier2/*/working-notes.md)
+  */instance/memory/tier2/*/working-notes.md)
     SOURCE_TYPE="working_note"
     ;;
-  */memory/tier2/*/reflections/*.md)
+  */instance/memory/tier2/*/reflections/*.md)
     SOURCE_TYPE="reflection"
     ;;
   */memory/skills/*.md|*/memory/skills/evolved/*.md)

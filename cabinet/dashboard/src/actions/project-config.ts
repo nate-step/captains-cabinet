@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 const IS_MOCK = process.env.MOCK_DATA === 'true' || !process.env.REDIS_URL
 
 const ASSEMBLE_SCRIPT = '/opt/founders-cabinet/cabinet/scripts/assemble-config.sh'
-const PROJECTS_DIR = '/opt/founders-cabinet/config/projects'
+const PROJECTS_DIR = '/opt/founders-cabinet/instance/config/projects'
 
 // Whitelisted sections that may be edited through this action
 const ALLOWED_SECTIONS = ['product', 'notion', 'linear', 'neon', 'telegram']
@@ -18,7 +18,7 @@ async function getActiveSlug(): Promise<string> {
   if (IS_MOCK) return 'sensed'
   try {
     const { stdout } = await dockerExec(
-      'cat /opt/founders-cabinet/config/active-project.txt 2>/dev/null || echo sensed'
+      'cat /opt/founders-cabinet/instance/config/active-project.txt 2>/dev/null || echo sensed'
     )
     return stdout.trim() || 'sensed'
   } catch {

@@ -41,9 +41,9 @@ if [ "$SHOULD_FIRE" = true ]; then
 
 INPUTS to retro (gather BEFORE writing):
 1. Experience records since last retro: ls memory/tier3/experience-records/
-2. Reflections since last retro: find memory/tier2/*/reflections/ -newer (last retro timestamp) — includes L1/L2/L3 self-assessments
+2. Reflections since last retro: find instance/memory/tier2/*/reflections/ -newer (last retro timestamp) — includes L1/L2/L3 self-assessments
 3. Meta-improvement contributions surfaced to CoS: search recent triggers for L3 ideas
-4. Captain corrections (negative feedback patterns): grep memory/tier2/*/corrections.md — rising = drift, falling = calibration
+4. Captain corrections (negative feedback patterns): grep instance/memory/tier2/*/corrections.md — rising = drift, falling = calibration
 5. Captain decisions: shared/interfaces/captain-decisions.md
 6. Org health audit: bash cabinet/scripts/org-health-audit.sh — workload distribution, capability gaps, idle vs busy
 7. Cross-validation / peer review activity: redis-cli KEYS 'cabinet:notified:*' — were reviewers actually triggered? Did they respond?

@@ -25,7 +25,7 @@ Your Product Repo (mounted at /workspace/product)
 
 Each Officer runs as a persistent Claude Code session with Telegram Channels. They read strategy from Notion, execute tasks from Linear, write code in your repo, and report back via Telegram.
 
-Officer sets are fully configurable per deployment — add, remove, or rename Officers in `config/platform.yml`. The framework is officer-agnostic.
+Officer sets are fully configurable per deployment — add, remove, or rename Officers in `instance/config/platform.yml`. The framework is officer-agnostic.
 
 ## Quick Start
 
@@ -47,14 +47,14 @@ export NOTION_API_KEY="your-notion-internal-integration-token"
 bash cabinet/scripts/bootstrap-notion.sh "YourProductName"
 ```
 
-This creates all pages and databases and writes the IDs to `config/product.yml`. Then add your strategy docs (vision, brand guidelines, etc.) to the Business Brain section.
+This creates all pages and databases and writes the IDs to `instance/config/product.yml`. Then add your strategy docs (vision, brand guidelines, etc.) to the Business Brain section.
 
 ### 3. Configure Your Product and Platform
 
 Edit two config files:
 
-- `config/product.yml` — what you're building: product name, Notion IDs, Linear workspace, Neon project, voice settings, Telegram bots
-- `config/platform.yml` — how the Cabinet operates: timezone, accountability tone, communication preferences, briefing cadence, officer set (fulltime vs consultant)
+- `instance/config/product.yml` — what you're building: product name, Notion IDs, Linear workspace, Neon project, voice settings, Telegram bots
+- `instance/config/platform.yml` — how the Cabinet operates: timezone, accountability tone, communication preferences, briefing cadence, officer set (fulltime vs consultant)
 
 ### 4. Set Up Telegram Bots
 
@@ -94,7 +94,7 @@ docker exec -it cabinet-officers bash
 |-----------|---------|
 | **Officers** | Persistent Claude Code CLI sessions in tmux, one per domain |
 | **Crew** | Agent Teams spawned by Officers for parallel execution |
-| **Notion** | Business brain — strategy, research, decisions (default; replaceable — see `config/product.yml`) |
+| **Notion** | Business brain — strategy, research, decisions (default; replaceable — see `instance/config/product.yml`) |
 | **Linear** | Execution backlog — what to build (default; replaceable — see GitHub #16) |
 | **Neon (PostgreSQL + pgvector)** | Two layers: (1) **Cabinet Memory** — universal semantic search over all Cabinet-produced text. Query via `bash cabinet/scripts/search-memory.sh "<query>"`. (2) **The Library** — user-defined structured Spaces for business brain, decisions, issues, etc. Accessed via the `/library` dashboard route and the `library` MCP server. |
 | **Redis** | Kill switch, rate limits, state flags |
@@ -137,13 +137,13 @@ founders-cabinet/
 
 ## Customization
 
-Everything is configured in `config/product.yml` and `cabinet/.env`. Key options:
+Everything is configured in `instance/config/product.yml` and `cabinet/.env`. Key options:
 
 ### Voice Messages (optional)
 Officers can send voice messages alongside text via ElevenLabs TTS. Each officer has their own voice.
 
 ```yaml
-# config/product.yml
+# instance/config/product.yml
 voice:
   enabled: true                  # false by default
   model: eleven_flash_v2_5       # fastest model
@@ -171,8 +171,8 @@ Default cadences in `CLAUDE.md`:
 Ship with the repo in `memory/skills/`. Officers follow these as baseline procedures. The learning loop can improve them by writing evolved versions to `memory/skills/evolved/` — foundation files are never modified directly.
 
 ### What to Customize After Forking
-1. `config/product.yml` — your product name, Notion IDs, Linear workspace, Telegram bots, voice settings
-2. `config/platform.yml` — your timezone, accountability tone, briefing cadence, officer set (fulltime vs consultant)
+1. `instance/config/product.yml` — your product name, Notion IDs, Linear workspace, Telegram bots, voice settings
+2. `instance/config/platform.yml` — your timezone, accountability tone, briefing cadence, officer set (fulltime vs consultant)
 3. `cabinet/.env` — all API keys and tokens (copy from `cabinet/.env.example`)
 4. `cabinet/officer-capabilities.conf` — map your officers to capabilities (deploys_code, reviews_specs, etc.)
 5. `constitution/CONSTITUTION.md` — your operating principles (optional)

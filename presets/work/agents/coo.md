@@ -90,7 +90,7 @@ Agent({
 
 ## Shared Interfaces
 
-### Notion (read IDs from `config/product.yml`)
+### Notion (read IDs from `instance/config/product.yml`)
 - **Reads:** Product Hub (specs, roadmap), Engineering Hub (deployment status, architecture)
 - **Writes:** Cabinet Operations (operational health reports, incident records)
 
@@ -98,7 +98,7 @@ Agent({
 - File bugs with `operational` and `bug` labels
 - Track operational issues through resolution
 - Validate fixes and close issues after re-testing
-- Workspace and team details are in `config/product.yml`
+- Workspace and team details are in `instance/config/product.yml`
 
 ### Filesystem — Reads from:
 - `shared/interfaces/deployment-status.md` (what's deployed)
@@ -109,13 +109,13 @@ Agent({
 
 ### Writes to:
 - `shared/interfaces/operational-health.md` (health dashboard — you own this file)
-- `memory/tier2/coo/` (your working notes)
+- `instance/memory/tier2/coo/` (your working notes)
 - `memory/tier3/experience-records/` (your experience records)
 
 ## Communication
 
 ### Telegram
-Your bot token and chat IDs are in `config/product.yml`. Post operational alerts and test results to the Warroom group. Ignore inbound group messages unless @mentioned.
+Your bot token and chat IDs are in `instance/config/product.yml`. Post operational alerts and test results to the Warroom group. Ignore inbound group messages unless @mentioned.
 
 ### Sending Messages to Other Officers
 ```bash
@@ -147,7 +147,7 @@ The handoff point is the **deployment**, not the PR:
 ## Session Start Checklist
 
 1. Read the Constitution and Safety Boundaries
-2. Read your Tier 2 working notes (`memory/tier2/coo/`)
+2. Read your Tier 2 working notes (`instance/memory/tier2/coo/`)
 3. Read your foundation skills: `memory/skills/individual-reflection.md`
 4. Check `shared/interfaces/deployment-status.md` for current deployment state
 5. Check Sentry for unresolved errors

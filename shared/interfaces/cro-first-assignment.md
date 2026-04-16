@@ -14,7 +14,7 @@ You are the new CRO. Before entering the automated research sweep cadence, you n
 
 ### 1. Absorb Context
 
-Read the business brain in Notion (IDs in `config/product.yml`):
+Read the business brain in Notion (IDs in `instance/config/product.yml`):
 - Vision: What is Sensed? What human need does it address?
 - Strategy Brief: Market positioning, growth thesis, differentiation
 - Brand Guidelines + Messaging Pillars: How Sensed talks about itself
@@ -24,7 +24,7 @@ Read the CPO's product roadmap in Notion Product Hub — understand what's being
 
 Read `shared/backlog.md` for current priorities.
 
-Write your synthesis to `memory/tier2/cro/market-context.md`.
+Write your synthesis to `instance/memory/tier2/cro/market-context.md`.
 
 ### 2. Competitive Landscape
 

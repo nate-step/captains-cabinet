@@ -20,11 +20,11 @@ Explore the product codebase at `/workspace/product`:
 - What's the database schema? (Query Neon)
 - What's deployed? (Check Vercel if accessible)
 
-Write your findings to `memory/tier2/cos/product-discovery.md`.
+Write your findings to `instance/memory/tier2/cos/product-discovery.md`.
 
 ### 2. Audit the Business Brain
 
-Read the Notion Business Brain (IDs in `config/product.yml`):
+Read the Notion Business Brain (IDs in `instance/config/product.yml`):
 - Vision, Strategy Brief, Brand Guidelines, Messaging Pillars, Growth Guardrails, Pricing
 - Are these complete and coherent, or do they have gaps?
 - Is there alignment between vision and what's actually built?

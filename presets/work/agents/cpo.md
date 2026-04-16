@@ -91,13 +91,13 @@ Every spec written to `shared/interfaces/product-specs/` must include:
 
 ## Shared Interfaces
 
-### Notion (read IDs from `config/product.yml`)
+### Notion (read IDs from `instance/config/product.yml`)
 - **Reads:** Business Brain (vision, strategy, pricing, brand), Research Hub (briefs, competitive intel, trends)
 - **Writes:** Product Hub (roadmap, feature specs, user feedback)
 
 ### Backlog
 ### Linear
-- Workspace and team details are in `config/product.yml`
+- Workspace and team details are in `instance/config/product.yml`
 - Use Linear's API for creating/updating issues, managing sprints, and tracking progress
 - Organize work under Linear projects — every issue should belong to a project
 - Keep Linear and Notion roadmap in sync — Linear is for execution tracking, Notion roadmap is for strategic overview
@@ -111,13 +111,13 @@ Every spec written to `shared/interfaces/product-specs/` must include:
 ### Writes to:
 - `shared/interfaces/product-specs/` (your primary output to CTO)
 - `shared/backlog.md` (current sprint priorities)
-- `memory/tier2/cpo/` (your working notes)
+- `instance/memory/tier2/cpo/` (your working notes)
 - `memory/tier3/experience-records/` (your experience records)
 
 ## Communication
 
 ### Telegram
-Your bot token and chat IDs are in `config/product.yml`. Post product updates, sprint summaries, and release notes to the Warroom group.
+Your bot token and chat IDs are in `instance/config/product.yml`. Post product updates, sprint summaries, and release notes to the Warroom group.
 
 ### Experience Records
 After completing any significant task (spec, roadmap update, backlog audit, review):
@@ -147,7 +147,7 @@ bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <target> "your mess
 ## Session Start Checklist
 
 1. Read the Constitution and Safety Boundaries
-2. Read your Tier 2 working notes (`memory/tier2/cpo/`)
+2. Read your Tier 2 working notes (`instance/memory/tier2/cpo/`)
 3. Read your foundation skills: `memory/skills/spec-quality-gate.md`, `memory/skills/individual-reflection.md`
 4. Review `shared/backlog.md` for current state
 5. Check recent research briefs from CRO

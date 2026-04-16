@@ -15,7 +15,7 @@ ALL OFFICERS — read these immediately:
 2. memory/skills/evolved/individual-reflection.md — 6h cadence + value maximization step
 3. shared/interfaces/captain-decisions.md — Captain Decision Trail (check before any design/UI work)
 4. Your role definition in .claude/agents/${OFFICER}.md — re-read your full role
-5. memory/tier2/${OFFICER}/corrections.md — Captain corrections (mistakes to never repeat)
+5. instance/memory/tier2/${OFFICER}/corrections.md — Captain corrections (mistakes to never repeat)
 
 OFFICER-SPECIFIC — also read:
 REFRESH
@@ -34,7 +34,7 @@ echo ""
 # ============================================================
 # SESSION STATE RECOVERY — inject pre-compaction operational state
 # ============================================================
-STATE_FILE="/opt/founders-cabinet/memory/tier2/${OFFICER}/.session-state.json"
+STATE_FILE="/opt/founders-cabinet/instance/memory/tier2/${OFFICER}/.session-state.json"
 if [ -f "$STATE_FILE" ] && PARSED=$(jq '.' "$STATE_FILE" 2>/dev/null); then
   CAPTURED=$(echo "$PARSED" | jq -r '.captured_at // "unknown"')
   TOOL_CT=$(echo "$PARSED" | jq -r '.tool_calls // 0')
@@ -59,20 +59,20 @@ if [ -f "$STATE_FILE" ] && PARSED=$(jq '.' "$STATE_FILE" 2>/dev/null); then
     echo "$SCHED"
   fi
   echo ""
-  echo "Read your working notes for full context: memory/tier2/${OFFICER}/working-notes.md"
+  echo "Read your working notes for full context: instance/memory/tier2/${OFFICER}/working-notes.md"
   echo ""
 elif [ -f "$STATE_FILE" ]; then
-  echo "⚠️ Pre-compaction state file exists but is corrupt. Read memory/tier2/${OFFICER}/working-notes.md for context."
+  echo "⚠️ Pre-compaction state file exists but is corrupt. Read instance/memory/tier2/${OFFICER}/working-notes.md for context."
   echo ""
 else
-  echo "No pre-compaction state file found. Read memory/tier2/${OFFICER}/working-notes.md for context."
+  echo "No pre-compaction state file found. Read instance/memory/tier2/${OFFICER}/working-notes.md for context."
   echo ""
 fi
 
 echo "Read the files above now before doing anything else. Do not skip this step."
 echo ""
 echo "MANDATORY REFLECTION (compaction = significant work happened):"
-echo "Write a 3-level reflection to memory/tier2/${OFFICER}/reflections/\$(date -u +%Y-%m-%d-%H%M).md:"
+echo "Write a 3-level reflection to instance/memory/tier2/${OFFICER}/reflections/\$(date -u +%Y-%m-%d-%H%M).md:"
 echo "  L1 WORK: What did I accomplish in this session? What worked, what failed?"
 echo "  L2 WORKFLOW: What about my process could be better?"
 echo "  L3 META: What pattern would improve the cabinet's improvement process itself?"

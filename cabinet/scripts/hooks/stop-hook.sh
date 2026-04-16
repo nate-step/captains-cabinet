@@ -16,7 +16,7 @@ SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 # ============================================================
 # 1. Update session state timestamp (proves officer is active)
 # ============================================================
-STATE_DIR="/opt/founders-cabinet/memory/tier2/$OFFICER"
+STATE_DIR="/opt/founders-cabinet/instance/memory/tier2/$OFFICER"
 STATE_FILE="$STATE_DIR/.session-state.json"
 
 if [ -f "$STATE_FILE" ]; then
@@ -128,7 +128,7 @@ if [ -n "$LAST_ENTRY" ] && [ "$LAST_ENTRY" != "null" ]; then
         redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:snapshot:threshold:$OFFICER" "$THRESHOLD" EX 86400 > /dev/null 2>&1
 
         # Write session state snapshot
-        STATE_DIR="/opt/founders-cabinet/memory/tier2/$OFFICER"
+        STATE_DIR="/opt/founders-cabinet/instance/memory/tier2/$OFFICER"
         mkdir -p "$STATE_DIR"
 
         SNAP_SCHEDULES="{}"

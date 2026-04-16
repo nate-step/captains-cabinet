@@ -54,6 +54,11 @@ WORKDIR /home/cabinet
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/home/cabinet/.bun/bin:/home/cabinet/.local/bin:${PATH}"
 
+# Enable Claude Code 1-hour prompt cache TTL (v2.1.108+).
+# Anthropic's cache silently regressed from 1h→5m in March 2026;
+# this opts back into 1h. ~30-50% input token reduction.
+ENV ENABLE_PROMPT_CACHING_1H=1
+
 # Install Claude Code
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
@@ -75,9 +80,8 @@ RUN mkdir -p \
 # Copy tmux config for nicer multi-pane experience
 COPY --chown=cabinet:cabinet tmux.conf /home/cabinet/.tmux.conf
 
-# Copy the officer start script
-COPY --chown=cabinet:cabinet scripts/start-officer.sh /home/cabinet/start-officer.sh
-RUN chmod +x /home/cabinet/start-officer.sh
+# Symlink start-officer.sh from mounted volume - always uses latest repo version
+RUN ln -sf /opt/founders-cabinet/cabinet/scripts/start-officer.sh /home/cabinet/start-officer.sh
 
 # Copy the entrypoint (runs as root to fix volume permissions, then drops to cabinet)
 USER root

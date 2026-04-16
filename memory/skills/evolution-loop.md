@@ -34,7 +34,7 @@ CoS runs this every 24 hours, immediately after the cross-officer retro. Tracked
 
 5. **Role definition amendments:**
    - NEVER edit `.claude/agents/*.md` directly — those are git-tracked
-   - Write a proposal to Notion Cabinet Operations or `memory/tier2/cos/`
+   - Write a proposal to Notion Cabinet Operations or `instance/memory/tier2/cos/`
    - DM Captain with the proposal — Captain applies approved changes
    - Role changes are structural (boundaries, interfaces), not procedural (procedures live in skills)
 

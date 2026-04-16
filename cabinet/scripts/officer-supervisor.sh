@@ -113,7 +113,7 @@ while true; do
     fi
 
     # Skip auto-restart for consultant officers — they start on demand via cron/triggers
-    OFFICER_TYPE=$(grep "^  ${officer}:.*type:" /opt/founders-cabinet/config/platform.yml 2>/dev/null | grep -oP 'type:\s*\K\w+' || echo "fulltime")
+    OFFICER_TYPE=$(grep "^  ${officer}:.*type:" /opt/founders-cabinet/instance/config/platform.yml 2>/dev/null | grep -oP 'type:\s*\K\w+' || echo "fulltime")
     if [ "$OFFICER_TYPE" = "consultant" ]; then
       continue
     fi

@@ -4,7 +4,7 @@
 # Settings that stay the same across ALL projects.
 # Officer personalities, voice, research tools, embeddings.
 # This file is merged with the active project config to produce
-# config/product.yml — do not edit product.yml directly.
+# instance/config/product.yml — do not edit product.yml directly.
 # =============================================================
 
 # Founder's name — used in voice messages and officer communication

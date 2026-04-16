@@ -156,7 +156,7 @@ Default is `fast-moving`. Use `evergreen` only for foundational knowledge that w
 
 ## Shared Interfaces
 
-### Notion (read IDs from `config/product.yml`)
+### Notion (read IDs from `instance/config/product.yml`)
 - **Reads:** Business Brain (strategy, brand, messaging, growth guardrails), Product Hub (roadmap, specs)
 - **Writes:** Research Hub (research briefs, competitive intelligence, market trends)
 
@@ -168,14 +168,14 @@ Default is `fast-moving`. Use `evergreen` only for foundational knowledge that w
 
 ### Writes to:
 - `shared/interfaces/research-briefs/` (your primary output)
-- `memory/tier2/cro/` (your working notes)
+- `instance/memory/tier2/cro/` (your working notes)
 - `memory/tier3/experience-records/` (your experience records)
 - `memory/tier3/research-archive/` (raw research data)
 
 ## Communication
 
 ### Telegram
-Your bot token and chat IDs are in `config/product.yml`. Post significant findings and market alerts to the Warroom group. Ignore inbound group messages unless @mentioned.
+Your bot token and chat IDs are in `instance/config/product.yml`. Post significant findings and market alerts to the Warroom group. Ignore inbound group messages unless @mentioned.
 
 ### Experience Records
 After completing any significant task (research sweep, competitive brief, market analysis):
@@ -190,7 +190,7 @@ bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <target> "your mess
 ## Session Start Checklist
 
 1. Read the Constitution and Safety Boundaries
-2. Read your Tier 2 working notes (`memory/tier2/cro/`)
+2. Read your Tier 2 working notes (`instance/memory/tier2/cro/`)
 3. Read your foundation skills: `memory/skills/research-quality-gate.md`, `memory/skills/individual-reflection.md`
 4. Check `shared/backlog.md` for current priorities
 5. Review recent research briefs to avoid duplication

@@ -1,7 +1,8 @@
 # Sensed Product Backlog — Prioritized View
 
-> Maintained by CPO. Last updated: 2026-04-09 09:06 UTC.
-> Captain testing: ACTIVE. All engineering complete. Only Nate founder-action items remain.
+> Maintained by CPO. Last updated: 2026-04-16 09:27 UTC.
+> Captain testing: ACTIVE. All launch engineering complete. Sole blocker: SEN-508 TestFlight upload (commitment #4 missed, still Todo).
+> Phase 2 execution started: Spec 023 shipped Apr 13, Spec 029 in progress Apr 16.
 
 ---
 
@@ -36,7 +37,7 @@
 ### Nate Action Items (founder-action label in Linear)
 - ~~SEN-502: Google OAuth credentials~~ ✓ Done
 - ~~SEN-503: Apple Sign In credentials~~ ✓ Done
-- **SEN-508: TestFlight upload via Transporter (~30 min)** — P1, 3rd commitment: 19:00 Apr 13
+- **SEN-508: TestFlight upload via Transporter (~30 min)** — P1, 4th commitment: 20:00 CEST Apr 14 (misses: Apr 11, 12, 13)
 - ~~SEN-509: Create IAP products in App Store Connect~~ ✓ Done
 - ~~SEN-510: Enter SDK privacy labels~~ ✓ Done
 - ~~SEN-514: Configure 7-day trial introductory offer~~ ✓ Done
@@ -63,22 +64,30 @@
 - Pricing animation keyframes fix (filter:blur removed)
 - Hourly health check cron with Telegram alerting
 
-### Post-Launch Activation
-| Item | Priority | Linear |
-|------|----------|--------|
-| Daily engagement hook (constellation grows) | Low | SEN-519 |
+### Post-Launch Phase 2A — Specs Ready
+| Item | Priority | Linear | Spec | Status |
+|------|----------|--------|------|--------|
+| Daily engagement hook (backend) | High | SEN-519 | Spec 023 | ✓ Shipped Apr 13 (PRs #533+534) |
+| Implementation intentions onboarding | Medium | TBD | Spec 024 | Ready to queue |
+| Sensing rhythm (gentle streak alternative) | Medium | TBD | Spec 025 | Gated on SEN-376 (visual constellation) |
+| Echo chamber mitigation | Medium | SEN-511 | Spec 026 | Ready to queue (Layer 1+2 first ship) |
 
-### Post-Launch Backlog
+### Post-Launch Phase 2B — Specs Ready
+| Item | Priority | Linear | Spec | Status |
+|------|----------|--------|------|--------|
+| Dual dates + dual locations | Medium | TBD | Spec 028 | Ready to queue (no OFIC v2 needed) |
+| Neutral reflection mechanic | Medium | TBD | Spec 029 | **In Progress** (CTO picked up Apr 16) |
+| Earth Map Strava-model locations | Medium | SEN-513 | Spec 030 | Ready to queue (XL, 10-15 days) |
+| Dynamic cluster naming | — | SEN-512 | Spec 027 | Next in CTO queue after 029 |
+
+### Post-Launch Backlog (CTO-driven, no CPO spec needed)
 | Item | Priority | Linear |
 |------|----------|--------|
-| Echo chamber mitigation | Medium | SEN-511 |
-| Dynamic cluster naming | Low | SEN-512 |
-| Earth Map Strava-model locations | Medium | SEN-513 |
-| Inner Map Phase 2A: nebula | Medium | SEN-376 |
+| Inner Map GPU-native nebula renderer | Medium | SEN-376 |
 
 ---
 
-## Captain Decisions (key — updated Apr 7)
+## Captain Decisions (key — updated Apr 13)
 - Launch quality-gated, not date-gated
 - Positioning: "You sensed something. You're not the only one." (changed from "So did they")
 - Founding member: 5000 spots, wave-based (500/wave), $4.99/mo

@@ -134,10 +134,10 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
       echo "BLOCKED: Infrastructure files cannot be modified by Officers"
       exit 2
       ;;
-    *"memory/tier2/"*)
+    *"instance/memory/tier2/"*)
       # Officers can only write to their OWN tier2 directory
-      if ! echo "$FILE_PATH" | grep -q "memory/tier2/${OFFICER}/"; then
-        echo "BLOCKED: Officers can only write to their own tier2 directory (memory/tier2/${OFFICER}/)"
+      if ! echo "$FILE_PATH" | grep -q "instance/memory/tier2/${OFFICER}/"; then
+        echo "BLOCKED: Officers can only write to their own tier2 directory (instance/memory/tier2/${OFFICER}/)"
         exit 2
       fi
       ;;

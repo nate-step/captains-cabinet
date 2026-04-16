@@ -8,7 +8,7 @@
 #
 # Requires: ELEVENLABS_API_KEY, TELEGRAM_BOT_TOKEN in environment
 # Optional: ANTHROPIC_API_KEY for voice.naturalize feature
-# Voice IDs configured in config/product.yml under voice.voices.<officer>
+# Voice IDs configured in instance/config/product.yml under voice.voices.<officer>
 
 CHAT_ID="${1:?Usage: send-voice.sh <chat_id> \"message text\"}"
 TEXT="${2:?Usage: send-voice.sh <chat_id> \"message text\"}"
@@ -19,7 +19,7 @@ TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN not set}"
 OFFICER="${OFFICER_NAME:-unknown}"
 
 # Read voice config from product.yml
-CONFIG_FILE="/opt/founders-cabinet/config/product.yml"
+CONFIG_FILE="/opt/founders-cabinet/instance/config/product.yml"
 
 # --- YAML parsing helpers ---
 # All config reads use awk with section isolation to avoid cross-section bleed.
@@ -39,7 +39,7 @@ voice_subsection_value() {
 # Check if voice is enabled
 VOICE_ENABLED=$(voice_field "enabled")
 if [ "$VOICE_ENABLED" != "true" ]; then
-  echo "Voice messages disabled in config/product.yml"
+  echo "Voice messages disabled in instance/config/product.yml"
   exit 0
 fi
 
@@ -49,7 +49,7 @@ if [ -z "$VOICE_ID" ]; then
 fi
 
 if [ -z "$VOICE_ID" ]; then
-  echo "No voice_id configured for $OFFICER in config/product.yml"
+  echo "No voice_id configured for $OFFICER in instance/config/product.yml"
   exit 1
 fi
 

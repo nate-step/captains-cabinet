@@ -12,7 +12,7 @@ CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
 if [ -f "$CABINET_ROOT/cabinet/.env" ]; then
   set -a; source "$CABINET_ROOT/cabinet/.env" 2>/dev/null; set +a
 fi
-ACTIVE_SLUG=$(cat "$CABINET_ROOT/config/active-project.txt" 2>/dev/null | tr -d '[:space:]')
+ACTIVE_SLUG=$(cat "$CABINET_ROOT/instance/config/active-project.txt" 2>/dev/null | tr -d '[:space:]')
 if [ -n "$ACTIVE_SLUG" ] && [ -f "$CABINET_ROOT/cabinet/env/${ACTIVE_SLUG}.env" ]; then
   set -a; source "$CABINET_ROOT/cabinet/env/${ACTIVE_SLUG}.env" 2>/dev/null; set +a
 fi
@@ -69,7 +69,7 @@ tmux send-keys -t "cabinet:$WINDOW" \
   sleep 20  # Give Claude Code time to load
 
   # Send boot prompt — tells the officer to initialize and announce
-  tmux send-keys -t "cabinet:$WINDOW" "You are $OFFICER. Read your role definition at .claude/agents/$OFFICER.md and your session start checklist. Read your foundation skills in memory/skills/. Read your tier 2 notes in memory/tier2/$OFFICER/. Then announce yourself on the warroom: bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh '<b>$OFFICER online.</b> Session started. Checking for pending work.' — then check for pending triggers and overdue work immediately." Enter
+  tmux send-keys -t "cabinet:$WINDOW" "You are $OFFICER. Read your role definition at .claude/agents/$OFFICER.md and your session start checklist. Read your foundation skills in memory/skills/. Read your tier 2 notes in instance/memory/tier2/$OFFICER/. Then announce yourself on the warroom: bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh '<b>$OFFICER online.</b> Session started. Checking for pending work.' — then check for pending triggers and overdue work immediately." Enter
 
   # No permanent /loop needed — Redis Trigger Channel delivers all triggers
   # and scheduled work instantly. /loop is available for ad-hoc use only.

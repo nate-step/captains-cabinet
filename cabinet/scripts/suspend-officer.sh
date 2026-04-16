@@ -23,7 +23,7 @@ log "Reason: $REASON"
 log ""
 
 # === Step 1: Create structured exit record ===
-TIER2_DIR="$CABINET_ROOT/memory/tier2/$OFFICER"
+TIER2_DIR="$CABINET_ROOT/instance/memory/tier2/$OFFICER"
 mkdir -p "$TIER2_DIR"
 EXIT_RECORD="$TIER2_DIR/.exit-record.md"
 
@@ -71,7 +71,7 @@ fi
 
 # === Step 4: Notify remaining officers ===
 source "$CABINET_ROOT/cabinet/scripts/lib/triggers.sh" 2>/dev/null
-for other in $(ls "$CABINET_ROOT/memory/tier2/" 2>/dev/null); do
+for other in $(ls "$CABINET_ROOT/instance/memory/tier2/" 2>/dev/null); do
   [ "$other" = "$OFFICER" ] && continue
   EXPECTED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:officer:expected:$other" 2>/dev/null)
   [ "$EXPECTED" = "active" ] && OFFICER_NAME=supervisor trigger_send "$other" "OFFICER SUSPENDED: ${OFFICER^^} has been suspended. Reason: $REASON. Check if any of their work needs handoff."

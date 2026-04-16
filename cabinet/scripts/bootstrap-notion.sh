@@ -1,6 +1,6 @@
 #!/bin/bash
 # bootstrap-notion.sh — Creates the canonical Cabinet HQ Notion structure
-# and writes all page/database IDs to config/product.yml
+# and writes all page/database IDs to instance/config/product.yml
 #
 # Prerequisites:
 #   - NOTION_API_KEY set in environment (internal integration token)
@@ -16,7 +16,7 @@ PRODUCT_NAME="${1:-MyProduct}"
 NOTION_API_KEY="${NOTION_API_KEY:?Set NOTION_API_KEY before running this script}"
 API_BASE="https://api.notion.com/v1"
 NOTION_VERSION="2022-06-28"
-CONFIG_FILE="config/product.yml"
+CONFIG_FILE="instance/config/product.yml"
 
 # Common headers
 AUTH_HEADER="Authorization: Bearer $NOTION_API_KEY"
@@ -211,7 +211,7 @@ PROPOSALS_DB=$(create_database "$CABINET_OPS" "Improvement Proposals" \
 echo "  Improvement Proposals: $PROPOSALS_DB"
 
 # ============================================================
-# Write config/product.yml
+# Write instance/config/product.yml
 # ============================================================
 echo ""
 echo "Writing $CONFIG_FILE..."

@@ -8,7 +8,7 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 REDIS_HOST="${REDIS_HOST:-redis}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
-STATE_DIR="/opt/founders-cabinet/memory/tier2/$OFFICER"
+STATE_DIR="/opt/founders-cabinet/instance/memory/tier2/$OFFICER"
 STATE_FILE="$STATE_DIR/.session-state.json"
 mkdir -p "$STATE_DIR"
 
@@ -47,7 +47,7 @@ jq -n \
 [ -z "$NEON_CONNECTION_STRING" ] && source /opt/founders-cabinet/cabinet/.env 2>/dev/null
 
 if [ -n "$NEON_CONNECTION_STRING" ]; then
-  NOTES_FILE="/opt/founders-cabinet/memory/tier2/$OFFICER/working-notes.md"
+  NOTES_FILE="/opt/founders-cabinet/instance/memory/tier2/$OFFICER/working-notes.md"
   WORKING_NOTES=""
   [ -f "$NOTES_FILE" ] && WORKING_NOTES=$(tail -c 3000 "$NOTES_FILE")
 

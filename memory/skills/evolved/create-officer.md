@@ -66,7 +66,7 @@ The script automatically:
 The script creates a working officer with sensible defaults. Customize:
 
 1. **Role definition** — Edit `.claude/agents/<officer>.md` to add specific responsibilities, boundaries, and domain knowledge. Replace `[CUSTOMIZE]` markers.
-2. **Voice** — Set a voice_id in `config/product.yml` under `voice.voices.<officer>`. Browse: `https://elevenlabs.io/voice-library`
+2. **Voice** — Set a voice_id in `instance/config/product.yml` under `voice.voices.<officer>`. Browse: `https://elevenlabs.io/voice-library`
 3. **Voice personality** — Edit `voice.naturalize_prompts.<officer>` to give the officer a distinctive character for voice messages.
 4. **Loop prompt** — Edit `cabinet/loop-prompts/<officer>.txt` to add officer-specific monitoring (e.g., check Sentry for COO, check research briefs for CRO).
 5. **Stability/speed** — Adjust `voice.stability.<officer>` (lower = more creative) and `voice.speeds.<officer>` (0.7-1.2).
