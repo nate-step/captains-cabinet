@@ -29,6 +29,7 @@ DB_URL="${NEON_DATABASE_URL:-${DATABASE_URL:-}}"
 [[ -z "$DB_URL" ]] && { echo "Error: DATABASE_URL not set"; exit 1; }
 
 # Use parameterized query via psql variables to prevent SQL injection
+# NOTE: :'var' substitution only works with stdin/heredoc, NOT with -c flag
 RESULT=$(psql "$DB_URL" -t -A \
   -v title="$TITLE" \
   -v topic="$TOPIC" \
@@ -37,6 +38,10 @@ RESULT=$(psql "$DB_URL" -t -A \
   -v embedding="$EMBEDDING" \
   -v tags="$PG_TAGS" \
   -v officer="${OFFICER_NAME:-cro}" \
-  -v decay="$DECAY" \
-  -c "INSERT INTO cabinet_research (title, topic, content, summary, embedding, tags, officer, decay_rate) VALUES (:'title', :'topic', :'content', :'summary', :'embedding'::vector, :'tags'::text[], :'officer', :'decay') RETURNING id;")
+  -v decay="$DECAY" <<'SQLEOF'
+INSERT INTO cabinet_research (title, topic, content, summary, embedding, tags, officer, decay_rate)
+VALUES (:'title', :'topic', :'content', :'summary', :'embedding'::vector, :'tags'::text[], :'officer', :'decay')
+RETURNING id;
+SQLEOF
+)
 echo "Embedded: $TITLE (id: $RESULT)"
