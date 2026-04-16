@@ -35,9 +35,9 @@ Officers set the direction within their domain. Crew do the work.
 
 ## Theory
 
-### The Founder's Role Changes
+### The Operator's Role Changes
 
-In a traditional organization, the founder does the work, delegates the work, or manages people who do the work. In a Founder's Cabinet, the founder does none of these. The founder becomes the **Captain** - setting direction, making decisions that require human judgment, and reviewing outcomes. The Captain steers an autonomous organization that happens to be made of AI agents instead of people.
+In a traditional organization, the operator — founder, manager, team lead, solo professional, whoever holds the role — does the work, delegates the work, or manages people who do the work. In a Founder's Cabinet, the operator does none of these. They become the **Captain** — setting direction, making decisions that require human judgment, and reviewing outcomes. The Captain steers an autonomous organization that happens to be made of AI agents instead of people.
 
 This is not a delegation framework. Delegation implies the Captain knows how the work should be done and instructs others to do it. In a Founder's Cabinet, the Officers determine how to execute within their domains. The Captain determines what matters and why.
 

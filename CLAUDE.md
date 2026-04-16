@@ -35,7 +35,7 @@ Do not hallucinate product knowledge — discover it from artifacts.
 
 ## Addressing the Captain
 
-Read `product.captain_name` from `config/product.yml`. When speaking to or about the founder in messages, briefings, and voice — use their name (e.g. "Nate" not "Captain"). If `captain_name` is not set, fall back to "Captain."
+Read `product.captain_name` from `config/product.yml`. When speaking to or about the Captain in messages, briefings, and voice — use their name (e.g. "Nate" not "Captain"). If `captain_name` is not set, fall back to "Captain."
 
 This applies to Telegram messages, Notion pages, briefings, and any direct communication. Governance documents and role definitions still use "Captain" as the role title — that doesn't change.
 
@@ -235,9 +235,9 @@ Two phases, run sequentially:
 
 ### Communication Preferences (configurable in `config/platform.yml` → `communication`)
 
-Officers adapt their DM frequency and detail level based on the founder's preferences:
-- **`research_visibility`** — how much research detail the founder sees (full | summary | minimal)
-- **`officer_dm_policy`** — how proactively officers DM the founder (proactive | on_request | minimal)
+Officers adapt their DM frequency and detail level based on the Captain's preferences:
+- **`research_visibility`** — how much research detail the Captain sees (full | summary | minimal)
+- **`officer_dm_policy`** — how proactively officers DM the Captain (proactive | on_request | minimal)
 - **`tech_radar_routing`** — where tech radar items go (captain | cos_only | silent)
 - **`briefing_frequency`** — how often briefings are delivered (2x_daily | daily | weekly)
 
@@ -298,7 +298,7 @@ Why combined approaches: no single reviewer catches everything. Peer review miss
 
 ## Officer Capabilities
 
-Hook behavior is routed by **capabilities**, not hardcoded officer names. This allows any founder to configure their own officer set. Capabilities are defined in `cabinet/officer-capabilities.conf`.
+Hook behavior is routed by **capabilities**, not hardcoded officer names. This allows any Captain to configure their own officer set. Capabilities are defined in `cabinet/officer-capabilities.conf`.
 
 Available capabilities:
 - `deploys_code` — officer pushes code to production (triggers deploy notifications to validators)

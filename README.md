@@ -197,6 +197,10 @@ Ship with the repo in `memory/skills/`. Officers follow these as baseline proced
 
 ## License
 
-© 2026 Nathaniel Refslund. All rights reserved.
+**Business Source License 1.1** (see [`LICENSE`](./LICENSE))
+
+Free to fork, self-host, modify, and use internally. Commercial hosted/managed offerings competing with the Licensor's paid service are reserved to the Licensor until the Change Date (4 years after each version's publication), at which point that version converts to Apache 2.0.
+
+Short version: if you're a team running the Cabinet for your own organization — whether as a founder, an employee, a solo operator, or anything in between — go ahead. If you want to sell a hosted Cabinet-as-a-Service to third parties, reach out.
 
 See `founders-cabinet-guide.md` for the full framework theory.
