@@ -61,24 +61,30 @@ echo "Written to $RECORD_FILE"
 # ============================================================
 DATABASE_URL="${DATABASE_URL:-}"
 if [ -n "$DATABASE_URL" ]; then
-  # Escape single quotes for SQL
-  TASK_SQL=$(echo "$TASK_SUMMARY" | sed "s/'/''/g")
-  WHAT_SQL=$(echo "$WHAT_HAPPENED" | sed "s/'/''/g")
-  LESSONS_SQL=$(echo "$LESSONS" | sed "s/'/''/g")
-
-  # Convert comma-separated tags to PostgreSQL array
-  if [ -n "$TAGS" ]; then
-    TAGS_SQL="ARRAY[$(echo "$TAGS" | sed "s/[[:space:]]*,[[:space:]]*/\',\'/g" | sed "s/^/'/;s/$/'/")]"
-  else
-    TAGS_SQL="ARRAY[]::TEXT[]"
-  fi
-
-  psql "$DATABASE_URL" -c "
-    INSERT INTO experience_records (officer, task_summary, outcome, what_happened, lessons_learned, tags)
-    VALUES ('$OFFICER', '$TASK_SQL', '$OUTCOME', '$WHAT_SQL', '$LESSONS_SQL', $TAGS_SQL);
-  " > /dev/null 2>&1
-
-  if [ $? -eq 0 ]; then
+  # Parameterized query via psql -v + heredoc (injection-safe).
+  # :'var' substitution only works with stdin/heredoc, NOT with -c flag.
+  # Tags pass as comma-separated text and split server-side via string_to_array().
+  if psql "$DATABASE_URL" -q \
+    -v officer="$OFFICER" \
+    -v task_summary="$TASK_SUMMARY" \
+    -v outcome="$OUTCOME" \
+    -v what_happened="$WHAT_HAPPENED" \
+    -v lessons="$LESSONS" \
+    -v tags="$TAGS" <<'SQLEOF' > /dev/null 2>&1
+INSERT INTO experience_records (officer, task_summary, outcome, what_happened, lessons_learned, tags)
+VALUES (
+  :'officer',
+  :'task_summary',
+  :'outcome',
+  :'what_happened',
+  :'lessons',
+  CASE
+    WHEN :'tags' = '' THEN ARRAY[]::TEXT[]
+    ELSE string_to_array(:'tags', ',')
+  END
+);
+SQLEOF
+  then
     echo "Inserted into PostgreSQL experience_records"
   else
     echo "Warning: PostgreSQL insert failed (record saved to file)" >&2
