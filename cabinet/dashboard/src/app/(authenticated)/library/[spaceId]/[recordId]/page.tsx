@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getRecord, getSpace, getRecordHistory } from '@/lib/library'
 import RecordEditor from './record-editor'
+import type { SchemaJson } from './schema-fields'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,6 +84,7 @@ export default async function RecordPage({ params }: Props) {
         initialContent={record.content_markdown}
         initialLabels={record.labels}
         initialSchemaData={record.schema_data}
+        schemaJson={space.schema_json as SchemaJson}
         isDeleted={record.superseded_by === record.id}
         isArchived={
           record.superseded_by !== null && record.superseded_by !== record.id

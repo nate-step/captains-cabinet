@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import SchemaFields from './schema-fields'
+import type { SchemaJson } from './schema-fields'
 
 interface Props {
   recordId: string
@@ -10,6 +12,7 @@ interface Props {
   initialContent: string
   initialLabels: string[]
   initialSchemaData: Record<string, unknown>
+  schemaJson: SchemaJson
   isDeleted: boolean
   isArchived: boolean
 }
@@ -21,18 +24,26 @@ export default function RecordEditor({
   initialContent,
   initialLabels,
   initialSchemaData,
+  schemaJson,
   isDeleted,
   isArchived,
 }: Props) {
   const [title, setTitle] = useState(initialTitle)
   const [content, setContent] = useState(initialContent)
   const [labels, setLabels] = useState(initialLabels.join(', '))
+
+  // schemaData is the canonical state — schema-fields and advanced JSON both write here
+  const [schemaData, setSchemaData] = useState<Record<string, unknown>>(initialSchemaData)
+
+  // Advanced JSON panel state
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [schemaRaw, setSchemaRaw] = useState(
     Object.keys(initialSchemaData).length > 0
       ? JSON.stringify(initialSchemaData, null, 2)
       : ''
   )
   const [schemaError, setSchemaError] = useState<string | null>(null)
+
   const [preview, setPreview] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -41,26 +52,47 @@ export default function RecordEditor({
   const router = useRouter()
 
   const readonly = isDeleted || isArchived
+  const hasSchemaFields = (schemaJson.fields ?? []).length > 0
 
-  function validateSchema(raw: string): Record<string, unknown> | null {
-    if (!raw.trim()) return {}
-    try {
-      return JSON.parse(raw) as Record<string, unknown>
-    } catch {
-      return null
+  // When the form controls update schemaData, keep the raw JSON panel in sync
+  function handleSchemaFieldsChange(updated: Record<string, unknown>) {
+    setSchemaData(updated)
+    setSchemaRaw(JSON.stringify(updated, null, 2))
+    setSchemaError(null)
+  }
+
+  // When the raw JSON textarea changes, try to parse it and sync schemaData
+  function handleRawChange(raw: string) {
+    setSchemaRaw(raw)
+    setSchemaError(null)
+    if (!raw.trim()) {
+      setSchemaData({})
+      return
     }
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      setSchemaData(parsed)
+    } catch {
+      setSchemaError('Invalid JSON')
+    }
+  }
+
+  function getSchemaDataForSave(): Record<string, unknown> | null {
+    if (!schemaRaw.trim()) return {}
+    if (schemaError) return null // raw panel has parse error
+    return schemaData
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
 
-    const schemaData = validateSchema(schemaRaw)
-    if (schemaData === null) {
-      setSchemaError('Invalid JSON in schema data')
+    const schemaDataToSave = getSchemaDataForSave()
+    if (schemaDataToSave === null) {
+      setSchemaError('Fix JSON errors before saving')
       return
     }
-    setSchemaError(null)
+
     setSaving(true)
     setSaveError(null)
 
@@ -77,7 +109,7 @@ export default function RecordEditor({
           title: title.trim(),
           content_markdown: content,
           labels: parsedLabels,
-          schema_data: schemaData,
+          schema_data: schemaDataToSave,
         }),
       })
       if (!res.ok) {
@@ -87,7 +119,6 @@ export default function RecordEditor({
       const data = (await res.json()) as { record: { id: string } }
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-      // Navigate to the new record id (new version)
       router.push(`/library/${spaceId}/${data.record.id}`)
       router.refresh()
     } catch (err) {
@@ -158,9 +189,7 @@ export default function RecordEditor({
         </div>
 
         {preview ? (
-          <div
-            className="min-h-[200px] rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-300 prose prose-invert prose-sm max-w-none overflow-auto whitespace-pre-wrap"
-          >
+          <div className="min-h-[200px] rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-300 prose prose-invert prose-sm max-w-none overflow-auto whitespace-pre-wrap">
             {content || <span className="text-zinc-600 italic">No content</span>}
           </div>
         ) : (
@@ -188,24 +217,57 @@ export default function RecordEditor({
         />
       </div>
 
-      {/* Schema data */}
+      {/* Schema fields — typed form controls */}
+      {hasSchemaFields && (
+        <div>
+          <label className="mb-3 block text-xs font-medium text-zinc-400">
+            Fields
+          </label>
+          <SchemaFields
+            schemaJson={schemaJson}
+            schemaData={schemaData}
+            onChange={handleSchemaFieldsChange}
+            disabled={readonly}
+          />
+        </div>
+      )}
+
+      {/* Advanced — raw JSON fallback (collapsible) */}
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-          Schema Data (JSON)
-        </label>
-        <textarea
-          value={schemaRaw}
-          onChange={(e) => {
-            setSchemaRaw(e.target.value)
-            setSchemaError(null)
-          }}
-          disabled={readonly}
-          rows={5}
-          placeholder='{"priority": "P1", "status": "open"}'
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-white placeholder-zinc-600 focus:border-zinc-500 focus:outline-none resize-y disabled:cursor-not-allowed disabled:opacity-50"
-        />
-        {schemaError && (
-          <p className="mt-1 text-xs text-red-400">{schemaError}</p>
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(!advancedOpen)}
+          className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+        >
+          <svg
+            className={`h-3 w-3 transition-transform ${advancedOpen ? 'rotate-90' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
+          Advanced — raw JSON
+        </button>
+
+        {advancedOpen && (
+          <div className="mt-2">
+            <textarea
+              value={schemaRaw}
+              onChange={(e) => handleRawChange(e.target.value)}
+              disabled={readonly}
+              rows={5}
+              placeholder='{"priority": "P1", "status": "open"}'
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-white placeholder-zinc-600 focus:border-zinc-500 focus:outline-none resize-y disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            {schemaError && (
+              <p className="mt-1 text-xs text-red-400">{schemaError}</p>
+            )}
+            <p className="mt-1 text-xs text-zinc-700">
+              Edits here sync back to the form fields above. Use for fields not yet in the schema.
+            </p>
+          </div>
         )}
       </div>
 

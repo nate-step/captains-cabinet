@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getSpace, listRecords } from '@/lib/library'
 import CreateRecordForm from './create-record-form'
 import SearchBox from './search-box'
+import type { SchemaJson } from './[recordId]/schema-fields'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,7 +88,10 @@ export default async function SpacePage({ params, searchParams }: Props) {
             )}
           </div>
         </div>
-        <CreateRecordForm spaceId={spaceId} />
+        <CreateRecordForm
+          spaceId={spaceId}
+          schemaJson={space.schema_json as SchemaJson}
+        />
       </div>
 
       {/* Schema hint */}

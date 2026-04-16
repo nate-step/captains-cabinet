@@ -1,0 +1,62 @@
+{
+  "name": "Business Brain",
+  "description": "Strategic context of the operation — vision, brand, pricing, positioning, target users, competitive landscape, principles. The Captain's accumulated thinking, always-on reference for every Officer. Replaces the Notion Business Brain section during Phase 1 cutover.",
+  "starter_template": "business_brain",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "category",
+        "type": "select",
+        "options": [
+          "Vision",
+          "Mission",
+          "Brand",
+          "Positioning",
+          "Pricing",
+          "Target Users",
+          "Value Proposition",
+          "Competitive Landscape",
+          "Principles",
+          "North Star Metrics",
+          "Business Model",
+          "Go-to-Market",
+          "Product Strategy",
+          "Research Insights",
+          "Other"
+        ],
+        "description": "High-level bucket for navigation. Not enforced — records can shift category as thinking evolves."
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "options": ["Draft", "Active", "Superseded", "Archived"],
+        "default": "Active"
+      },
+      {
+        "name": "effective_from",
+        "type": "date",
+        "description": "When this thinking became current. Older records stay searchable but are informational, not directional."
+      },
+      {
+        "name": "last_reviewed",
+        "type": "date",
+        "description": "Last time the Captain reviewed or revised. Used to surface stale strategic docs."
+      },
+      {
+        "name": "notion_page_id",
+        "type": "text",
+        "description": "Original Notion page ID if migrated. Used for idempotent migration and round-trip reference."
+      },
+      {
+        "name": "notion_url",
+        "type": "text",
+        "description": "Deep link to the original Notion page (if kept as mirror)."
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["captain", "cos", "cpo"],
+    "comment": ["*"]
+  }
+}

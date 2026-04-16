@@ -1,0 +1,61 @@
+{
+  "name": "Issues",
+  "description": "Cabinet-native issue tracker. Replaces Linear/Jira — labels, priority, state, assignee, due date, watchers, and comments are built in. Semantic search works across titles and bodies. Cross-Space references via Linear-style identifiers.",
+  "starter_template": "issues",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "priority",
+        "type": "select",
+        "options": ["P0 — critical, drop everything", "P1 — high, do this sprint", "P2 — medium, do this month", "P3 — low, backlog"],
+        "default": "P2 — medium, do this month"
+      },
+      {
+        "name": "state",
+        "type": "select",
+        "options": ["Backlog", "Todo", "In Progress", "In Review", "Done", "Canceled"],
+        "default": "Backlog"
+      },
+      {
+        "name": "assignee",
+        "type": "text",
+        "description": "Officer abbreviation (cos, cto, cpo, cro, coo) or 'captain' for founder-action items"
+      },
+      {
+        "name": "due_date",
+        "type": "date"
+      },
+      {
+        "name": "watchers",
+        "type": "multi_select",
+        "options": ["cos", "cto", "cpo", "cro", "coo", "captain"],
+        "description": "Officers notified on state changes and new comments"
+      },
+      {
+        "name": "blocked_by",
+        "type": "relation",
+        "description": "Other Issues records this depends on"
+      },
+      {
+        "name": "captain_decision",
+        "type": "boolean",
+        "description": "Set true when Captain makes a decision that affects this issue (mirrors the gold captain-decision label in Linear)"
+      },
+      {
+        "name": "founder_action",
+        "type": "boolean",
+        "description": "Requires Captain's direct action (credentials, manual config, external tool access)"
+      },
+      {
+        "name": "linear_id",
+        "type": "text",
+        "description": "Original Linear identifier (e.g. SEN-547) if imported from Linear. Used for idempotent migration."
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["*"],
+    "comment": ["*"]
+  }
+}
