@@ -1,14 +1,24 @@
 # Secrets
 cabinet/.env
+.oauth-backup-*.json
 
 # Claude Code auto-memory (per-developer, not part of the framework)
 .claude/memory/
+.claude/scheduled_tasks.lock
 
 # Per-officer working directories (created at runtime for session isolation)
 officers/
 
 # Runtime logs
 memory/logs/*.jsonl
+memory/logs/*.log
+
+# Per-officer session state (resets between runs)
+memory/tier2/**/.session-state.json
+
+# Build artifacts
+cabinet/dashboard/tsconfig.tsbuildinfo
+cabinet/dashboard/.next/
 
 # ============================================================
 # Runtime state (layer 3 — product-specific, evolves on server)
