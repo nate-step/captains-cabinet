@@ -33,6 +33,19 @@ const ENV_FILE = "/opt/founders-cabinet/cabinet/.env";
 // so no shell injection is possible regardless of arg content.
 // Script is written to a temp file (Bun's exec doesn't support stdin input).
 // ---------------------------------------------------------------
+// Read OFFICER_NAME at request time from env (not cached at startup)
+function getOfficerName(): string {
+  return process.env.OFFICER_NAME || "system";
+}
+
+// Returned by callLibrary when the shell script exits non-zero
+class LibraryAccessError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LibraryAccessError";
+  }
+}
+
 async function callLibrary(fn: string, args: string[]): Promise<string> {
   // Pass each argument as a named env var — zero shell injection risk
   const envVars: Record<string, string> = {};
@@ -58,6 +71,7 @@ async function callLibrary(fn: string, args: string[]): Promise<string> {
     const { stdout, stderr } = await execAsync(`bash ${tmpFile}`, {
       env: {
         ...process.env,
+        OFFICER_NAME: getOfficerName(),
         ...envVars,
       },
       timeout: 60_000, // embedding calls can take several seconds
@@ -65,6 +79,12 @@ async function callLibrary(fn: string, args: string[]): Promise<string> {
     });
 
     if (stderr) {
+      // Surface access denial as a proper error
+      if (stderr.includes("access denied")) {
+        throw new LibraryAccessError(
+          stderr.split("\n").find((l) => l.includes("access denied")) ?? "Access denied"
+        );
+      }
       process.stderr.write(`[library.sh stderr] ${stderr}\n`);
     }
 
@@ -451,9 +471,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (err: any) {
+    const isAccessDenied = err instanceof LibraryAccessError || err.message?.includes("access denied");
     return {
       content: [{ type: "text", text: `Error: ${err.message}` }],
       isError: true,
+      ...(isAccessDenied ? { errorCode: "ACCESS_DENIED" } : {}),
     };
   }
 });

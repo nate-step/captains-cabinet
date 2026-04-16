@@ -15,6 +15,74 @@ if ! declare -f memory_get_embedding > /dev/null; then
 fi
 
 # =============================================================
+# ACCESS CONTROL
+# =============================================================
+
+# Fetch access_rules for a space from the DB.
+# Args: space_id
+# Returns: the access_rules JSONB as a JSON string, or "{}" on failure.
+_library_get_access_rules() {
+  local space_id="$1"
+  psql "$NEON_CONNECTION_STRING" -q -t -A \
+    -v space_id="$space_id" \
+    2>/dev/null <<'SQLEOF'
+SELECT COALESCE(access_rules::text, '{}') FROM library_spaces WHERE id = :'space_id'::bigint;
+SQLEOF
+}
+
+# Check whether `officer` is allowed to perform `op_type` (read|write|comment)
+# on the given space.
+# Returns 0 if allowed, 1 if denied.
+# Args: space_id, officer, op_type
+library_check_access() {
+  local space_id="$1"
+  local officer="${2:-${OFFICER_NAME:-}}"
+  local op_type="$3"
+
+  # Captain always has full access
+  if [ "$officer" = "captain" ]; then
+    return 0
+  fi
+
+  local rules
+  rules=$(_library_get_access_rules "$space_id")
+  # Empty rules or missing space — deny (space must exist)
+  if [ -z "$rules" ]; then
+    echo "library: access denied — space $space_id not found" >&2
+    return 1
+  fi
+
+  # access_rules={} means "no rules configured" — treat as fully permissive.
+  # This preserves backward compatibility for spaces created before enforcement landed.
+  # An explicit empty list (e.g. "write": []) means "nobody can write".
+  local rule_count
+  rule_count=$(printf '%s' "$rules" | jq 'length' 2>/dev/null)
+  if [ "${rule_count:-0}" = "0" ]; then
+    return 0
+  fi
+
+  # Extract the list for this op_type; if key missing, deny
+  local allowed
+  allowed=$(printf '%s' "$rules" | jq -r --arg op "$op_type" '.[$op] // empty | .[]' 2>/dev/null)
+
+  # If the key is missing entirely, deny
+  if [ -z "$allowed" ] && ! printf '%s' "$rules" | jq -e --arg op "$op_type" 'has($op)' >/dev/null 2>&1; then
+    echo "library: access denied — op '$op_type' not defined in access_rules for space $space_id" >&2
+    return 1
+  fi
+
+  # Check for wildcard or exact match
+  while IFS= read -r entry; do
+    if [ "$entry" = "*" ] || [ "$entry" = "$officer" ]; then
+      return 0
+    fi
+  done <<< "$allowed"
+
+  echo "library: access denied — officer '$officer' not in '$op_type' list for space $space_id" >&2
+  return 1
+}
+
+# =============================================================
 # SPACE CRUD
 # =============================================================
 
@@ -110,6 +178,13 @@ library_create_record() {
     return 1
   fi
 
+  # Access control — write op; captain always allowed; skip if officer unknown
+  if [ -n "$officer" ] && [ "$officer" != "system" ]; then
+    if ! library_check_access "$space_id" "$officer" "write"; then
+      return 1
+    fi
+  fi
+
   # Validate schema_data JSON
   if ! printf '%s' "$schema_data" | jq -e . >/dev/null 2>&1; then
     schema_data='{}'
@@ -133,19 +208,22 @@ library_create_record() {
     return 1
   fi
 
+  # Get embedding — if Voyage fails, warn and proceed with NULL (resilient fallback)
   local embedding
   embedding=$(memory_get_embedding "$embed_text")
   if [ -z "$embedding" ] || [ "$embedding" = "null" ]; then
-    return 1
+    echo "library: Voyage embedding unavailable — inserting record with embedding=NULL (ILIKE fallback active)" >&2
+    embedding=""
   fi
 
-  psql "$NEON_CONNECTION_STRING" -q -t -A \
+  local record_id
+  record_id=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
     -v space_id="$space_id" \
     -v title="$title" \
     -v content="$content" \
     -v schema_data="$schema_data" \
     -v labels="$labels_pg" \
-    -v embedding="$embedding" \
+    -v embedding="${embedding}" \
     -v officer="$officer" \
     -v source_created_at="$source_created_at" \
     2>/dev/null <<'SQLEOF'
@@ -156,12 +234,32 @@ VALUES (
   :'content',
   :'schema_data'::jsonb,
   :'labels'::text[],
-  :'embedding'::vector,
+  CASE WHEN :'embedding' = '' THEN NULL ELSE :'embedding'::vector END,
   NULLIF(:'officer', ''),
   COALESCE(NULLIF(:'source_created_at', '')::timestamptz, NOW())
 )
 RETURNING id;
 SQLEOF
+)
+
+  echo "$record_id"
+
+  # Queue in cabinet_memory for cross-system search (async, non-blocking)
+  if [ -n "$record_id" ] && [ "$record_id" -gt 0 ] 2>/dev/null; then
+    local space_name
+    space_name=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
+      -v space_id="$space_id" \
+      2>/dev/null <<'SQLEOF'
+SELECT name FROM library_spaces WHERE id = :'space_id'::bigint;
+SQLEOF
+)
+    local cm_content="$title"
+    [ -n "$content" ] && cm_content="$cm_content"$'\n\n'"$content"
+    local cm_meta
+    cm_meta=$(jq -nc --arg sid "$space_id" --arg sname "${space_name:-}" --arg rid "$record_id" \
+      '{space_id: $sid, space_name: $sname, record_id: $rid}')
+    memory_queue_embed "library_record" "lib-${record_id}" "$officer" "" "$cm_content" "$cm_meta" "${source_created_at:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" 2>/dev/null || true
+  fi
 }
 
 # Update a record — preserves history via superseded_by + version++.
@@ -190,6 +288,20 @@ library_update_record() {
     labels_pg="{$labels_csv}"
   fi
 
+  # Access control — resolve space_id from record, then check write
+  local rec_space_id
+  rec_space_id=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
+    -v rid="$record_id" \
+    2>/dev/null <<'SQLEOF'
+SELECT space_id FROM library_records WHERE id = :'rid'::bigint AND superseded_by IS NULL;
+SQLEOF
+)
+  if [ -n "$rec_space_id" ] && [ -n "$officer" ] && [ "$officer" != "system" ]; then
+    if ! library_check_access "$rec_space_id" "$officer" "write"; then
+      return 1
+    fi
+  fi
+
   # Embed the new version (do this before opening the transaction so we don't
   # hold a row lock across a network call to Voyage)
   local embed_text="$title"
@@ -199,22 +311,25 @@ library_update_record() {
     return 1
   fi
 
+  # Get embedding — if Voyage fails, warn and proceed with NULL (resilient fallback)
   local embedding
   embedding=$(memory_get_embedding "$embed_text")
   if [ -z "$embedding" ] || [ "$embedding" = "null" ]; then
-    return 1
+    echo "library: Voyage embedding unavailable — updating record with embedding=NULL (ILIKE fallback active)" >&2
+    embedding=""
   fi
 
   # Do version lookup + INSERT + UPDATE atomically. FOR UPDATE locks the old row
   # so concurrent updates serialize — the second caller waits for the first,
   # then finds superseded_by IS NOT NULL and aborts. Prevents phantom "v2" rows.
-  psql "$NEON_CONNECTION_STRING" -q -t -A \
+  local new_record_id
+  new_record_id=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
     -v old_id="$record_id" \
     -v title="$title" \
     -v content="$content" \
     -v schema_data="$schema_data" \
     -v labels="$labels_pg" \
-    -v embedding="$embedding" \
+    -v embedding="${embedding}" \
     -v officer="$officer" \
     2>/dev/null <<'SQLEOF'
 BEGIN;
@@ -232,7 +347,7 @@ inserted AS (
     :'content',
     :'schema_data'::jsonb,
     :'labels'::text[],
-    :'embedding'::vector,
+    CASE WHEN :'embedding' = '' THEN NULL ELSE :'embedding'::vector END,
     NULLIF(:'officer', ''),
     locked.version + 1
   FROM locked
@@ -247,6 +362,26 @@ updated AS (
 SELECT id FROM inserted;
 COMMIT;
 SQLEOF
+)
+
+  echo "$new_record_id"
+
+  # Queue in cabinet_memory for cross-system search (async, non-blocking)
+  if [ -n "$new_record_id" ] && [ "$new_record_id" -gt 0 ] 2>/dev/null; then
+    local space_name
+    space_name=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
+      -v space_id="${rec_space_id}" \
+      2>/dev/null <<'SQLEOF'
+SELECT name FROM library_spaces WHERE id = :'space_id'::bigint;
+SQLEOF
+)
+    local cm_content="$title"
+    [ -n "$content" ] && cm_content="$cm_content"$'\n\n'"$content"
+    local cm_meta
+    cm_meta=$(jq -nc --arg sid "${rec_space_id:-}" --arg sname "${space_name:-}" --arg rid "$new_record_id" \
+      '{space_id: $sid, space_name: $sname, record_id: $rid}')
+    memory_queue_embed "library_record" "lib-${new_record_id}" "$officer" "" "$cm_content" "$cm_meta" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null || true
+  fi
 }
 
 # Get a record by id. If version is specified, returns that specific historical
@@ -255,6 +390,24 @@ SQLEOF
 # Args: record_id
 library_get_record() {
   local record_id="$1"
+  local officer="${OFFICER_NAME:-}"
+
+  # Resolve space_id for access check
+  if [ -n "$officer" ] && [ "$officer" != "system" ]; then
+    local rec_space_id
+    rec_space_id=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
+      -v rid="$record_id" \
+      2>/dev/null <<'SQLEOF'
+SELECT space_id FROM library_records WHERE id = :'rid'::bigint LIMIT 1;
+SQLEOF
+)
+    if [ -n "$rec_space_id" ]; then
+      if ! library_check_access "$rec_space_id" "$officer" "read"; then
+        return 1
+      fi
+    fi
+  fi
+
   psql "$NEON_CONNECTION_STRING" -q -t -A -F $'\t' \
     -v record_id="$record_id" \
     2>/dev/null <<'SQLEOF'
@@ -316,10 +469,37 @@ library_search() {
   local space_id_filter="${2:-}"
   local labels_filter="${3:-}"
   local limit="${4:-10}"
+  local officer="${OFFICER_NAME:-}"
+
+  # Access check — if a specific space is requested, verify read permission
+  if [ -n "$space_id_filter" ] && [ -n "$officer" ] && [ "$officer" != "system" ]; then
+    if ! library_check_access "$space_id_filter" "$officer" "read"; then
+      return 1
+    fi
+  fi
 
   local query_embedding
   query_embedding=$(memory_get_embedding "$query")
-  [ -z "$query_embedding" ] || [ "$query_embedding" = "null" ] && { return 1; }
+  # If embedding fails, fall back to ILIKE title search (matches dashboard behavior)
+  if [ -z "$query_embedding" ] || [ "$query_embedding" = "null" ]; then
+    echo "library: Voyage embedding unavailable — falling back to ILIKE title search" >&2
+    psql "$NEON_CONNECTION_STRING" -q -t -A -F $'\t' \
+      -v query="$query" \
+      -v space_filter="${space_id_filter:-}" \
+      2>/dev/null <<'SQLEOF'
+SELECT space_id, id, title,
+       0 as similarity,
+       regexp_replace(LEFT(content_markdown, 200), E'[\t\n\r]+', ' ', 'g') as preview,
+       COALESCE(created_by_officer, ''),
+       to_char(created_at, 'YYYY-MM-DD HH24:MI')
+FROM library_records
+WHERE superseded_by IS NULL
+  AND (:'space_filter' = '' OR space_id = NULLIF(:'space_filter', '')::bigint)
+  AND title ILIKE '%' || :'query' || '%'
+LIMIT 10;
+SQLEOF
+    return 0
+  fi
 
   local labels_pg="{}"
   [ -n "$labels_filter" ] && labels_pg="{$labels_filter}"
@@ -349,6 +529,14 @@ SQLEOF
 library_list_records() {
   local space_id="$1"
   local limit="${2:-50}"
+  local officer="${OFFICER_NAME:-}"
+
+  # Access check
+  if [ -n "$officer" ] && [ "$officer" != "system" ]; then
+    if ! library_check_access "$space_id" "$officer" "read"; then
+      return 1
+    fi
+  fi
 
   psql "$NEON_CONNECTION_STRING" -q -t -A -F $'\t' \
     -v space_id="$space_id" \
@@ -371,6 +559,24 @@ SQLEOF
 # Args: record_id
 library_delete_record() {
   local record_id="$1"
+  local officer="${OFFICER_NAME:-}"
+
+  # Resolve space_id for access check
+  if [ -n "$officer" ] && [ "$officer" != "system" ]; then
+    local rec_space_id
+    rec_space_id=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
+      -v rid="$record_id" \
+      2>/dev/null <<'SQLEOF'
+SELECT space_id FROM library_records WHERE id = :'rid'::bigint AND superseded_by IS NULL;
+SQLEOF
+)
+    if [ -n "$rec_space_id" ]; then
+      if ! library_check_access "$rec_space_id" "$officer" "write"; then
+        return 1
+      fi
+    fi
+  fi
+
   psql "$NEON_CONNECTION_STRING" -q -t -A \
     -v record_id="$record_id" \
     2>/dev/null <<'SQLEOF'

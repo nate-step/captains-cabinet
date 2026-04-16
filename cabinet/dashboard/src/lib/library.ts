@@ -103,6 +103,59 @@ async function getEmbedding(text: string): Promise<number[] | null> {
 }
 
 // ============================================================
+// Cabinet Memory integration — async, fire-and-forget
+// Queues a library record into cabinet_memory via the Redis embed queue
+// so cross-system search (memory_search) finds Library content.
+// Uses the same XADD payload schema as memory.sh:memory_queue_embed.
+// Non-blocking: never throws; logs on failure only.
+// ============================================================
+
+async function queueLibraryRecordInMemory(params: {
+  recordId: string
+  spaceId: string
+  spaceName: string
+  title: string
+  content: string
+  officer: string
+  sourceCreatedAt?: string
+}): Promise<void> {
+  const redisHost = process.env.REDIS_HOST ?? 'redis'
+  const redisPort = process.env.REDIS_PORT ?? '6379'
+  const sourceId = `lib-${params.recordId}`
+  const content = params.content.trim()
+  if (!content) return
+
+  const payload = JSON.stringify({
+    source_type: 'library_record',
+    source_id: sourceId,
+    officer: params.officer,
+    sender: '',
+    content,
+    metadata: {
+      space_id: params.spaceId,
+      space_name: params.spaceName,
+      record_id: params.recordId,
+    },
+    source_ts: params.sourceCreatedAt ?? new Date().toISOString(),
+  })
+
+  // Best-effort: push to Redis Stream — memory-worker picks it up asynchronously.
+  // Use execFile (not exec/shell string) so payload content cannot cause shell injection.
+  try {
+    const { execFile } = await import('node:child_process')
+    execFile(
+      'redis-cli',
+      ['-h', redisHost, '-p', redisPort, 'XADD', 'cabinet:memory:embed_queue', '*', 'payload', payload],
+      (err) => {
+        if (err) console.error('[library] memory queue push failed:', err.message)
+      }
+    )
+  } catch (err) {
+    console.error('[library] memory queue push error:', err)
+  }
+}
+
+// ============================================================
 // Spaces
 // ============================================================
 
@@ -308,7 +361,27 @@ export async function createRecord(params: {
       params.created_at ?? null,
     ]
   )
-  return rows[0]
+  const record = rows[0]
+
+  // Queue in cabinet_memory for cross-system search (async, non-blocking)
+  if (record) {
+    // Fetch space name for metadata — best-effort, don't await in hot path
+    getSpace(params.space_id)
+      .then((space) => {
+        queueLibraryRecordInMemory({
+          recordId: record.id,
+          spaceId: params.space_id,
+          spaceName: space?.name ?? '',
+          title: params.title,
+          content: [params.title, params.content_markdown ?? ''].filter(Boolean).join('\n\n'),
+          officer: params.created_by_officer ?? 'captain',
+          sourceCreatedAt: params.created_at ?? undefined,
+        })
+      })
+      .catch(() => {/* non-fatal */})
+  }
+
+  return record
 }
 
 export async function updateRecord(
@@ -373,7 +446,23 @@ export async function updateRecord(
   if (!rows[0]) {
     throw new Error(`Record ${id} not found or already superseded`)
   }
-  return rows[0]
+  const updated = rows[0]
+
+  // Queue in cabinet_memory for cross-system search (async, non-blocking)
+  getSpace(updated.space_id)
+    .then((space) => {
+      queueLibraryRecordInMemory({
+        recordId: updated.id,
+        spaceId: updated.space_id,
+        spaceName: space?.name ?? '',
+        title: params.title,
+        content: [params.title, params.content_markdown].filter(Boolean).join('\n\n'),
+        officer: params.created_by_officer ?? 'captain',
+      })
+    })
+    .catch(() => {/* non-fatal */})
+
+  return updated
 }
 
 export async function deleteRecord(id: string): Promise<boolean> {

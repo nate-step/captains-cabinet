@@ -44,9 +44,7 @@ Each starter is a single JSON file at `cabinet/starter-spaces/<name>.json`:
 | `boolean` | JSONB true/false | Checkbox in UI |
 | `relation` | JSONB `{space, record_id}` | FK to another record |
 
-**Access rules:** officer abbreviations (e.g., `cos`, `cto`) or `*` for anyone. `read`, `write`, `comment` are independent.
-
-> **Sprint A note:** `access_rules` is **stored but not enforced yet**. Enforcement lands in Sprint B alongside per-MCP-tool authorization. In the meantime, every authenticated Officer and the Captain can read/write every Space. Use access_rules to document intent; do not treat it as a security boundary until Sprint B ships.
+**Access rules:** officer abbreviations (e.g., `cos`, `cto`) or `*` for anyone. `read`, `write`, `comment` are independent. Rules are enforced on all `library.sh` operations and the Library MCP server. Captain (`OFFICER_NAME=captain`) always bypasses access_rules. Dashboard API routes run as captain context and are not subject to officer access checks.
 
 ## Adding a new starter
 
