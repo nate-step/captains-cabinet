@@ -109,26 +109,59 @@ docker exec -it cabinet-officers bash
 4. **Self-Improvement Loops** — Three nested loops: Task (per-task log entries), Reflection (event-triggered — after compaction or completion milestones), Evolution (cross-officer retro every 5 reflections or 48h, whichever first). Foundation skills ship with the repo and improve over time.
 5. **Safety Boundaries** — Hard limits enforced by hooks and Redis. Read-only constitution. Kill switch.
 
+## Presets — adapting the Cabinet to different use cases
+
+Captain's Cabinet is preset-aware. The framework is universal; a **preset** adapts it to a specific use case without forking.
+
+Shipped presets:
+
+- **`work`** (default) — product-team shape. CoS + CTO + CPO + CRO + COO as officers. Linear or Library backlog. Notion or Library business brain. Product repo mounted as workspace. Default for anyone building and shipping something.
+- **`personal`** — placeholder. Populates with coaching-style agents (Physical Coach, Mindfulness Coach) in Phase 2.
+- **`_template`** — skeleton for creating a new preset. See `memory/skills/create-preset.md` for the full workflow.
+
+A preset defines:
+- Which agent archetypes pre-scaffold
+- Terminology defaults (e.g. "officer" vs "coach")
+- Constitution addendum (on top of framework base)
+- Safety addendum (can only tighten, never relax the framework base)
+- Additional database schema (additive only, never drop framework tables)
+- Default autonomy level and hook defaults
+
+At container start, `cabinet/scripts/load-preset.sh` reads `instance/config/active-preset` (default `work`) and assembles the runtime Cabinet state at `/tmp/cabinet-runtime/` — Officers read from there. Three layers overlay cleanly: `framework/` → `presets/<active>/` → `instance/`.
+
+You can use a shipped preset, customize via `instance/agents/` overlays, or create your own. See `presets/README.md` and `framework/README.md` for detail.
+
 ## Repo Structure
 
 ```
-founders-cabinet/
-├── .claude/agents/          # Officer role definitions (identity, not procedures)
+captains-cabinet/
+├── framework/               # Universal Cabinet base (ships with every deployment)
+│   ├── constitution-base.md     # Universal Constitution — identity, principles, comms
+│   ├── safety-boundaries-base.md # Universal safety rules — approvals, limits, kill switch
+│   ├── schemas-base.sql         # Framework schema pointers (see cabinet/sql/ for actual files)
+│   └── README.md
+├── presets/                 # Use-case configurations (work, personal, custom)
+│   ├── work/                    # Default preset: product-team shape (CoS/CTO/CPO/CRO/COO)
+│   ├── personal/                # Placeholder — populates in Phase 2
+│   ├── _template/               # Skeleton for creating a new preset
+│   └── README.md
+├── instance/                # This deployment's specifics
+│   ├── config/                  # product.yml + platform.yml + active-preset
+│   ├── memory/tier2/            # Officer working notes (per-role)
+│   └── agents/                  # Per-deployment agent overlays (optional; loaded last)
 ├── cabinet/
-│   ├── scripts/             # All Cabinet tooling (hooks, supervisor, memory lib, notify, etc.)
-│   ├── sql/                 # Schema migrations (cabinet_memory.sql, future kb_spaces, ...)
+│   ├── scripts/             # Cabinet tooling: hooks, supervisor, load-preset.sh, library.sh, memory.sh, etc.
+│   ├── sql/                 # Schema files: cabinet_memory.sql, library.sql
 │   ├── cron/                # Scheduled triggers (briefings, research sweeps, retro)
-│   ├── channels/            # MCP plugins (Redis trigger channel, etc.)
+│   ├── channels/            # MCP plugins (redis-trigger-channel, library-mcp)
+│   ├── starter-spaces/      # JSON templates for Library Spaces (10 shipped)
 │   ├── dashboard/           # Next.js operator dashboard
 │   └── Dockerfile.officer   # Per-officer container image
-├── config/
-│   ├── product.yml          # What you're building (product name, Notion IDs, bots, voice)
-│   └── platform.yml         # How the Cabinet operates (timezone, comms, cadence, officer set)
-├── constitution/            # Governance (read-only at runtime)
+├── .claude/agents/          # Derived: populated by load-preset.sh from presets/ + instance/agents/ overlays (gitignored)
+├── constitution/            # Legacy constitution (still present during Phase 0; runtime reads from /tmp/cabinet-runtime/)
 ├── memory/
 │   ├── skills/              # Foundation + promoted skills (procedures, quality gates)
 │   ├── golden-evals/        # Validation scenarios for Cabinet changes
-│   ├── tier2/               # Officer working notes (per-role)
 │   └── tier3/               # Experience records, decision log, research archive
 ├── shared/                  # Inter-Officer interfaces (specs, decisions, tech radar)
 ├── CLAUDE.md                # Root context loaded every session
