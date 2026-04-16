@@ -1,0 +1,25 @@
+-- framework/schemas-base.sql
+-- Framework-layer database schema pointers.
+--
+-- The actual SQL definitions live in `cabinet/sql/` and `cabinet/init.sql`
+-- for physical-layout reasons (the Docker Postgres init hook reads
+-- `cabinet/init.sql`, and `cabinet/sql/*.sql` is the canonical location
+-- for schema files that get applied to Neon). This file documents that
+-- those schemas are FRAMEWORK-level (universal) and enumerates them so
+-- the preset loader knows which to apply at container start.
+--
+-- Framework schemas (apply in this order, each is idempotent via
+-- CREATE TABLE IF NOT EXISTS throughout):
+--
+--   1. cabinet/init.sql                — internal Docker Postgres: experience_records, decision_log, research_archive, skills
+--   2. cabinet/sql/cabinet_memory.sql   — Neon: cabinet_memory universal search layer
+--   3. cabinet/sql/library.sql          — Neon: library_spaces + library_records
+--
+-- Preset-layer schemas (applied after framework by the loader):
+--   presets/<active>/schemas.sql  — additional tables specific to the active preset
+--
+-- Any SQL file added to `cabinet/sql/` should be classified at commit time:
+-- if the schema is universal (every Cabinet benefits), document it here.
+-- If it's preset-specific, add to `presets/<name>/schemas.sql` instead.
+
+-- This file intentionally contains no CREATE statements. See the files above.
