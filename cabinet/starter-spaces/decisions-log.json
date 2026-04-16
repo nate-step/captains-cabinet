@@ -1,0 +1,57 @@
+{
+  "name": "Decisions Log",
+  "description": "Captain decision trail. Every meaningful decision the Captain makes — with the WHY — logged here so future Officers can apply principles, not just follow the letter. Replaces shared/interfaces/captain-decisions.md as the primary surface. The markdown file remains as a mirror for git-backup and session pre-load.",
+  "starter_template": "decisions_log",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "decision_date",
+        "type": "date",
+        "description": "The date Captain made the decision"
+      },
+      {
+        "name": "why",
+        "type": "markdown",
+        "description": "The reasoning behind the decision — the principle future Officers should apply. REQUIRED."
+      },
+      {
+        "name": "affected",
+        "type": "text",
+        "description": "Comma-separated list of files, Linear issues, GitHub issues, or Officer roles affected by this decision"
+      },
+      {
+        "name": "domain",
+        "type": "select",
+        "options": [
+          "Product",
+          "Engineering",
+          "Brand & Marketing",
+          "Research",
+          "Operations",
+          "Pricing",
+          "Partnerships",
+          "Hiring",
+          "Legal & Compliance",
+          "Framework (Cabinet)",
+          "Other"
+        ]
+      },
+      {
+        "name": "reversibility",
+        "type": "select",
+        "options": ["One-way door (hard to reverse)", "Two-way door (reversible)", "Partial"],
+        "description": "Bezos framing — affects how much discussion to spawn later"
+      },
+      {
+        "name": "superseded_by_decision",
+        "type": "relation",
+        "description": "If this decision was later overridden, link to the newer Decisions Log record"
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["captain", "cos"],
+    "comment": ["*"]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "Playbooks",
+  "description": "Standard Operating Procedures and runbooks. Each record is a repeatable procedure with trigger conditions, steps, and expected outcome. Officers can invoke a Playbook by name via semantic search.",
+  "starter_template": "playbooks",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "trigger",
+        "type": "text",
+        "description": "When this Playbook runs — e.g. 'new founder-action issue created', 'Neon cold-start detected', 'spec reaches In Review state'"
+      },
+      {
+        "name": "owner_role",
+        "type": "select",
+        "options": ["cos", "cto", "cpo", "cro", "coo", "captain", "any-officer"],
+        "description": "Role responsible for executing (not always the same officer)"
+      },
+      {
+        "name": "estimated_duration",
+        "type": "text",
+        "description": "Rough time to complete — helps Officers budget"
+      },
+      {
+        "name": "last_executed",
+        "type": "date"
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "options": ["Draft", "Active", "Deprecated"],
+        "default": "Active"
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["*"],
+    "comment": ["*"]
+  }
+}

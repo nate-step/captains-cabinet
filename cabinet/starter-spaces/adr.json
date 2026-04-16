@@ -1,0 +1,54 @@
+{
+  "name": "Architecture Decision Records",
+  "description": "Technical decisions with context, alternatives considered, and consequences. Follows the ADR format (Michael Nygard / ThoughtWorks lineage). Each record is immutable once accepted — supersession creates a new ADR that links back. Think of ADRs as architectural git-commits with prose.",
+  "starter_template": "adr",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "adr_number",
+        "type": "text",
+        "description": "Zero-padded sequential: 0001, 0002, etc. Set manually on creation."
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "options": ["Proposed", "Accepted", "Rejected", "Deprecated", "Superseded"],
+        "default": "Proposed"
+      },
+      {
+        "name": "deciders",
+        "type": "text",
+        "description": "Comma-separated officers/roles who approved"
+      },
+      {
+        "name": "context_summary",
+        "type": "markdown",
+        "description": "Two-paragraph summary of the problem and constraints"
+      },
+      {
+        "name": "alternatives_considered",
+        "type": "markdown",
+        "description": "Options evaluated and why they were rejected"
+      },
+      {
+        "name": "consequences",
+        "type": "markdown",
+        "description": "Expected outcomes, positive and negative"
+      },
+      {
+        "name": "superseded_by_adr",
+        "type": "relation",
+        "description": "If Status=Superseded, link to the replacing ADR"
+      },
+      {
+        "name": "decided_at",
+        "type": "date"
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["cto", "cos", "captain"],
+    "comment": ["*"]
+  }
+}

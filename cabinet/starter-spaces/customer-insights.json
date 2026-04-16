@@ -1,0 +1,67 @@
+{
+  "name": "Customer Insights",
+  "description": "Everything learned about users — from interviews, surveys, usage data, support threads, social listening, cohort analyses. Tagged by source and theme so the Cabinet can answer 'what do we know about churn' without re-researching.",
+  "starter_template": "customer_insights",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "source",
+        "type": "select",
+        "options": [
+          "User Interview",
+          "Survey",
+          "Usage Data",
+          "Support Thread",
+          "Social Listening",
+          "App Store Review",
+          "Churn Interview",
+          "Beta Feedback",
+          "Analytics Cohort",
+          "Other"
+        ]
+      },
+      {
+        "name": "theme",
+        "type": "multi_select",
+        "options": [
+          "onboarding",
+          "core-loop",
+          "retention",
+          "churn",
+          "monetization",
+          "pricing",
+          "ux-friction",
+          "feature-request",
+          "bug-report",
+          "positioning",
+          "differentiation",
+          "brand-perception"
+        ]
+      },
+      {
+        "name": "sample_size",
+        "type": "number",
+        "description": "How many users informed this insight"
+      },
+      {
+        "name": "confidence",
+        "type": "select",
+        "options": ["High (n>30 or unanimous)", "Medium (signal, worth testing)", "Low (anecdote, hypothesis only)"]
+      },
+      {
+        "name": "acted_on",
+        "type": "boolean",
+        "description": "True if we've shipped something in response to this insight"
+      },
+      {
+        "name": "captured_at",
+        "type": "date"
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["cro", "cpo", "coo", "cos"],
+    "comment": ["*"]
+  }
+}

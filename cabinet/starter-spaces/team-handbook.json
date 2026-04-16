@@ -1,0 +1,41 @@
+{
+  "name": "Team Handbook",
+  "description": "How this Cabinet operates — communication norms, shift patterns, escalation rules, review conventions, meeting structures. Documents the implicit culture so new Officers can ramp fast and existing Officers stay aligned. Think GitLab Handbook but for an AI operating org.",
+  "starter_template": "team_handbook",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "section",
+        "type": "select",
+        "options": [
+          "Communication",
+          "Escalation",
+          "Reviews",
+          "Meetings (synchronous with Captain)",
+          "Shift & Availability",
+          "Tool Defaults",
+          "Quality Standards",
+          "Safety & Compliance",
+          "Hiring & Role Design",
+          "Offboarding & Suspension",
+          "Other"
+        ]
+      },
+      {
+        "name": "scope",
+        "type": "multi_select",
+        "options": ["cos", "cto", "cpo", "cro", "coo", "captain", "crew", "all-officers", "all-agents"]
+      },
+      {
+        "name": "last_reviewed",
+        "type": "date",
+        "description": "Prompts periodic re-read. Stale handbook entries get flagged in retros."
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["cos", "captain"],
+    "comment": ["*"]
+  }
+}

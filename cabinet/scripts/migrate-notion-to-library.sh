@@ -29,9 +29,31 @@ done
 
 if [ -z "$SPACE_SLUG" ]; then
   echo "Usage: migrate-notion-to-library.sh <space-slug> [--dry-run]"
-  echo "Supported slugs: business-brain"
+  echo "Supported slugs:"
+  echo "  business-brain     → 'Business Brain' Space (from notion.business_brain)"
+  echo "  research-briefs    → 'Research Archive' Space (from notion.research_hub.research_briefs_db)"
+  echo "  competitive-intel  → 'Research Archive' Space (from notion.research_hub.competitive_intel_db)"
+  echo "  market-trends      → 'Research Archive' Space (from notion.research_hub.market_trends_db)"
+  echo "  decision-journal   → 'Decisions Log' Space (from notion.cabinet_operations.decision_journal_db)"
+  echo "  decision-queue     → 'Decisions Log' Space (from notion.dashboard.decision_queue_db)"
+  echo "  architecture-decisions → 'Architecture Decision Records' Space (from notion.engineering_hub.architecture_decisions_db)"
+  echo "  user-feedback      → 'Customer Insights' Space (from notion.product_hub.user_feedback_db)"
+  echo "  feature-specs      → 'Playbooks' Space (from notion.product_hub.feature_specs_db)"
+  echo "  improvement-proposals → 'Playbooks' Space (from notion.cabinet_operations.improvement_proposals_db)"
   exit 1
 fi
+
+# ---------------------------------------------------------------
+# Helper: extract a Notion ID from product.yml given a block path
+# Usage: extract_notion_id "block_name" "key_name"
+# Example: extract_notion_id "research_hub" "research_briefs_db"
+# ---------------------------------------------------------------
+extract_notion_id() {
+  local block="$1" key="$2"
+  grep -A30 "  ${block}:" "$CONFIG_FILE" 2>/dev/null \
+    | awk -v k="    ${key}:" '$0 ~ k {print $2; exit}' \
+    | tr -d '"'
+}
 
 # ---------------------------------------------------------------
 # Validate slug → Space name + Notion DB id mapping
@@ -39,27 +61,47 @@ fi
 case "$SPACE_SLUG" in
   business-brain)
     SPACE_DISPLAY_NAME="Business Brain"
-    # Extract from config/product.yml.
-    # First try a dedicated business_brain_db key; fall back to business_brain.page_id
-    # (which is a Notion page whose children we'll migrate as sub-pages).
-    # Use 4-space indent to stay within the business_brain: block.
-    # Use awk to avoid grep-no-match exit code under set -o pipefail.
-    NOTION_DB_ID=$(
-      grep -A20 '  business_brain:' "$CONFIG_FILE" 2>/dev/null \
-      | awk '/    business_brain_db:/ {print $2; exit}' \
-      | tr -d '"'
-    )
-    if [ -z "$NOTION_DB_ID" ]; then
-      # Fall back to page_id (a Notion page; we'll migrate its child sub-pages)
-      NOTION_DB_ID=$(
-        grep -A20 '  business_brain:' "$CONFIG_FILE" 2>/dev/null \
-        | awk '/    page_id:/ {print $2; exit}' \
-        | tr -d '"'
-      )
-    fi
+    NOTION_DB_ID=$(extract_notion_id "business_brain" "business_brain_db")
+    [ -z "$NOTION_DB_ID" ] && NOTION_DB_ID=$(extract_notion_id "business_brain" "page_id")
+    ;;
+  research-briefs)
+    SPACE_DISPLAY_NAME="Research Archive"
+    NOTION_DB_ID=$(extract_notion_id "research_hub" "research_briefs_db")
+    ;;
+  competitive-intel)
+    SPACE_DISPLAY_NAME="Research Archive"
+    NOTION_DB_ID=$(extract_notion_id "research_hub" "competitive_intel_db")
+    ;;
+  market-trends)
+    SPACE_DISPLAY_NAME="Research Archive"
+    NOTION_DB_ID=$(extract_notion_id "research_hub" "market_trends_db")
+    ;;
+  decision-journal)
+    SPACE_DISPLAY_NAME="Decisions Log"
+    NOTION_DB_ID=$(extract_notion_id "cabinet_operations" "decision_journal_db")
+    ;;
+  decision-queue)
+    SPACE_DISPLAY_NAME="Decisions Log"
+    NOTION_DB_ID=$(extract_notion_id "dashboard" "decision_queue_db")
+    ;;
+  architecture-decisions)
+    SPACE_DISPLAY_NAME="Architecture Decision Records"
+    NOTION_DB_ID=$(extract_notion_id "engineering_hub" "architecture_decisions_db")
+    ;;
+  user-feedback)
+    SPACE_DISPLAY_NAME="Customer Insights"
+    NOTION_DB_ID=$(extract_notion_id "product_hub" "user_feedback_db")
+    ;;
+  feature-specs)
+    SPACE_DISPLAY_NAME="Playbooks"
+    NOTION_DB_ID=$(extract_notion_id "product_hub" "feature_specs_db")
+    ;;
+  improvement-proposals)
+    SPACE_DISPLAY_NAME="Playbooks"
+    NOTION_DB_ID=$(extract_notion_id "cabinet_operations" "improvement_proposals_db")
     ;;
   *)
-    echo "Unsupported space slug: '$SPACE_SLUG'. Supported: business-brain"
+    echo "Unsupported space slug: '$SPACE_SLUG'. Run without args for supported list."
     exit 1
     ;;
 esac

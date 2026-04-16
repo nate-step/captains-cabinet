@@ -128,6 +128,37 @@ for route in spaces "spaces/[spaceId]/records" "records/[recordId]" "records/[re
   fi
 done
 
+# Dashboard's getRecordHistory SQL executes cleanly (Sprint B 35f3cba fix).
+# Runs the exact CTE the dashboard does; catches "recursive reference must not
+# appear within its non-recursive term" regression class.
+# Uses the Blank Space as an anchor (always exists, zero records). The CTE
+# should return zero rows cleanly — not throw.
+HISTORY_SQL_OUT=$(psql "$NEON_CONNECTION_STRING" -t -A -c "
+WITH RECURSIVE
+  forward AS (
+    SELECT id, superseded_by FROM library_records WHERE id = -1
+    UNION ALL
+    SELECT r.id, r.superseded_by FROM library_records r
+    JOIN forward f ON f.superseded_by = r.id
+    WHERE r.superseded_by IS NULL OR r.id != r.superseded_by
+  ),
+  head AS (SELECT id FROM forward WHERE superseded_by IS NULL OR superseded_by = id),
+  chain AS (
+    SELECT id, version FROM library_records WHERE id = (SELECT id FROM head)
+    UNION ALL
+    SELECT r.id, r.version FROM library_records r
+    JOIN chain c ON r.superseded_by = c.id AND r.id != c.id
+  )
+SELECT COUNT(*) FROM chain;
+" 2>&1)
+if echo "$HISTORY_SQL_OUT" | grep -qi "recursive reference.*must not appear"; then
+  fail "dashboard history CTE has multi-recursive-arm regression"
+elif echo "$HISTORY_SQL_OUT" | grep -qiE "^ERROR"; then
+  fail "dashboard history CTE errored: $(echo $HISTORY_SQL_OUT | head -c 200)"
+else
+  pass "dashboard history CTE executes cleanly (no multi-recursive-arm regression)"
+fi
+
 # ============================================================
 # CP5 — Starter template + install
 # ============================================================

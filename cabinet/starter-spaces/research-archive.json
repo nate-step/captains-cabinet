@@ -1,0 +1,53 @@
+{
+  "name": "Research Archive",
+  "description": "All research briefs, competitive intel, market sweeps, and expert dives. Each brief is tagged with a decay rate — evergreen (lasts until superseded), fast-moving (re-verify after 2 weeks), time-sensitive (expires on a specific date). Semantic search works across every brief ever written.",
+  "starter_template": "research_archive",
+  "schema_json": {
+    "fields": [
+      {
+        "name": "topic",
+        "type": "text",
+        "description": "Short topic slug: competitive-intel, market-research, tech-stack, claude-code-daily, etc."
+      },
+      {
+        "name": "decay",
+        "type": "select",
+        "options": ["evergreen", "fast-moving", "time-sensitive"],
+        "default": "fast-moving",
+        "description": "Evergreen: valid until superseded. Fast-moving: re-verify after 2 weeks. Time-sensitive: expires on a date."
+      },
+      {
+        "name": "expires_at",
+        "type": "date",
+        "description": "Required if decay=time-sensitive. After this date the brief is stale."
+      },
+      {
+        "name": "sources",
+        "type": "multi_select",
+        "options": ["web-search", "perplexity", "brave", "exa", "notion", "linear", "github", "twitter", "hn", "reddit", "other"],
+        "description": "Source types used"
+      },
+      {
+        "name": "action_classification",
+        "type": "select",
+        "options": ["ACTIONABLE", "OPPORTUNITY", "AWARENESS"],
+        "description": "ACTIONABLE needs immediate action. OPPORTUNITY worth exploring. AWARENESS context only."
+      },
+      {
+        "name": "owner",
+        "type": "text",
+        "description": "Officer who should act on findings (if actionable)"
+      },
+      {
+        "name": "notion_page_id",
+        "type": "text",
+        "description": "Original Notion page ID if migrated"
+      }
+    ]
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["cro", "cos"],
+    "comment": ["*"]
+  }
+}
