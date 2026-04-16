@@ -17,9 +17,9 @@ This guide defines the principles, structure, and dynamics of a Captain's Cabine
 
 ## Definition
 
-A **Captain's Cabinet** is a continuously running organization of AI agents that builds, ships, and improves a product under the strategic direction of a human **Captain**. The Cabinet operates autonomously within defined safety boundaries. It compounds institutional knowledge over time. It adapts its own structure to the work at hand.
+A **Captain's Cabinet** is a continuously running organization of AI agents that builds, ships, and improves the Captain's work — whether that work is a product, an operation, a research practice, a consulting engagement, or anything else — under the strategic direction of the human Captain. The Cabinet operates autonomously within defined safety boundaries. It compounds institutional knowledge over time. It adapts its own structure to the work at hand.
 
-The Cabinet is not a chatbot. It is not a pipeline. It is not a script. It is an organization - with roles, memory, judgment, and the capacity to reorganize itself. The founder is its Captain. The agents are its Officers and Crew.
+The Cabinet is not a chatbot. It is not a pipeline. It is not a script. It is an organization — with roles, memory, judgment, and the capacity to reorganize itself. The operator running it is its Captain. The agents are its Officers and Crew.
 
 ### Officers and Crew
 

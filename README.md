@@ -1,6 +1,6 @@
 # Captain's Cabinet
 
-An autonomous AI organization that builds, ships, and improves your product — while you steer from Telegram.
+An autonomous AI organization that builds, ships, and improves your work — while you steer from Telegram.
 
 ## What This Is
 
@@ -132,7 +132,7 @@ founders-cabinet/
 │   └── tier3/               # Experience records, decision log, research archive
 ├── shared/                  # Inter-Officer interfaces (specs, decisions, tech radar)
 ├── CLAUDE.md                # Root context loaded every session
-└── founders-cabinet-guide.md # The theory document
+└── captains-cabinet-guide.md # The theory document
 ```
 
 ## Customization
@@ -204,4 +204,4 @@ Free to fork, self-host, modify, and use internally. Commercial hosted/managed o
 
 Short version: if you're a team running the Cabinet for your own organization — whether as a founder, an employee, a solo operator, or anything in between — go ahead. If you want to sell a hosted Cabinet-as-a-Service to third parties, reach out.
 
-See `founders-cabinet-guide.md` for the full framework theory.
+See `captains-cabinet-guide.md` for the full framework theory.
