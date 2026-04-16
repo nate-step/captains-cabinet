@@ -55,6 +55,19 @@
           {
             "type": "command",
             "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/post-reply-voice.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/post-reply-memory.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/post-file-write-memory.sh"
           }
         ]
       }

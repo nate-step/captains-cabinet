@@ -25,6 +25,22 @@ trigger_send() {
     sender "$sender" \
     message "[$timestamp] From $sender: $message" \
     > /dev/null 2>&1
+
+  # Cabinet Memory: queue trigger for semantic indexing (fire-and-forget)
+  if [ -f /opt/founders-cabinet/cabinet/scripts/lib/memory.sh ]; then
+    (
+      source /opt/founders-cabinet/cabinet/scripts/lib/memory.sh 2>/dev/null
+      if declare -f memory_queue_embed > /dev/null; then
+        local source_id="trg-$(date -u +%Y%m%dT%H%M%S)-${sender}-to-${target}"
+        local metadata
+        metadata=$(jq -nc --arg sender "$sender" --arg target "$target" \
+          '{sender: $sender, target: $target}')
+        memory_queue_embed "officer_trigger" "$source_id" "$sender" "$sender" \
+          "[$sender → $target] $message" "$metadata" \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null || true
+      fi
+    ) &
+  fi
 }
 
 # Read NEW triggers for an officer (marks them as pending until ACK'd)
