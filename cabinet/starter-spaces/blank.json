@@ -1,0 +1,13 @@
+{
+  "name": "Blank",
+  "description": "An empty Space with no custom fields. Title, markdown content, and labels only — good for freeform notes, ad-hoc collections, or sketching out schemas before committing to them.",
+  "starter_template": "blank",
+  "schema_json": {
+    "fields": []
+  },
+  "access_rules": {
+    "read": ["*"],
+    "write": ["*"],
+    "comment": ["*"]
+  }
+}

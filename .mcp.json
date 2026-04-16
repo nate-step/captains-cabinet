@@ -24,6 +24,11 @@
       "command": "bun",
       "args": ["run", "/opt/founders-cabinet/cabinet/channels/redis-trigger-channel/index.ts"],
       "env": { "OFFICER_NAME": "${OFFICER_NAME}", "REDIS_URL": "redis://redis:6379" }
+    },
+    "library": {
+      "command": "bun",
+      "args": ["run", "/opt/founders-cabinet/cabinet/channels/library-mcp/index.ts"],
+      "env": { "OFFICER_NAME": "${OFFICER_NAME}" }
     }
   }
 }

@@ -96,7 +96,7 @@ docker exec -it cabinet-officers bash
 | **Crew** | Agent Teams spawned by Officers for parallel execution |
 | **Notion** | Business brain — strategy, research, decisions (default; replaceable — see `config/product.yml`) |
 | **Linear** | Execution backlog — what to build (default; replaceable — see GitHub #16) |
-| **Neon (PostgreSQL + pgvector)** | Cabinet Memory layer — universal semantic search over all Cabinet-produced text (Telegram, triggers, decisions, specs, research, reflections). Query via `bash cabinet/scripts/search-memory.sh "<query>"`. |
+| **Neon (PostgreSQL + pgvector)** | Two layers: (1) **Cabinet Memory** — universal semantic search over all Cabinet-produced text. Query via `bash cabinet/scripts/search-memory.sh "<query>"`. (2) **The Library** — user-defined structured Spaces for business brain, decisions, issues, etc. Accessed via the `/library` dashboard route and the `library` MCP server. |
 | **Redis** | Kill switch, rate limits, state flags |
 | **Watchdog** | Health checks, cost tracking, cron triggers, alerts |
 | **Telegram** | Captain's command interface |
