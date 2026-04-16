@@ -17,12 +17,15 @@ Cabinet (this repo)
 ├── CoS — orchestration, briefings, self-improvement
 ├── CTO — engineering, code, deploys
 ├── CPO — product specs, backlog, prioritization
-└── CRO — market research, competitive intel, trends
+├── CRO — market research, competitive intel, trends
+└── COO — operations, deployment validation, uptime
   ↕ reads/writes
 Your Product Repo (mounted at /workspace/product)
 ```
 
 Each Officer runs as a persistent Claude Code session with Telegram Channels. They read strategy from Notion, execute tasks from Linear, write code in your repo, and report back via Telegram.
+
+Officer sets are fully configurable per deployment — add, remove, or rename Officers in `config/platform.yml`. The framework is officer-agnostic.
 
 ## Quick Start
 
@@ -50,7 +53,7 @@ Edit `config/product.yml` — point it at your repo, Notion workspace, Linear te
 
 ### 4. Set Up Telegram Bots
 
-Create 4 bots via @BotFather (CoS, CTO, CRO, CPO) and a "YourProduct HQ" group.
+Create one bot per Officer via @BotFather (default set: CoS, CTO, CPO, CRO, COO — 5 bots) and a "YourProduct HQ" group. You can add or remove Officers later via `bash cabinet/scripts/create-officer.sh` and `cabinet/scripts/suspend-officer.sh`.
 
 ### 5. Fill In Credentials
 
@@ -97,7 +100,7 @@ docker exec -it cabinet-officers bash
 1. **Dynamic Roles** — Officers are markdown files, not code. Restructure the org in one message.
 2. **The Founder as Captain** — You set direction. The Cabinet figures out how.
 3. **Memory That Compounds** — Three tiers: always-loaded constitution, working notes, episodic recall.
-4. **Self-Improvement Loops** — Three nested loops: Task (per-task experience records), Reflection (every 6h individual self-review), Evolution (every 24h cross-officer retro + skill promotion). Foundation skills ship with the repo and improve over time.
+4. **Self-Improvement Loops** — Three nested loops: Task (per-task experience records), Reflection (event-triggered — after compaction or completion milestones), Evolution (cross-officer retro every 5 reflections or 48h, whichever first). Foundation skills ship with the repo and improve over time.
 5. **Safety Boundaries** — Hard limits enforced by hooks and Redis. Read-only constitution. Kill switch.
 
 ## Repo Structure
@@ -144,10 +147,10 @@ Browse voices at [elevenlabs.io/voice-library](https://elevenlabs.io/voice-libra
 Officers can generate images via Google Gemini (Nano Banana 2) and send them through Telegram. Requires `GOOGLE_API_KEY` in `.env`.
 
 ### Improvement Cadences
-Default cadences in `CLAUDE.md` (adjust to match your Cabinet's throughput):
-- **Individual reflection:** every 6h per Officer
-- **Cross-officer retro:** every 24h (CoS)
-- **Evolution loop:** every 24h after retro (CoS)
+Default cadences in `CLAUDE.md`:
+- **Individual reflection:** event-triggered (after compaction or completion milestones — don't reflect on nothing)
+- **Cross-officer retro:** event-triggered (fires at 5 accumulated reflections or 48h since last — whichever first)
+- **Evolution loop:** runs alongside retro (Phase 1 retro, Phase 2 skill promotion)
 
 ### Foundation Skills
 Ship with the repo in `memory/skills/`. Officers follow these as baseline procedures. The learning loop can improve them by writing evolved versions to `memory/skills/evolved/` — foundation files are never modified directly.
@@ -161,7 +164,7 @@ Ship with the repo in `memory/skills/`. Officers follow these as baseline proced
 ## Requirements
 
 - **Server:** Ubuntu 24.04 with Docker (Hetzner CPX31 recommended)
-- **Claude:** Max 20x subscription ($200/mo) for 4 Officers
+- **Claude:** Max 20x subscription ($200/mo) for 4–5 Officers
 - **Notion:** Business plan (for MCP integration)
 - **Telegram:** 4 bot tokens + group chat
 - **APIs (required):** Linear, Neon, Voyage AI, Perplexity, Brave Search, Exa
