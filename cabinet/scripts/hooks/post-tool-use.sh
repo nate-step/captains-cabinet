@@ -88,7 +88,105 @@ redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCRBY "cabinet:cost:monthly:$MONTH"
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:monthly:$MONTH" 2764800 > /dev/null 2>&1
 
 # ============================================================
-# 3. EXPERIENCE RECORD NUDGE
+# 3. ACTIVITY STRING — Card 1 YOUR CABINET (Spec 032 PR 3)
+# ============================================================
+# Write a default {verb, object} inferred from the last tool + file path.
+# Officers override with set-activity.sh when they want cleaner copy. TTL is
+# 5 min so the key goes stale naturally — Card 1 falls back to "between
+# tasks" / "offline" per heartbeat when stale/absent.
+#
+# We write ONLY if the key is currently absent or stale enough that this
+# write is the most recent signal. Explicit officer overrides via
+# set-activity.sh always win within their 5-min TTL; the hook's default
+# string re-asserts once the officer-set string expires.
+#
+# Infer rule:
+#   Edit/Write/Update on *.ts|*.tsx|*.sh|*.sql|*.py → "editing <basename>"
+#   Edit/Write on product-specs/*.md              → "reviewing <spec title>"
+#   Bash git push                                 → "deploying <branch>"
+#   Bash curl pulls/N/merge                        → "merging PR #N"
+#   Bash gh pr create|create pr                    → "opening PR"
+#   Task/Agent                                     → "coordinating agents"
+#   mcp__plugin_telegram_telegram__reply           → "replying to Captain"
+#   WebSearch/WebFetch                             → "researching"
+#   Grep/Glob/Read                                 → "investigating <file>"
+#   default                                        → "working"
+ACTIVITY_VERB="working"
+ACTIVITY_OBJECT=""
+case "$TOOL_NAME" in
+  Edit|Write|NotebookEdit)
+    FP=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
+    if [ -n "$FP" ]; then
+      BN=$(basename "$FP")
+      if echo "$FP" | grep -q 'product-specs/'; then
+        ACTIVITY_VERB="reviewing"
+        ACTIVITY_OBJECT="spec ${BN%.md}"
+      else
+        ACTIVITY_VERB="editing"
+        ACTIVITY_OBJECT="$BN"
+      fi
+    fi
+    ;;
+  Bash)
+    CMD_SNIP=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+    if echo "$CMD_SNIP" | grep -qE 'git push.*(main|master|origin)'; then
+      ACTIVITY_VERB="deploying"
+      ACTIVITY_OBJECT=$(echo "$CMD_SNIP" | grep -oE '[a-z0-9/-]+-[a-z0-9-]+' | head -1)
+      [ -z "$ACTIVITY_OBJECT" ] && ACTIVITY_OBJECT="a branch"
+    elif echo "$CMD_SNIP" | grep -qE 'pulls/[0-9]+/merge'; then
+      PRNUM=$(echo "$CMD_SNIP" | grep -oE 'pulls/[0-9]+' | grep -oE '[0-9]+' | head -1)
+      ACTIVITY_VERB="shipping"
+      ACTIVITY_OBJECT="PR #${PRNUM:-a change}"
+    elif echo "$CMD_SNIP" | grep -qE 'gh pr create|/pulls\"|/pulls '; then
+      ACTIVITY_VERB="shipping"
+      ACTIVITY_OBJECT="a PR"
+    elif echo "$CMD_SNIP" | grep -qE '\bpnpm (install|run|test|build)|\bnpm (install|run|test|build)|\bvitest\b|\btsc\b|\beslint\b'; then
+      ACTIVITY_VERB="testing"
+      ACTIVITY_OBJECT="the build"
+    elif echo "$CMD_SNIP" | grep -qE 'verify-deploy\.sh'; then
+      ACTIVITY_VERB="deploying"
+      ACTIVITY_OBJECT="a release"
+    else
+      ACTIVITY_VERB="working"
+    fi
+    ;;
+  Grep|Glob|Read)
+    FP=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // .pattern // empty' 2>/dev/null)
+    ACTIVITY_VERB="investigating"
+    [ -n "$FP" ] && ACTIVITY_OBJECT="$(basename "$FP" 2>/dev/null || echo 'the codebase')"
+    ;;
+  Task|Agent)
+    ACTIVITY_VERB="coordinating"
+    ACTIVITY_OBJECT="Crew"
+    ;;
+  WebSearch|WebFetch|mcp__claude_ai_*)
+    ACTIVITY_VERB="researching"
+    ACTIVITY_OBJECT=""
+    ;;
+  mcp__plugin_telegram_telegram__*)
+    ACTIVITY_VERB="replying"
+    ACTIVITY_OBJECT="Captain"
+    ;;
+esac
+
+# Trim object to 40 chars (matches dashboard reader + set-activity.sh)
+if [ ${#ACTIVITY_OBJECT} -gt 40 ]; then
+  ACTIVITY_OBJECT="${ACTIVITY_OBJECT:0:37}..."
+fi
+
+# Escape for JSON
+ACT_VERB_ESC=$(printf '%s' "$ACTIVITY_VERB" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n\r')
+ACT_OBJ_ESC=$(printf '%s' "$ACTIVITY_OBJECT" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n\r')
+
+# Write the default activity. Officer-driven set-activity.sh calls write the
+# same key; whichever fires last within the 5-min TTL wins. Net effect:
+# officer overrides during their burst, then the hook's default takes over
+# 5 min later when they've moved on.
+ACT_JSON="{\"verb\":\"$ACT_VERB_ESC\",\"object\":\"$ACT_OBJ_ESC\",\"since\":\"$TIMESTAMP\"}"
+redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:officer:activity:$OFFICER" "$ACT_JSON" EX 300 > /dev/null 2>&1
+
+# ============================================================
+# 4. EXPERIENCE RECORD NUDGE
 # ============================================================
 # After significant actions, set a Redis flag for the officer's /loop to pick up.
 
