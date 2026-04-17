@@ -1,12 +1,31 @@
 #!/usr/bin/env python3
 """
-Cabinet MCP server — Phase 2 CP2 expansion.
+Cabinet MCP server — Phase 2 CP2 expansion + FW-005 HTTP transport.
 
 Exposes inter-Cabinet tools for the Phase 2 Cabinet Suite (Work + Personal
 Cabinets linked via this MCP). Phase 1 shipped identify() as a de-risk
 prototype; Phase 2 adds presence(), availability(), send_message(), and
-request_handoff(). Transport stays stdio; tool signatures are HTTP-ready
-for Phase 3 Federation.
+request_handoff(). FW-005 adds HTTP transport so two Docker-deployed Cabinets
+can talk without shared filesystems.
+
+Transport selection:
+    CABINET_MCP_TRANSPORT=stdio   (default — backward compatible with all
+                                   existing stdio callers and Claude Code .mcp.json)
+    CABINET_MCP_TRANSPORT=http    Starts aiohttp-free HTTP listener on
+                                   CABINET_MCP_PORT (default 7471) alongside
+                                   stdio NOT replacing it. Both transports serve
+                                   the identical tool surface.
+
+HTTP bearer auth:
+    Every HTTP request must carry:
+        Authorization: Bearer <secret>
+    The secret is read from the env var named by `shared_secret_ref` in
+    peers.yml for the calling Cabinet. If the header is absent or wrong,
+    the server returns 401 — no tool execution occurs.
+
+    To share a secret with a peer, both sides set the same env var name
+    in shared_secret_ref and populate it in their .env files. Secret is
+    NEVER written to peers.yml or any tracked file.
 
 Tools by capacity:
 
@@ -24,6 +43,7 @@ blocker.
 
 Captain decision 2026-04-16 CD5: stdio for prototype; HTTP-compatible.
 Captain authorization 2026-04-17: autonomous Phase 2 build-out.
+FW-005 Captain directive: HTTP transport (Option 2) for Phase 2 completion.
 """
 
 import json
@@ -31,7 +51,9 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -43,8 +65,12 @@ PEERS_YML = CABINET_ROOT / "instance" / "config" / "peers.yml"
 CALENDAR_YML = CABINET_ROOT / "instance" / "config" / "calendar.yml"
 
 SERVER_NAME = "cabinet"
-SERVER_VERSION = "0.2.0"  # bumped for Phase 2 tool expansion
+SERVER_VERSION = "0.3.0"  # bumped for FW-005 HTTP transport
 PROTOCOL_VERSION = "2024-11-05"
+
+# Transport config
+TRANSPORT = os.environ.get("CABINET_MCP_TRANSPORT", "stdio").strip().lower()
+HTTP_PORT = int(os.environ.get("CABINET_MCP_PORT", "7471"))
 
 # Redis connection — match the convention used by the rest of the repo
 # (post-tool-use.sh, officer-supervisor.sh, list-officers.sh etc.)
@@ -182,6 +208,62 @@ def peer_by_id(peer_id: str) -> dict[str, Any] | None:
         if p.get("id") == peer_id:
             return p
     return None
+
+
+# ---------------------------------------------------------------
+# Bearer auth helpers (HTTP transport only)
+# ---------------------------------------------------------------
+
+def _get_all_valid_secrets() -> list[str]:
+    """Collect valid bearer secrets from all peers with a shared_secret_ref.
+    A request is authed if it matches ANY peer's secret — the specific peer
+    is not identified at the auth layer (tool-level consent checks handle that)."""
+    secrets: list[str] = []
+    for peer in read_peers():
+        ref = peer.get("shared_secret_ref", "")
+        if ref:
+            val = os.environ.get(ref, "").strip()
+            if val:
+                secrets.append(val)
+    return secrets
+
+
+def verify_bearer(auth_header: str | None) -> bool:
+    """Return True if auth_header matches a configured peer secret.
+
+    Security rules:
+    - When peer secrets ARE configured: Bearer token must match one of them
+      (hmac.compare_digest to prevent timing attacks). Missing or wrong token
+      → False → caller returns 401.
+    - When NO peer secrets are configured (fresh Cabinet, no shared_secret_ref
+      set in peers.yml or env vars): server is in "open mode" — all requests
+      are allowed with a loud warning on stderr. This covers the dev/bootstrap
+      case where the admin has not yet set up secrets.
+
+    Returns False (not 401 directly) — caller decides HTTP response code.
+    """
+    valid_secrets = _get_all_valid_secrets()
+    if not valid_secrets:
+        # No secrets configured: HTTP transport is open — log a warning on
+        # every request so the operator can see auth is not enforced.
+        sys.stderr.write(
+            "[cabinet-mcp] WARNING: HTTP transport has no shared_secret_ref secrets "
+            "configured. All requests accepted. Set shared_secret_ref + env var in "
+            "peers.yml to enable bearer auth.\n"
+        )
+        return True
+
+    # Secrets are configured — enforce bearer token.
+    if not auth_header:
+        return False
+    if not auth_header.startswith("Bearer "):
+        return False
+    provided = auth_header[len("Bearer "):]
+    import hmac
+    for secret in valid_secrets:
+        if hmac.compare_digest(provided.encode(), secret.encode()):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------
@@ -493,7 +575,7 @@ def get_tool(name: str) -> dict | None:
 
 
 # ---------------------------------------------------------------
-# JSON-RPC dispatch
+# JSON-RPC dispatch (shared by both transports)
 # ---------------------------------------------------------------
 
 def make_tool_result(payload: Any) -> dict:
@@ -580,7 +662,12 @@ def handle(req: dict) -> dict | None:
     }
 
 
-def main() -> None:
+# ---------------------------------------------------------------
+# Stdio transport (unchanged from Phase 2 — fully backward compat)
+# ---------------------------------------------------------------
+
+def run_stdio() -> None:
+    """Read JSON-RPC from stdin, write responses to stdout. One message per line."""
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -601,6 +688,150 @@ def main() -> None:
             continue
         sys.stdout.write(json.dumps(resp) + "\n")
         sys.stdout.flush()
+
+
+# ---------------------------------------------------------------
+# HTTP transport (FW-005 — stdlib only, no aiohttp/fastapi needed)
+# ---------------------------------------------------------------
+
+class CabinetMCPHandler(BaseHTTPRequestHandler):
+    """HTTP handler for Cabinet MCP JSON-RPC over POST /mcp.
+
+    Security model:
+    - Only POST /mcp is accepted; all other paths return 404.
+    - Bearer token checked against shared_secret_ref env vars from peers.yml.
+    - Missing/wrong Bearer → 401 with structured JSON body.
+    - Tool dispatch is identical to stdio path (same `handle()` function).
+    - All errors return structured JSON, never crash the server.
+    """
+
+    def log_message(self, format: str, *args: Any) -> None:
+        sys.stderr.write(f"[cabinet-mcp-http] {format % args}\n")
+
+    def _send_json(self, code: int, body: dict) -> None:
+        data = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self) -> None:
+        if self.path != "/mcp":
+            self._send_json(404, {"error": "not_found", "path": self.path})
+            return
+
+        # --- Bearer auth ---
+        auth_header = self.headers.get("Authorization")
+        if not verify_bearer(auth_header):
+            self._send_json(401, {
+                "error": "unauthorized",
+                "message": "Missing or invalid Authorization: Bearer <secret>",
+            })
+            sys.stderr.write(
+                f"[cabinet-mcp-http] 401 from {self.client_address[0]} — bad/missing bearer\n"
+            )
+            return
+
+        # --- Read body ---
+        # Catch OSError (ConnectionResetError / BrokenPipeError subclasses) alongside
+        # parse errors — if the client disconnects mid-send, self.rfile.read() raises
+        # OSError, which without this catch would propagate up to serve_forever and
+        # log a traceback per request. Per Opus 4.7 pre-commit review.
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length).decode()
+            req = json.loads(raw)
+        except (ValueError, json.JSONDecodeError) as exc:
+            self._send_json(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {exc}"}})
+            return
+        except OSError as exc:
+            # Client disconnected mid-request — log and return. Can't send a
+            # response body to a dead connection, but try 400 in case the socket
+            # is still half-open; ignore any write failure.
+            sys.stderr.write(f"[cabinet-mcp-http] client disconnected during body read: {exc}\n")
+            try:
+                self._send_json(400, {"error": "read_failed", "message": str(exc)})
+            except OSError:
+                pass
+            return
+
+        # --- Dispatch ---
+        try:
+            resp = handle(req)
+        except Exception as exc:
+            self._send_json(500, {"jsonrpc": "2.0", "id": req.get("id"), "error": {"code": -32603, "message": str(exc)}})
+            return
+
+        if resp is None:
+            # Notification — no response body per JSON-RPC spec, but HTTP requires a
+            # reply. Return 200 with empty object so clients can JSON-parse safely.
+            self._send_json(200, {})
+            return
+
+        self._send_json(200, resp)
+
+    def do_GET(self) -> None:
+        """Health-check endpoint for Docker / inter-Cabinet liveness probes."""
+        if self.path == "/health":
+            self._send_json(200, {
+                "status": "ok",
+                "cabinet_id": this_cabinet_id(),
+                "transport": "http",
+                "server": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            })
+        else:
+            self._send_json(404, {"error": "not_found"})
+
+
+def run_http(port: int) -> None:
+    """Start the HTTP server in the current thread (called from a daemon thread).
+
+    Uses ThreadingHTTPServer so a slow tool handler (e.g. 2-second Redis timeout
+    in tool_presence when a peer is down) does not serialize the entire server
+    and block concurrent requests. Per Opus 4.7 pre-commit review — swapping
+    HTTPServer → ThreadingHTTPServer is a one-line fix that prevents head-of-line
+    blocking on any single blocking tool call.
+    """
+    server = ThreadingHTTPServer(("0.0.0.0", port), CabinetMCPHandler)
+    sys.stderr.write(
+        f"[cabinet-mcp] HTTP transport listening on 0.0.0.0:{port} "
+        f"(POST /mcp, GET /health). Cabinet ID: {this_cabinet_id()}\n"
+    )
+    server.serve_forever()
+
+
+# ---------------------------------------------------------------
+# Entry point — transport selection
+# ---------------------------------------------------------------
+
+def main() -> None:
+    """Select transport based on CABINET_MCP_TRANSPORT env var.
+
+    stdio (default):
+        Runs the stdio loop — identical to pre-FW-005 behavior.
+        Backward compatible with all existing Claude Code .mcp.json configs.
+
+    http:
+        Starts the HTTP listener on CABINET_MCP_PORT (default 7471) in a
+        daemon thread, then also runs the stdio loop so the process stays
+        alive AND remains usable by any stdio caller in the same container.
+
+    Both transports serve the same tool surface via the same handle() function.
+    """
+    if TRANSPORT == "http":
+        t = threading.Thread(target=run_http, args=(HTTP_PORT,), daemon=True)
+        t.start()
+        sys.stderr.write(f"[cabinet-mcp] Transport: http+stdio (port={HTTP_PORT})\n")
+    else:
+        if TRANSPORT not in ("stdio", ""):
+            sys.stderr.write(
+                f"[cabinet-mcp] WARNING: unknown CABINET_MCP_TRANSPORT={TRANSPORT!r}, "
+                "falling back to stdio\n"
+            )
+        sys.stderr.write("[cabinet-mcp] Transport: stdio\n")
+
+    run_stdio()
 
 
 if __name__ == "__main__":

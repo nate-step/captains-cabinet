@@ -29,10 +29,18 @@
 peers:
   personal:
     role: personal-cabinet
-    endpoint: stdio:/opt/founders-cabinet-personal/cabinet/mcp-server/server.py
+    # FW-005: Switch to HTTP transport to avoid shared-filesystem requirement.
+    # Format: http://<host>:<port>/mcp  OR  stdio:<abs-path> for local-only.
+    # Use http:// when the peer Cabinet runs in a separate Docker stack.
+    # Use stdio: only when both Cabinets share the same filesystem (rare/dev).
+    endpoint: http://personal-officers:7471/mcp
     capacity: personal
     trust_level: high
     consented_by_captain: true
+    # shared_secret_ref: name of the env var holding the bearer secret.
+    # Set CABINET_PEER_SECRET_PERSONAL to the same value in BOTH cabinets' .env.
+    # Never put the secret inline here — this is a reference only.
+    shared_secret_ref: CABINET_PEER_SECRET_PERSONAL
     allowed_tools:
       - identify
       - presence
@@ -41,6 +49,7 @@ peers:
       - request_handoff
     notes: >
       Personal Cabinet provisioned 2026-04-17 per Captain msg 1453 (A-D run).
-      Endpoint points at Personal Cabinet's server.py (the one this Work
-      Cabinet calls into). Personal Cabinet has its own peers.yml with a
-      reciprocal work entry.
+      FW-005 (2026-04-16): Switched endpoint from stdio to HTTP so both Cabinets
+      can talk across Docker stacks without shared filesystems. Requires
+      CABINET_PEER_SECRET_PERSONAL in both .env files (same value = shared secret).
+      Personal Cabinet has its own peers.yml with a reciprocal work entry.
