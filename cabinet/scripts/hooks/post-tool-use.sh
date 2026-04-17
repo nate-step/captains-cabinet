@@ -129,10 +129,9 @@ case "$TOOL_NAME" in
     ;;
   Bash)
     CMD_SNIP=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-    if echo "$CMD_SNIP" | grep -qE 'git push.*(main|master|origin)'; then
+    if echo "$CMD_SNIP" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)'; then
       ACTIVITY_VERB="deploying"
-      ACTIVITY_OBJECT=$(echo "$CMD_SNIP" | grep -oE '[a-z0-9/-]+-[a-z0-9-]+' | head -1)
-      [ -z "$ACTIVITY_OBJECT" ] && ACTIVITY_OBJECT="a branch"
+      ACTIVITY_OBJECT="to main"
     elif echo "$CMD_SNIP" | grep -qE 'pulls/[0-9]+/merge'; then
       PRNUM=$(echo "$CMD_SNIP" | grep -oE 'pulls/[0-9]+' | grep -oE '[0-9]+' | head -1)
       ACTIVITY_VERB="shipping"
@@ -234,8 +233,12 @@ fi
 # ============================================================
 if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  # Matches: git push to main, gh pr merge, and curl-based GitHub API merges (pulls/N/merge)
-  if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge|pulls/[0-9]+/merge'; then
+  # Matches: git push where the target refspec is literally "main"/"master"
+  # (word-boundary so release-please-like branches — e.g.
+  # release-please--branches--main — do NOT match), gh pr merge, and
+  # curl-based GitHub API merges (pulls/N/merge). Non-main/master branches
+  # never trigger the auto-notify: staged/preview deploys are noise.
+  if echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge'; then
     for target in $(officers_with "validates_deployments"); do
       trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
     done
@@ -250,7 +253,7 @@ fi
 # ============================================================
 if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE 'git push.*main|gh pr merge|pulls/[0-9]+/merge'; then
+  if echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge'; then
     echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
     echo "REMINDER: Update shared/interfaces/deployment-status.md with current deploy state."
   fi
