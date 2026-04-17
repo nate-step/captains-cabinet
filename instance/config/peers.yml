@@ -1,0 +1,46 @@
+# instance/config/peers.yml
+# Peer Cabinets this instance communicates with via Cabinet MCP.
+# Single source of truth for multi-Cabinet state (Phase 2 CP3).
+#
+# This is the WORK Cabinet's view of its peers. When a Personal Cabinet
+# is stood up, IT gets its own peers.yml pointing back at Work.
+#
+# Schema per peer (required unless noted):
+#   id                    — slug matching the peer's $CABINET_ID (implied by the map key)
+#   role                  — human-readable role (e.g. 'personal-cabinet')
+#   endpoint              — stdio path OR http(s) URL; Phase 2 uses stdio, Phase 3 adds HTTP
+#   capacity              — work | personal
+#   trust_level           — low | medium | high (affects default allowed_tools)
+#   consented_by_captain  — BOOLEAN; must be true before any call to this peer succeeds
+#   allowed_tools         — list of Cabinet MCP tool names this peer may be CALLED WITH
+#   peer_version          — OPTIONAL; peer's server.py SERVER_VERSION so CP4+ can guard
+#                           capability negotiation when peers drift
+#   shared_secret_ref     — OPTIONAL; name of the env var holding a shared secret.
+#                           Required before Phase 3 HTTP transport. Never put secret
+#                           inline — this is a reference only.
+#   notes                 — optional, for humans
+#
+# Enforcement: load-preset.sh validates schema at boot (Phase 2 CP3).
+# pre-tool-use.sh enforces per-call in section 10 (Phase 2 CP4).
+#
+# To stand up a live peer: set consented_by_captain=true AND verify the
+# peer's own peers.yml lists this Cabinet back.
+
+peers:
+  personal:
+    role: personal-cabinet
+    endpoint: stdio:/opt/founders-cabinet-personal/cabinet/mcp-server/server.py
+    capacity: personal
+    trust_level: high
+    consented_by_captain: true
+    allowed_tools:
+      - identify
+      - presence
+      - availability
+      - send_message
+      - request_handoff
+    notes: >
+      Personal Cabinet provisioned 2026-04-17 per Captain msg 1453 (A-D run).
+      Endpoint points at Personal Cabinet's server.py (the one this Work
+      Cabinet calls into). Personal Cabinet has its own peers.yml with a
+      reciprocal work entry.

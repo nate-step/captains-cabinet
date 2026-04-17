@@ -1,0 +1,18 @@
+# instance/config/warrooms.yml
+# Context-scoped warroom chat_id mapping. Phase 1 CP7.
+#
+# Flat map: <context_slug>: <chat_id>
+# chat_id may interpolate env vars (${VAR}) so you can point a context
+# at an existing group without duplicating the id.
+#
+# Adding a new warroom:
+#   1. Declare the context_slug in instance/config/contexts/<slug>.yml first.
+#   2. Create a new Telegram group and invite the relevant officer bots.
+#   3. Add the row here. send-to-warroom.sh will resolve it on next call.
+
+sensed:   "${TELEGRAM_HQ_CHAT_ID}"
+# step:     ""
+# personal: ""
+# adhoc is routed to 'sensed' in Phase 1 — ad-hoc Inbox triage happens in the
+# main group rather than a separate channel. Split later if noise warrants.
+adhoc:    "${TELEGRAM_HQ_CHAT_ID}"

@@ -1,5 +1,6 @@
 import Nav from '@/components/nav'
 import { getProjects, getActiveProject } from '@/actions/projects'
+import { getDashboardConfig } from '@/lib/config'
 
 export default async function AuthenticatedLayout({
   children,
@@ -10,10 +11,15 @@ export default async function AuthenticatedLayout({
     getProjects(),
     getActiveProject(),
   ])
+  const { consumerModeEnabled } = getDashboardConfig()
 
   return (
     <>
-      <Nav projects={projects} activeProject={activeProject} />
+      <Nav
+        projects={projects}
+        activeProject={activeProject}
+        consumerModeEnabled={consumerModeEnabled}
+      />
       <main className="pt-14 md:pl-64 md:pt-0">
         <div className="mx-auto max-w-6xl px-6 py-8 sm:px-10 lg:px-12">
           {children}

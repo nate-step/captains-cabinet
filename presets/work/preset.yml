@@ -8,14 +8,31 @@ description: >
   Linear-or-Library backlog, Notion-or-Library business brain, product repo
   mounted as workspace. Default shape for anyone building and shipping work.
 
+# Naming convention for agents in this preset (Captain decision 2026-04-16).
+# At hire-time the hiring CoS proposes 3 name options per archetype and the
+# Captain picks or overrides. This field sets the default FLAVOR of those
+# proposals for this preset.
+#
+#   functional     — "Operations Officer", "Compliance Officer" (recommended for work preset)
+#   role-initials  — "Ops", "Comp", "EA" (terse)
+#   personal       — "Alex", "Ava" (personal-Cabinet flavor)
+naming_style: functional
+
 # Agent archetypes shipped with this preset. Captains can add, remove, or
-# rename via instance/agents/ overlays.
+# rename via instance/agents/ overlays. Phase 1 CP4 adds three SCAFFOLD
+# archetypes (operations-officer, compliance-officer, executive-assistant)
+# that are NOT hired by default — hire via cabinet/scripts/create-officer.sh
+# when Captain has greenlit work that needs them.
 agent_archetypes:
   - cos   # Chief of Staff — orchestration, briefings, self-improvement
   - cto   # Chief Technology Officer — engineering, code, deploys
   - cpo   # Chief Product Officer — specs, backlog, prioritization
   - cro   # Chief Research Officer — market research, competitive intel, trends
   - coo   # Chief Operating Officer — deployment validation, uptime, operations
+  # Scaffolded (not hired) — role defs exist in presets/work/agents/, hire on demand:
+  # - operations-officer   # Business ops: vendors, procurement, internal processes
+  # - compliance-officer   # Regulatory + privacy + platform policy
+  # - executive-assistant  # Captain-facing: scheduling, correspondence, logistics
 
 # Default terminology for this preset. See terminology.yml for the full mapping.
 terminology:

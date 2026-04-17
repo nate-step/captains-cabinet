@@ -1,0 +1,9 @@
+slug: adhoc
+name: Ad-hoc
+capacity: work
+description: |
+  Captain-dropped tasks without a named context. CoS triages incoming items
+  from the Inbox Library space and either routes to a named context or keeps
+  them adhoc. Default capacity = work; individual tasks can be retagged
+  personal as needed.
+active: true

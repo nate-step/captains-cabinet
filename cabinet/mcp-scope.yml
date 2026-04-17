@@ -1,0 +1,113 @@
+# cabinet/mcp-scope.yml
+# Per-agent MCP scope. Phase 1 CP5 (2026-04-17).
+#
+# What an agent can REACH determines what it can DO. This file is the
+# single source of truth for which MCP servers each agent is allowed to
+# call. The pre-tool-use hook enforces it at tool-call time.
+#
+# Structure is filterable by cabinet_id for Phase 2 (per-Cabinet scope
+# overrides). Phase 1 has one cabinet (default 'main') so the top-level
+# cabinet key is informational. When Phase 2 introduces a second Cabinet,
+# add a `cabinet_overrides:` section keyed by cabinet_id.
+#
+# Scope semantics:
+#   - Agents listed under `agents:` are hired and active. Their listed
+#     `mcps:` are the only MCP servers pre-tool-use.sh will allow them
+#     to call.
+#   - Agents listed under `scaffolds:` are scaffolded per CP4 but NOT
+#     hired. Their scope is reserved so the hook has a clean entry the
+#     moment they activate.
+#   - Any MCP call whose server name is not in the acting agent's
+#     `mcps:` list is blocked (exit 2) with a clear error citing the
+#     scope file.
+#
+# Add a new MCP: list it here under the relevant agents. The hook
+# re-reads on every cache-refresh cycle (same pattern as contexts).
+
+cabinet: main
+
+agents:
+  cos:
+    mcps: [notion, linear, library, telegram]
+    rationale: >
+      Coordination and briefings. Not code; CoS does not touch Neon or
+      Vercel directly — that's CTO/COO. Library for Phase 1 inbox and
+      memory lookups; Notion for legacy business brain until migration.
+
+  cto:
+    mcps: [neon, vercel, linear, library, telegram]
+    rationale: >
+      Engineering domain. Schema/migrations on Neon, deploys on Vercel,
+      specs tracked in Linear, framework work and experience records in
+      Library. No Notion — CTO should not be writing business strategy.
+
+  cpo:
+    mcps: [notion, linear, library, telegram]
+    rationale: >
+      Specs, prioritization, product strategy. Notion for business brain
+      reads; Linear for backlog management; Library for specs + decision
+      queue records.
+
+  cro:
+    mcps: [notion, library, telegram]
+    rationale: >
+      Research and competitive intel. Notion for research publication;
+      Library for research-brief records. No Linear — CRO does not own
+      execution tickets. No Neon/Vercel — CRO does not touch production.
+
+  coo:
+    mcps: [neon, vercel, linear, library, telegram]
+    rationale: >
+      Deploy validation, uptime monitoring, Sentry error triage. Neon
+      for health queries; Vercel for deployment state; Linear for bugs;
+      Library for operational artifacts.
+
+# Scaffolded agents (not hired, scope reserved):
+scaffolds:
+  operations-officer:
+    mcps: [notion, library, telegram]
+    rationale: >
+      Back-office vendor management and SOPs. Notion for process docs;
+      Library for SOP records. No Neon/Vercel — infra vendors are CTO/COO.
+
+  compliance-officer:
+    mcps: [notion, library, telegram]
+    rationale: >
+      Regulatory monitoring, policy drafting, compliance register. Notion
+      for policy docs; Library for compliance findings. No Neon/Vercel —
+      compliance veto authority is expressed via triggers, not direct
+      deployment access.
+
+  executive-assistant:
+    mcps: [notion, library, telegram]
+    rationale: >
+      Captain logistics (scheduling, correspondence, research-on-request).
+      Notion for captain-preferences + research results; Library for
+      inbox triage. No Linear (EA isn't on product backlog); no Neon /
+      Vercel (no production access).
+
+  physical-coach:
+    mcps: [library, telegram]
+    rationale: >
+      Personal-capacity. Longitudinal tracking of sleep, training, recovery.
+      Library writes to personal Spaces only; no Notion (work business-brain
+      is not personal domain); no Linear / Neon / Vercel (no product-infra
+      access); Phase 2 will add Cabinet MCP calls to Work Cabinet for
+      handoffs when Captain crosses capacity contexts mid-conversation.
+
+  mindfulness-coach:
+    mcps: [library, telegram]
+    rationale: >
+      Personal-capacity. Reflection and emotional-awareness work. Narrowest
+      MCP surface by design — Captain DM + Library for personal-capacity
+      Spaces. No external data sources without a coaching_consent_log entry.
+      Phase 3 never federates personal content.
+
+# MCPs that every hired agent gets by default (convenience shorthand for
+# the hook). Inline bracket-list style — the hook's parser reads this
+# specific format. See pre-tool-use.sh section 9 (universal-merge).
+#
+# `cabinet` grants identify/presence/availability to every agent. Write
+# tools (send_message, request_handoff) are gated per-peer via peers.yml
+# + pre-tool-use.sh section 10 (Phase 2 CP4), so universal access is safe.
+universal: [telegram, library, cabinet]

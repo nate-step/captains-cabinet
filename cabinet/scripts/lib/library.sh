@@ -158,21 +158,40 @@ SQLEOF
 # =============================================================
 
 # Create a record in a Space.
-# Args: space_id, title, content_markdown, schema_data_json, labels_comma_separated,
-#       [officer], [source_created_at]
-# source_created_at (arg 8, positional — args 6+7 are officer placeholder and reserved):
-#   Pass an ISO 8601 timestamp (e.g. "2025-01-15T10:30:00.000Z") to override the
-#   created_at column with the original source date (Linear createdAt, Notion created_time).
-#   If omitted or empty, Postgres DEFAULT (NOW()) is used.
-# Returns: new record id
+#
+# Positional args:
+#   1. space_id                 (required) — target Space id from library_list_spaces
+#   2. title                    (required) — human-readable title (not unique)
+#   3. content_markdown         (optional) — body text
+#   4. schema_data_json         (optional, default "{}") — per-space custom fields
+#   5. labels_csv               (optional) — comma-separated labels, no spaces
+#   6. _reserved_officer_arg    (optional) — historical: pass ""; officer is read from
+#                                            $OFFICER_NAME env so MCP callers set it per-request
+#   7. _reserved_v2             (optional) — pass ""; placeholder for a future per-record
+#                                            override flag. Present only to preserve
+#                                            arg-8 compatibility for migration scripts
+#   8. source_created_at        (optional) — ISO 8601 timestamp to override the created_at
+#                                            column with the ORIGINAL source date (Linear
+#                                            createdAt, Notion created_time). Omit for
+#                                            live records; Postgres NOW() default applies.
+#
+# Callers that only set 1-5 can omit 6-8 entirely. Callers that need arg 8
+# (the migration scripts) must pass "" for positions 6 and 7 to keep the
+# positional binding correct — documented here because the gap is otherwise
+# invisible in the call site and will confuse future readers.
+#
+# Returns: new record id on stdout.
 library_create_record() {
   local space_id="$1"
   local title="$2"
   local content="${3:-}"
   local schema_data="${4:-{\}}"
   local labels_csv="${5:-}"
+  # Positions 6 and 7 are intentionally unbound — see header comment.
+  local _reserved_officer_arg="${6:-}"  # ignored; officer comes from env
+  local _reserved_v2="${7:-}"           # ignored; placeholder for future use
   local officer="${OFFICER_NAME:-system}"
-  local source_created_at="${8:-}"  # arg 8; args 6+7 reserved for future use
+  local source_created_at="${8:-}"
 
   if [ -z "$space_id" ] || [ -z "$title" ]; then
     return 1

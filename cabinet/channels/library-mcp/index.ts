@@ -18,11 +18,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-import { writeFileSync, unlinkSync } from "node:fs";
-
-const execAsync = promisify(exec);
+import { spawn } from "node:child_process";
 
 const LIBRARY_SH = "/opt/founders-cabinet/cabinet/scripts/lib/library.sh";
 const ENV_FILE = "/opt/founders-cabinet/cabinet/.env";
@@ -30,8 +26,11 @@ const ENV_FILE = "/opt/founders-cabinet/cabinet/.env";
 // ---------------------------------------------------------------
 // Shell helper — sources .env + library.sh then calls a function.
 // Args are passed via environment variables (_LIB_ARG_0, _LIB_ARG_1, ...)
-// so no shell injection is possible regardless of arg content.
-// Script is written to a temp file (Bun's exec doesn't support stdin input).
+// so no shell injection is possible regardless of arg content. The
+// script body is piped to `bash -s` via stdin — no temp file on disk,
+// no /tmp race, no cleanup (Apr 17 reviewer fix: prior impl wrote a
+// 0700 script into /tmp per call, predictable enough for a local race
+// on shared hosts).
 // ---------------------------------------------------------------
 // Read OFFICER_NAME at request time from env (not cached at startup)
 function getOfficerName(): string {
@@ -55,8 +54,6 @@ async function callLibrary(fn: string, args: string[]): Promise<string> {
 
   const argRefs = args.map((_, i) => `"$_LIB_ARG_${i}"`).join(" ");
 
-  // Write script to a temp file — avoids any shell escaping on the cmd line
-  const tmpFile = `/tmp/library-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.sh`;
   const script = [
     `set -a`,
     `source "${ENV_FILE}" 2>/dev/null || true`,
@@ -65,33 +62,71 @@ async function callLibrary(fn: string, args: string[]): Promise<string> {
     `${fn} ${argRefs}`,
   ].join("\n");
 
-  writeFileSync(tmpFile, script, { mode: 0o700 });
+  // Pipe the script to `bash -s` via stdin — no disk artifact, no race.
+  // Capture stdout + stderr into buffers with a maxBuffer cap so a
+  // runaway library.sh call can't exhaust memory.
+  const MAX_BUFFER = 10 * 1024 * 1024;
+  const TIMEOUT_MS = 60_000;
 
-  try {
-    const { stdout, stderr } = await execAsync(`bash ${tmpFile}`, {
+  const result = await new Promise<{stdout: string; stderr: string; code: number | null}>((resolve, reject) => {
+    const child = spawn("bash", ["-s"], {
       env: {
         ...process.env,
         OFFICER_NAME: getOfficerName(),
         ...envVars,
       },
-      timeout: 60_000, // embedding calls can take several seconds
-      maxBuffer: 10 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
-    if (stderr) {
-      // Surface access denial as a proper error
-      if (stderr.includes("access denied")) {
-        throw new LibraryAccessError(
-          stderr.split("\n").find((l) => l.includes("access denied")) ?? "Access denied"
-        );
-      }
-      process.stderr.write(`[library.sh stderr] ${stderr}\n`);
-    }
+    let stdout = "";
+    let stderr = "";
+    let killedForOverflow = false;
 
-    return stdout.trim();
-  } finally {
-    try { unlinkSync(tmpFile); } catch {}
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`library.sh call timed out after ${TIMEOUT_MS}ms (fn=${fn})`));
+    }, TIMEOUT_MS);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+      if (stdout.length > MAX_BUFFER && !killedForOverflow) {
+        killedForOverflow = true;
+        child.kill("SIGKILL");
+        reject(new Error(`library.sh stdout exceeded maxBuffer (${MAX_BUFFER} bytes, fn=${fn})`));
+      }
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (stderr.length > MAX_BUFFER && !killedForOverflow) {
+        killedForOverflow = true;
+        child.kill("SIGKILL");
+        reject(new Error(`library.sh stderr exceeded maxBuffer (${MAX_BUFFER} bytes, fn=${fn})`));
+      }
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (killedForOverflow) return; // reject already fired
+      resolve({ stdout, stderr, code });
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.stdin.end(script);
+  });
+
+  if (result.stderr) {
+    if (result.stderr.includes("access denied")) {
+      throw new LibraryAccessError(
+        result.stderr.split("\n").find((l) => l.includes("access denied")) ?? "Access denied"
+      );
+    }
+    process.stderr.write(`[library.sh stderr] ${result.stderr}\n`);
   }
+
+  return result.stdout.trim();
 }
 
 // ---------------------------------------------------------------

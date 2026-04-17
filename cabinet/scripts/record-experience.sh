@@ -64,14 +64,18 @@ if [ -n "$DATABASE_URL" ]; then
   # Parameterized query via psql -v + heredoc (injection-safe).
   # :'var' substitution only works with stdin/heredoc, NOT with -c flag.
   # Tags pass as comma-separated text and split server-side via string_to_array().
+  # Phase 1 CP9: stamp cabinet_id so logs remain queryable when Phase 2 adds
+  # a second Cabinet. Defaults to 'main' in Phase 1 (single-Cabinet deployments).
+  CABINET_ID="${CABINET_ID:-main}"
   if psql "$DATABASE_URL" -q \
     -v officer="$OFFICER" \
     -v task_summary="$TASK_SUMMARY" \
     -v outcome="$OUTCOME" \
     -v what_happened="$WHAT_HAPPENED" \
     -v lessons="$LESSONS" \
-    -v tags="$TAGS" <<'SQLEOF' > /dev/null 2>&1
-INSERT INTO experience_records (officer, task_summary, outcome, what_happened, lessons_learned, tags)
+    -v tags="$TAGS" \
+    -v cabinet_id="$CABINET_ID" <<'SQLEOF' > /dev/null 2>&1
+INSERT INTO experience_records (officer, task_summary, outcome, what_happened, lessons_learned, tags, cabinet_id)
 VALUES (
   :'officer',
   :'task_summary',
@@ -81,7 +85,8 @@ VALUES (
   CASE
     WHEN :'tags' = '' THEN ARRAY[]::TEXT[]
     ELSE string_to_array(:'tags', ',')
-  END
+  END,
+  :'cabinet_id'
 );
 SQLEOF
   then
