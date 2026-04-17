@@ -238,7 +238,15 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # release-please--branches--main — do NOT match), gh pr merge, and
   # curl-based GitHub API merges (pulls/N/merge). Non-main/master branches
   # never trigger the auto-notify: staged/preview deploys are noise.
-  if echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge'; then
+  # Skip: if the command is clearly targeting the Cabinet framework repo
+  # (cd /opt/founders-cabinet, git -C /opt/founders-cabinet, captains-cabinet
+  # URL), this isn't a product deploy — it's a framework push that produces
+  # no Vercel deployment. Without this guard, every framework master push
+  # triggered a false-positive AUTO-DEPLOY cascade at the validators (COO
+  # flagged 2026-04-17 after the initial release-please filter landed).
+  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|captains-cabinet\.git|founders-cabinet\.git'; then
+    :  # noop — cabinet-framework push, not a product deploy
+  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     for target in $(officers_with "validates_deployments"); do
       trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
     done
@@ -253,7 +261,15 @@ fi
 # ============================================================
 if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge'; then
+  # Skip: if the command is clearly targeting the Cabinet framework repo
+  # (cd /opt/founders-cabinet, git -C /opt/founders-cabinet, captains-cabinet
+  # URL), this isn't a product deploy — it's a framework push that produces
+  # no Vercel deployment. Without this guard, every framework master push
+  # triggered a false-positive AUTO-DEPLOY cascade at the validators (COO
+  # flagged 2026-04-17 after the initial release-please filter landed).
+  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|captains-cabinet\.git|founders-cabinet\.git'; then
+    :  # noop — cabinet-framework push, not a product deploy
+  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
     echo "REMINDER: Update shared/interfaces/deployment-status.md with current deploy state."
   fi
