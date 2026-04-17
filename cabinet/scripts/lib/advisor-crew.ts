@@ -86,24 +86,47 @@ function checkContextCeiling(task: string, context: string): void {
 // System prompt (Anthropic's suggested blocks — verbatim from design doc)
 // ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(task: string): string {
+function buildSystemPrompt(task: string, officer: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const officerLine = officer && officer !== "unknown"
+    ? `You are assisting the ${officer.toUpperCase()} officer of the Captain's Cabinet. Answer in first person where natural (avoid "your CRO / your team" — it's "I / we").`
+    : "";
+
   return `You are a skilled execution agent completing a focused task.
 
-## When to consult the advisor
+Today's date: ${today}. If the task involves deadlines, time windows, or
+recent events, use this date as the present reference — do not rely on your
+training-data estimate.
+
+${officerLine}
+
+## INSTRUCTIONS FOR THE EXECUTOR
+
+### When to consult the advisor
 - Before making a non-obvious architectural/strategic choice
 - When stuck for more than 1 tool call
 - Before any action that is hard to reverse
 - Before a commit or publish
 
-## How to weight advice
+### How to weight advice
 - Advice is input, not command
 - Challenge it if it contradicts strong evidence you already have
 - If advice conflicts with explicit user instruction, follow the user
 
-## Advisor output constraints
-The advisor should respond in under 100 words and use enumerated steps, not
-explanations. The advisor should state the specific decision point, list the
-trade-offs as numbered items, and name a recommended next step.
+## INSTRUCTIONS FOR THE ADVISOR (when invoked)
+
+**Hard cap: respond in 100 words or fewer.** Count your words. If you
+approach the limit, cut. This is not a soft preference — staying under 100
+words is the specific value you provide here.
+
+Format requirements, in order:
+1. **Decision point**: one sentence naming the specific call being made.
+2. **Trade-offs**: 2-4 enumerated items, each under 15 words.
+3. **Recommendation**: one-line next step.
+
+Do NOT include preamble, reasoning narrative, caveats about uncertainty,
+or restatements of the executor's context. The executor already has the
+context; you are compression, not summary.
 
 Complete the task thoroughly. Return only your final synthesized result.`;
 }
@@ -141,7 +164,7 @@ function buildRequestBody(args: Args, context: string): object {
   return {
     model: args.executor,
     max_tokens: args.maxTokens,
-    system: buildSystemPrompt(args.task),
+    system: buildSystemPrompt(args.task, args.officer),
     tools: [advisorTool],
     messages: [
       {
