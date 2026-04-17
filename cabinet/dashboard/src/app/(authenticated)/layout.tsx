@@ -21,6 +21,10 @@ export default async function AuthenticatedLayout({
   ])
   const { consumerModeEnabled } = getDashboardConfig()
 
+  // Spec 034: hide /cabinets nav link when provisioning flag is off
+  const cabinetsEnabled =
+    consumerModeEnabled || process.env.CABINETS_PROVISIONING_ENABLED === 'true'
+
   return (
     <>
       {/* Sidebar navigation — handles its own mobile header (branding + hamburger) */}
@@ -28,6 +32,7 @@ export default async function AuthenticatedLayout({
         projects={projects}
         activeProject={activeProject}
         consumerModeEnabled={consumerModeEnabled}
+        cabinetsEnabled={cabinetsEnabled}
       />
 
       {/*
