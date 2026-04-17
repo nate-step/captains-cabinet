@@ -110,7 +110,8 @@ if [ -n "${NEON_CONNECTION_STRING:-}" ]; then
   for schema in \
     "$CABINET_ROOT/cabinet/sql/cabinet_memory.sql" \
     "$CABINET_ROOT/cabinet/sql/library.sql" \
-    "$CABINET_ROOT/cabinet/sql/contexts-neon-phase1.sql"; do
+    "$CABINET_ROOT/cabinet/sql/contexts-neon-phase1.sql" \
+    "$CABINET_ROOT/cabinet/sql/cabinet-id-neon-phase1.sql"; do
     if [ -f "$schema" ]; then
       if psql "$NEON_CONNECTION_STRING" -q -f "$schema" > /dev/null 2>&1; then
         log "Applied framework schema (neon): $(basename "$schema")"
@@ -135,7 +136,8 @@ fi
 # Cabinet postgres schemas (internal) — additive migrations for Phase 1+
 if [ -n "${DATABASE_URL:-}" ]; then
   for schema in \
-    "$CABINET_ROOT/cabinet/sql/contexts-cabinet-phase1.sql"; do
+    "$CABINET_ROOT/cabinet/sql/contexts-cabinet-phase1.sql" \
+    "$CABINET_ROOT/cabinet/sql/cabinet-id-phase1.sql"; do
     if [ -f "$schema" ]; then
       if psql "$DATABASE_URL" -q -f "$schema" > /dev/null 2>&1; then
         log "Applied framework schema (cabinet-pg): $(basename "$schema")"

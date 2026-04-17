@@ -48,8 +48,19 @@ LOG_FILE="$LOG_DIR/${TODAY}.jsonl"
 # Truncate output for logging (max 500 chars)
 TRUNCATED_OUTPUT=$(echo "$TOOL_OUTPUT" | head -c 500)
 
+# Phase 1 CP9: cabinet_id for multi-Cabinet forward compat. Default 'main'
+# in Phase 1 (single Cabinet); Phase 2 sets CABINET_ID per instance so logs
+# remain queryable across Cabinet boundaries. Validated against a strict
+# safelist to prevent JSONL-injection (breaks log parsers, not security):
+# silently falls back to 'main' if CABINET_ID contains chars outside
+# [a-z0-9_-].
+CABINET_ID="${CABINET_ID:-main}"
+if ! [[ "$CABINET_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  CABINET_ID="main"
+fi
+
 # Write JSON log line
-echo "{\"ts\":\"$TIMESTAMP\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE"
+echo "{\"ts\":\"$TIMESTAMP\",\"cabinet_id\":\"$CABINET_ID\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE"
 
 # ============================================================
 # 2. COST TRACKING (rough estimate)
