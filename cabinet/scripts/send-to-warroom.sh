@@ -35,25 +35,34 @@ WARROOMS_FILE="/opt/founders-cabinet/instance/config/warrooms.yml"
 resolve_chat_id() {
   local ctx="$1"
   if [ -f "$WARROOMS_FILE" ]; then
-    # Flat yaml: "<slug>: <chat_id>" (chat_id may be quoted or raw).
+    # Flat yaml: "<slug>: <chat_id>" with optional quotes. Python stdlib
+    # parse is more robust than custom awk and consistent with the rest
+    # of the framework's yaml readers.
     local id
-    id=$(awk -v k="$ctx" -F: '
-      $0 ~ "^"k":"{
-        sub(/^[^:]+:[ \t]*/,"",$0)
-        gsub(/^["'"'"']|["'"'"']$/,"",$0)
-        gsub(/[ \t\r\n]+$/,"",$0)
-        print $0
-        exit
-      }' "$WARROOMS_FILE")
+    id=$(python3 - "$WARROOMS_FILE" "$ctx" <<'PY' 2>/dev/null
+import re, sys
+path, key = sys.argv[1], sys.argv[2]
+pat = re.compile(r'^' + re.escape(key) + r':\s*(.*?)\s*$')
+with open(path) as f:
+    for line in f:
+        m = pat.match(line)
+        if m:
+            val = m.group(1).strip()
+            # Strip surrounding matching quotes, either single or double.
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+                val = val[1:-1]
+            print(val)
+            break
+PY
+)
     if [ -n "$id" ]; then
-      # Allow ${VAR} interpolation in the yaml value via envsubst. Unlike
-      # `eval` this cannot execute arbitrary commands — envsubst only
-      # substitutes variables, so a malicious $(cmd) in the yaml would be
-      # passed through as literal text rather than executed.
+      # Allow ${VAR} interpolation in the yaml value. Prefer envsubst
+      # when available — it only substitutes variables, never executes.
+      # Fallback: restrict to a single ${VAR} token pattern, else emit
+      # as-is (a malicious $(cmd) passes through as literal text).
       if command -v envsubst >/dev/null 2>&1; then
         echo "$id" | envsubst
       else
-        # Fallback: restrict to a single ${VAR} token pattern, else emit as-is.
         if echo "$id" | grep -qE '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$'; then
           var_name=$(echo "$id" | sed 's/^\${//;s/}$//')
           eval "printf '%s' \"\${$var_name}\""

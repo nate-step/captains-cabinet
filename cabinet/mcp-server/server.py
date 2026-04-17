@@ -59,16 +59,41 @@ def read_hired_agents():
     return agents
 
 
-def read_simple_yaml_key(path: Path, key: str, default: str = "") -> str:
-    """Tiny flat-yaml key reader: returns trimmed value after first `key:` at any indent.
+def read_simple_yaml_key(
+    path: Path, key: str, default: str = "", section: str | None = None
+) -> str:
+    """Read a key from a flat or one-level-nested YAML file.
 
-    Works on both root-level keys and keys nested one level deep (e.g. `product.captain_name`
-    in product.yml is indented under `product:`; we just look for `captain_name:` anywhere).
+    - `section=None`: match `key:` only at column 0 (root-level).
+    - `section="product"`: match `key:` only inside the `product:` block
+      (entered at column 0, exited on the next column-0 key).
+
+    This is deliberately more restrictive than "first match at any indent"
+    — the prior implementation returned a random sibling key if two
+    sections happened to share a name. Specifying the section makes the
+    lookup deterministic and the caller's intent explicit.
+
+    PyYAML would handle this in one line (`yaml.safe_load(...)[section][key]`).
+    The container ships without PyYAML and without pip; this regex-based
+    reader is the stdlib-only substitute. Swap for pyyaml when Phase 2
+    brings the dependency.
     """
     if not path.exists():
         return default
+    in_section = section is None  # root-level mode starts inside
     for line in path.read_text().splitlines():
-        m = re.match(rf"^\s*{re.escape(key)}:\s*(.*)$", line)
+        # Exit section when we hit another column-0 key
+        if section is not None and re.match(r"^[A-Za-z]", line):
+            head = line.split(":", 1)[0].strip()
+            in_section = head == section
+            continue
+        if not in_section:
+            continue
+        # Root mode: only col-0 keys. Section mode: indented (>=1 space).
+        if section is None:
+            m = re.match(rf"^{re.escape(key)}:\s*(.*)$", line)
+        else:
+            m = re.match(rf"^\s+{re.escape(key)}:\s*(.*)$", line)
         if m:
             return m.group(1).strip().strip("\"'")
     return default
@@ -77,7 +102,7 @@ def read_simple_yaml_key(path: Path, key: str, default: str = "") -> str:
 def cabinet_identify():
     """Return identity payload for this Cabinet."""
     cabinet_id = os.environ.get("CABINET_ID", "main")
-    captain_name = read_simple_yaml_key(PRODUCT_YML, "captain_name", "")
+    captain_name = read_simple_yaml_key(PRODUCT_YML, "captain_name", section="product")
     captain_id = os.environ.get("CAPTAIN_ID") or captain_name or "unknown"
     return {
         "cabinet_id": cabinet_id,
