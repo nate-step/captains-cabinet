@@ -1,11 +1,17 @@
 import Link from 'next/link'
 import redis, { getCostHistory } from '@/lib/redis'
 import { getTmuxWindows, isClaudeAlive, isTelegramConnected } from '@/lib/docker'
-import { getOfficerConfig, getConfig } from '@/lib/config'
+import { getOfficerConfig, getConfig, getDashboardConfig } from '@/lib/config'
 import { getProjects } from '@/actions/projects'
 import OfficerCard from '@/components/officer-card'
-import KillSwitch from '@/components/kill-switch'
 import { StackedBarChart, HorizontalBars, ChartLegend } from '@/components/cost-chart'
+import ConsumerFrontPage from '@/components/consumer/consumer-front-page'
+import CardProducts from '@/components/consumer/card-products'
+import CardCabinet from '@/components/consumer/card-cabinet'
+import CardCosts from '@/components/consumer/card-costs'
+import CardTasks from '@/components/consumer/card-tasks'
+import CardLibrary from '@/components/consumer/card-library'
+import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,7 +111,53 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+/**
+ * Read dashboard mode from cookies (server-side best-effort).
+ *
+ * The canonical source of truth is localStorage (client-side), but for the
+ * initial server render we try reading from a cookie that the client optionally
+ * sets. If the cookie isn't present, we fall back to 'consumer' (spec default).
+ * The client will re-render after hydration if the localStorage value differs.
+ */
+async function getServerMode(): Promise<'consumer' | 'advanced'> {
+  try {
+    const cookieStore = await cookies()
+    const val = cookieStore.get('cabinet:dashboard:mode')?.value
+    if (val === 'advanced' || val === 'consumer') return val
+  } catch {
+    // cookies() may fail in some environments
+  }
+  return 'consumer'
+}
+
 export default async function DashboardPage() {
+  const { consumerModeEnabled } = getDashboardConfig()
+
+  // --- Consumer Mode branch ---
+  // Feature flag gate at the PAGE level (not inside ConsumerFrontPage) so the
+  // consumer card tree is structurally absent when the flag is off — no hooks,
+  // no Redis reads for card data, purely inert. (Spec 032 plan §feature-flag)
+  if (consumerModeEnabled) {
+    const serverMode = await getServerMode()
+
+    if (serverMode === 'consumer') {
+      // Render consumer cards. KillSwitchHeader is in layout.tsx.
+      return (
+        <ConsumerFrontPage>
+          <CardProducts />
+          <CardCabinet />
+          <CardCosts />
+          <CardTasks />
+          <CardLibrary />
+        </ConsumerFrontPage>
+      )
+    }
+    // If server-side mode is 'advanced', fall through to the advanced render.
+    // After client hydration, useDashboardMode() takes over and the client can
+    // switch modes without a full page reload.
+  }
+
+  // --- Advanced Mode (zero regression from pre-Spec-032 dashboard) ---
   const [officers, killSwitchActive, costHistory, projects] = await Promise.all([
     getOfficerData(),
     getKillSwitchState(),
@@ -173,8 +225,17 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Kill switch */}
-      <KillSwitch active={killSwitchActive} />
+      {/* Kill switch status shown in Advanced mode — the header pill is always present */}
+      {killSwitchActive && (
+        <div className="rounded-xl border border-red-500/50 bg-red-900/20 px-5 py-4">
+          <p className="text-sm font-semibold text-red-400">
+            Kill switch is ACTIVE &mdash; all officer operations are halted.
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Use the Stop All button in the header to resume.
+          </p>
+        </div>
+      )}
 
       {/* Officer grid */}
       {officers.length === 0 ? (
