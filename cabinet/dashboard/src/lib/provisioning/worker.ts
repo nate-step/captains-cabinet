@@ -33,16 +33,12 @@ export interface ProvisioningJobInput {
 }
 
 // ----------------------------------------------------------------
-// Cabinet DB types
+// Cabinet DB types — canonical type lives in lib/provisioning/types.ts
 // ----------------------------------------------------------------
+export type { CabinetRow } from './types'
 
-interface OfficerSlot {
-  role: string
-  bot_token: string | null
-  adopted_at: string | null
-}
-
-export interface CabinetRow {
+// Worker-internal extended row with captain_id (not on the public type)
+interface WorkerCabinetRow {
   cabinet_id: string
   captain_id: string
   name: string
@@ -50,7 +46,7 @@ export interface CabinetRow {
   capacity: string
   state: CabinetState
   state_entered_at: string
-  officer_slots: OfficerSlot[]
+  officer_slots: Array<{ role: string; bot_token: string | null; adopted_at: string | null }>
   retry_count: number
   created_at: string
 }

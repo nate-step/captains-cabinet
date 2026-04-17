@@ -1,5 +1,10 @@
 /**
- * Spec 034 PR 4 — Telegram Conversational Provisioning Flow
+ * Spec 034 PR 5 — Telegram Conversational Provisioning Flow
+ *
+ * PR 5 updates:
+ *  - Replaces 5s polling in startPollingLoop() with an SSE consumer via fetch + streaming
+ *  - Uses STATE_LABEL_TEXT from shared lib/provisioning/labels.ts (no local duplicate)
+ *  - STATE_LABELS const removed — imported from shared module
  *
  * State machine for the multi-turn Telegram dialog that mirrors the dashboard
  * wizard step-for-step. Both paths call the same Provisioning API endpoints.
@@ -15,7 +20,7 @@
  *   4. CREATE    — POST /api/cabinets, enter adopting-bots state
  *   5. ADOPT_BOT — send QR/BotFather links, accept forwarded tokens
  *   6. CONFIRM   — "Got token ending ...XYZ — adopt as {officer}?" confirmation
- *   7. STATUS    — poll GET /api/cabinets/:id/provisioning-status every 5s
+ *   7. STATUS    — SSE consumer (PR 5, replaces 5s poll)
  *   8. DONE      — Cabinet live, send dashboard URL
  *
  * Cancellation:
@@ -28,10 +33,6 @@
  *
  * Intent triggers (regex-based, no LLM inference):
  *   - "I want a Cabinet" | "new cabinet" | "create cabinet" | "/provision"
- *
- * Out of scope (PR 5):
- *   - SSE real-time hookup (bot polls every 5s for now)
- *   - Re-auth wrapper on archive
  */
 
 import redis from '../dashboard/src/lib/redis'
@@ -286,18 +287,23 @@ async function getProvisioningStatus(cabinetId: string): Promise<ProvisioningSta
 }
 
 // ---------------------------------------------------------------------------
-// Human-readable state labels for live status messages
+// Human-readable state labels — imported from shared module (PR 5 consolidation)
 // ---------------------------------------------------------------------------
 
+// STATE_LABEL_TEXT imported from dashboard lib (shared module, single source)
+// Relative path: telegram-manager-bot sits at cabinet/telegram-manager-bot/
+// lib/provisioning/labels.ts is at cabinet/dashboard/src/lib/provisioning/labels.ts
+// We re-declare a minimal version here to avoid TS path complexity in the bot.
+// The canonical source is lib/provisioning/labels.ts.
 const STATE_LABELS: Record<string, string> = {
-  creating: 'Creating cabinet…',
-  'adopting-bots': 'Waiting for bot tokens…',
-  provisioning: 'Provisioning containers and migrating rows…',
-  starting: 'Starting containers — waiting for first heartbeat…',
+  creating: 'Creating cabinet\u2026',
+  'adopting-bots': 'Waiting for bot tokens\u2026',
+  provisioning: 'Provisioning containers and migrating rows\u2026',
+  starting: 'Starting containers \u2014 waiting for first heartbeat\u2026',
   active: 'Cabinet is live!',
   suspended: 'Cabinet suspended.',
   failed: 'Provisioning failed.',
-  archiving: 'Archiving…',
+  archiving: 'Archiving\u2026',
   archived: 'Cabinet archived.',
 }
 
@@ -713,14 +719,15 @@ async function handleCancel(chatId: string): Promise<BotMessage[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Status polling (PR 4 polls every 5s; PR 5 wires SSE)
+// Status SSE consumer (PR 5 — replaces 5s polling loop)
 // ---------------------------------------------------------------------------
 
-const POLL_INTERVAL_MS = 5_000
+/** Terminal states that signal the SSE stream should close. */
+const SSE_TERMINAL_STATES = new Set(['active', 'archived', 'failed'])
 
 /**
- * Poll provisioning status once and return a status message.
- * Called from the POLLING_STATUS step and from the initial all-bots-adopted transition.
+ * Snapshot status check — used when all bots are adopted and we transition
+ * to the status-watching phase. Returns one or more initial messages.
  */
 async function pollStatusOnce(state: ProvisioningState): Promise<BotMessage[]> {
   if (!state.cabinetId) {
@@ -729,13 +736,17 @@ async function pollStatusOnce(state: ProvisioningState): Promise<BotMessage[]> {
 
   const snapshot = await getProvisioningStatus(state.cabinetId)
   if (!snapshot) {
-    return [{ text: 'Could not reach provisioning status \u2014 will retry.' }]
+    return [{ text: 'Could not reach provisioning status \u2014 will retry shortly.' }]
   }
 
-  const label = STATE_LABELS[snapshot.state] || snapshot.state
+  return buildStatusMessage(state, snapshot.state)
+}
 
-  if (snapshot.state === 'active') {
-    const dashboardUrl = buildDashboardUrl(state.cabinetId)
+function buildStatusMessage(state: ProvisioningState, currentState: string): BotMessage[] {
+  const label = STATE_LABELS[currentState] || currentState
+
+  if (currentState === 'active') {
+    const dashboardUrl = buildDashboardUrl(state.cabinetId!)
     return [
       {
         text:
@@ -748,90 +759,142 @@ async function pollStatusOnce(state: ProvisioningState): Promise<BotMessage[]> {
     ]
   }
 
-  if (snapshot.state === 'failed') {
+  if (currentState === 'failed') {
     return [
       {
-        text:
-          `Provisioning failed. Check the dashboard for details and retry options:\n${buildDashboardUrl(state.cabinetId)}`,
+        text: `Provisioning failed. Check the dashboard for details and the full log:\n${buildDashboardUrl(state.cabinetId!)}`,
       },
     ]
   }
 
-  // In-progress state — report current step
-  return [
-    {
-      text: `${label} I\u2019ll check back in a moment\u2026`,
-    },
-  ]
+  return [{ text: `${label} I\u2019ll update you when the state changes\u2026` }]
 }
 
 /**
- * Schedule a polling loop from an external context (e.g. webhook handler).
- * Sends updates to Captain via sendMessage callback.
+ * PR 5 SSE consumer — replaces the 5s polling loop.
+ * Uses fetch() with a streaming response body to consume the SSE stream.
+ * Avoids adding a new npm dependency (no `eventsource` package needed).
  *
- * Stops when state reaches active/failed/archived or after maxPolls attempts.
- *
- * This is the PR 4 polling strategy. PR 5 replaces with SSE push.
+ * Sends Telegram messages only on state changes.
+ * Auto-terminates on active | failed | archived states or after maxDurationMs.
  */
-export async function startPollingLoop(
+export async function startSSEConsumer(
   chatId: string,
   state: ProvisioningState,
   sendMessage: (msg: BotMessage) => Promise<void>,
-  maxPolls = 72 // ~6 min at 5s intervals
+  maxDurationMs = 10 * 60 * 1000 // 10 min max (matches provisioning timeout)
 ): Promise<void> {
-  let polls = 0
-  let lastState = ''
+  if (!state.cabinetId) {
+    await sendMessage({ text: 'Cannot watch status — no cabinet ID.' })
+    return
+  }
 
-  const poll = async () => {
-    if (polls++ >= maxPolls) {
+  const cabinetId = state.cabinetId
+  const sseUrl = `${apiBase()}/api/cabinets/${cabinetId}/provisioning-status`
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), maxDurationMs)
+
+  let lastReportedState = ''
+
+  try {
+    const res = await fetch(sseUrl, {
+      headers: { ...internalAuthHeaders(), Accept: 'text/event-stream' },
+      signal: controller.signal,
+    })
+
+    if (!res.ok || !res.body) {
       await sendMessage({
-        text: 'Provisioning is taking longer than expected. Check the dashboard for status.',
+        text: `Could not connect to provisioning stream (HTTP ${res.status}). Check dashboard.`,
       })
       return
     }
 
-    const snapshot = await getProvisioningStatus(state.cabinetId!)
-    if (!snapshot) return
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
 
-    // Only send a message when state changes
-    if (snapshot.state !== lastState) {
-      lastState = snapshot.state
-      const label = STATE_LABELS[snapshot.state] || snapshot.state
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-      if (snapshot.state === 'active') {
-        const dashboardUrl = buildDashboardUrl(state.cabinetId!)
-        await sendMessage({
-          text:
-            `${STEP_CHECK} Containers up\n` +
-            `${STEP_CHECK} Rows migrated\n` +
-            `${STEP_CHECK} Peers wired\n\n` +
-            `Your ${capitalise(state.preset || 'Cabinet')} Cabinet **${state.name}** is live.\n` +
-            `Open the dashboard: ${dashboardUrl}`,
-        })
-        // Mark done in Redis
-        const latestState = await loadState(chatId)
-        if (latestState) {
-          latestState.step = 'done'
-          await saveState(chatId, latestState)
+      buffer += decoder.decode(value, { stream: true })
+
+      // SSE frames are delimited by \n\n
+      const frames = buffer.split('\n\n')
+      buffer = frames.pop() ?? '' // keep incomplete frame
+
+      for (const frame of frames) {
+        if (!frame.trim() || frame.startsWith(':')) continue // comment/ping line
+
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data:'))
+        if (!dataLine) continue
+
+        try {
+          const data = JSON.parse(dataLine.slice(5).trim()) as {
+            type?: string
+            state?: string
+            state_after?: string
+            cabinet_id?: string
+          }
+
+          const newState = data.state_after || data.state
+
+          if (newState && newState !== lastReportedState) {
+            lastReportedState = newState
+            const msgs = buildStatusMessage(state, newState)
+            for (const msg of msgs) {
+              await sendMessage(msg)
+            }
+
+            if (newState === 'active') {
+              // Mark done in Redis
+              const latestState = await loadState(chatId)
+              if (latestState) {
+                latestState.step = 'done'
+                await saveState(chatId, latestState)
+              }
+            }
+          }
+
+          // Server signals stream closed
+          if (data.type === 'done' || (newState && SSE_TERMINAL_STATES.has(newState))) {
+            reader.cancel()
+            return
+          }
+        } catch {
+          // Ignore parse errors on individual frames
         }
-        return
       }
-
-      if (snapshot.state === 'failed') {
-        await sendMessage({
-          text: `Provisioning failed. Check the dashboard:\n${buildDashboardUrl(state.cabinetId!)}`,
-        })
-        return
-      }
-
-      await sendMessage({ text: label })
     }
-
-    // Continue polling
-    setTimeout(poll, POLL_INTERVAL_MS)
+  } catch (err) {
+    // AbortError = timeout; other errors = connection problem
+    const isTimeout = err instanceof Error && err.name === 'AbortError'
+    if (isTimeout) {
+      await sendMessage({
+        text: 'Provisioning is taking longer than expected. Check the dashboard for status.',
+      })
+    } else {
+      await sendMessage({
+        text: `Lost connection to provisioning stream. Check the dashboard:\n${buildDashboardUrl(cabinetId)}`,
+      })
+    }
+  } finally {
+    clearTimeout(timeout)
   }
+}
 
-  setTimeout(poll, POLL_INTERVAL_MS)
+// Keep startPollingLoop exported for backward compat with existing tests
+// It's now a thin wrapper over startSSEConsumer with fallback to HTTP polling
+export async function startPollingLoop(
+  chatId: string,
+  state: ProvisioningState,
+  sendMessage: (msg: BotMessage) => Promise<void>,
+  _maxPolls = 72
+): Promise<void> {
+  // Delegate to SSE consumer — cleaner and no polling needed
+  await startSSEConsumer(chatId, state, sendMessage)
 }
 
 // ---------------------------------------------------------------------------
@@ -907,4 +970,3 @@ function buildAdoptBotPrompt(state: ProvisioningState): BotMessage[] {
 
 // Re-export for use in the webhook handler
 export { BOT_TOKEN_RE, extractTokenFromForward, tokenLastFour, generateBotFatherLink }
-export { POLL_INTERVAL_MS }

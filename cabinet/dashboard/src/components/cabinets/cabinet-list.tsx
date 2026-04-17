@@ -15,18 +15,11 @@ import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { suspendCabinet, resumeCabinet } from '@/actions/cabinets'
 import ArchiveConfirm from './archive-confirm'
+import { STATE_LABELS } from '@/lib/provisioning/labels'
+import type { CabinetRow } from '@/lib/provisioning/types'
 
-export interface CabinetRow {
-  cabinet_id: string
-  name: string
-  preset: string
-  capacity: string
-  state: string
-  state_entered_at: string
-  officer_slots: unknown
-  retry_count: number
-  created_at: string
-}
+// Re-export CabinetRow for backward compat (other files still import from here)
+export type { CabinetRow }
 
 // States where suspend/archive actions must be disabled (non-stable)
 const UNSTABLE_STATES = new Set([
@@ -37,18 +30,6 @@ const UNSTABLE_STATES = new Set([
   'archiving',
   'archived',
 ])
-
-const STATE_LABELS: Record<string, { label: string; dot: string; text: string }> = {
-  'creating':      { label: 'Creating',      dot: 'bg-amber-400', text: 'text-amber-400' },
-  'adopting-bots': { label: 'Adopting bots', dot: 'bg-amber-400', text: 'text-amber-400' },
-  'provisioning':  { label: 'Provisioning',  dot: 'bg-blue-400',  text: 'text-blue-400'  },
-  'starting':      { label: 'Starting',      dot: 'bg-blue-400',  text: 'text-blue-400'  },
-  'active':        { label: 'Active',        dot: 'bg-green-400', text: 'text-green-400' },
-  'suspended':     { label: 'Suspended',     dot: 'bg-zinc-500',  text: 'text-zinc-400'  },
-  'failed':        { label: 'Failed',        dot: 'bg-red-500',   text: 'text-red-400'   },
-  'archiving':     { label: 'Archiving',     dot: 'bg-orange-400',text: 'text-orange-400'},
-  'archived':      { label: 'Archived',      dot: 'bg-zinc-600',  text: 'text-zinc-500'  },
-}
 
 function StateBadge({ state }: { state: string }) {
   const cfg = STATE_LABELS[state] || { label: state, dot: 'bg-zinc-500', text: 'text-zinc-400' }

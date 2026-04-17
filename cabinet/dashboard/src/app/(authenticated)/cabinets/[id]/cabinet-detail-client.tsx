@@ -1,37 +1,39 @@
 'use client'
 
 /**
- * Spec 034 PR 2 — CabinetDetailClient
+ * Spec 034 PR 5 — CabinetDetailClient
  *
  * Client component for the /cabinets/[id] detail page.
- * Provides:
- *   - Suspend / Resume / Archive action buttons
- *   - 5-second polling refresh of cabinet state (polling stub — SSE is PR 5)
- *   - Archive two-confirm modal via ArchiveConfirm
+ * PR 5 replaces the 5s polling stub with a real EventSource SSE subscription.
  *
- * Polling: useEffect sets a 5s interval that calls GET /api/cabinets/:id
- * and updates local state. A manual "Refresh" button is also exposed.
- * The interval is cleared on unmount.
+ * SSE behaviour (AC 5, AC 6):
+ *  - On mount: opens EventSource to GET /api/cabinets/:id/provisioning-status
+ *  - Last-Event-ID is tracked and sent on reconnect (EventSource does this natively)
+ *  - Server emits keep-alive pings every 15s — EventSource ignores comment lines
+ *  - Auto-close: server closes stream on active | archived | failed
+ *  - "Refresh" button remains as a fallback if the stream is dropped
  *
- * TODO (PR 5): Replace polling with SSE subscription to
- *   GET /api/cabinets/:id/provisioning-status (with Last-Event-ID reconnect).
+ * On stream error: EventSource auto-reconnects with exponential backoff.
+ * On disconnect, client re-fetches GET /api/cabinets/:id as a safety snapshot.
  *
- * Spec refs: PR 2 scope "Live status is a placeholder — use 5s polling fallback",
- *            §State Machine ARCHIVE_BLOCKED_STATES, AC 9.
+ * Spec refs: AC 5 (SSE not polling), AC 6 (reconnect + Last-Event-ID),
+ *            §SSE reconnection, cabinet-list.tsx TYPE consolidation (PR 5).
  */
 
-import { useState, useEffect, useTransition, useCallback } from 'react'
+import { useState, useEffect, useTransition, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { suspendCabinet, resumeCabinet } from '@/actions/cabinets'
 import ArchiveConfirm from '@/components/cabinets/archive-confirm'
-import type { CabinetRow } from '@/components/cabinets/cabinet-list'
-
-const POLL_INTERVAL_MS = 5_000
+import { STATE_LABELS } from '@/lib/provisioning/labels'
+import type { CabinetRow } from '@/lib/provisioning/types'
 
 // States where the archive button must be disabled
 const ARCHIVE_BLOCKED = new Set([
   'creating', 'adopting-bots', 'provisioning', 'starting', 'archiving', 'archived',
 ])
+
+// Terminal states: SSE server closes the stream here; we stop reconnecting
+const TERMINAL_STATES = new Set(['active', 'archived', 'failed'])
 
 interface CabinetDetailClientProps {
   cabinet: CabinetRow
@@ -41,11 +43,11 @@ interface CabinetDetailClientProps {
 export default function CabinetDetailClient({ cabinet: initialCabinet, baseUrl }: CabinetDetailClientProps) {
   const router = useRouter()
   const [cabinet, setCabinet] = useState<CabinetRow>(initialCabinet)
-  const [isPolling, setIsPolling] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [actionError, setActionError] = useState<string | null>(null)
   const [showArchive, setShowArchive] = useState(false)
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
+  const [streamStatus, setStreamStatus] = useState<'connecting' | 'live' | 'fallback'>('connecting')
 
   // Derive action availability from current state
   const isUnstable = ARCHIVE_BLOCKED.has(cabinet.state)
@@ -57,9 +59,8 @@ export default function CabinetDetailClient({ cabinet: initialCabinet, baseUrl }
   const canResume = isSuspended && !isPending
   const canArchive = (isActive || isSuspended || isFailed) && !isPending
 
-  // Polling for live state (PR 2 stub — PR 5 replaces with SSE)
-  // TODO (PR 5): Replace this interval with an EventSource subscription.
-  const pollState = useCallback(async () => {
+  // Manual snapshot refresh (also used as SSE disconnect safety net)
+  const fetchSnapshot = useCallback(async () => {
     try {
       const res = await fetch(`${baseUrl}/api/cabinets/${cabinet.cabinet_id}`, {
         cache: 'no-store',
@@ -72,21 +73,79 @@ export default function CabinetDetailClient({ cabinet: initialCabinet, baseUrl }
         }
       }
     } catch {
-      // Swallow poll errors — manual refresh still available
+      // Swallow — manual refresh still available
     }
   }, [baseUrl, cabinet.cabinet_id])
 
+  // SSE subscription via EventSource (PR 5)
+  const esRef = useRef<EventSource | null>(null)
+
   useEffect(() => {
-    setIsPolling(true)
-    const interval = setInterval(pollState, POLL_INTERVAL_MS)
-    return () => {
-      clearInterval(interval)
-      setIsPolling(false)
+    const cabinetId = initialCabinet.cabinet_id
+    const sseUrl = `${baseUrl}/api/cabinets/${cabinetId}/provisioning-status`
+
+    // If already in a terminal state, no SSE needed
+    if (TERMINAL_STATES.has(initialCabinet.state)) {
+      setStreamStatus('fallback')
+      return
     }
-  }, [pollState])
+
+    let es: EventSource
+    try {
+      es = new EventSource(sseUrl)
+      esRef.current = es
+      setStreamStatus('connecting')
+
+      es.onopen = () => {
+        setStreamStatus('live')
+      }
+
+      es.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data) as {
+            type?: string
+            state?: string
+            state_after?: string
+            state_entered_at?: string
+            cabinet_id?: string
+          }
+
+          // Update cabinet state when a state transition arrives
+          const newState = data.state_after || data.state
+          if (newState && newState !== cabinet.state) {
+            setCabinet((prev) => ({ ...prev, state: newState }))
+            setLastRefreshed(new Date())
+          }
+
+          // Server signals stream done
+          if (data.type === 'done') {
+            setStreamStatus('fallback')
+            es.close()
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      es.onerror = () => {
+        setStreamStatus('fallback')
+        // EventSource auto-reconnects — we also re-fetch snapshot as safety net
+        void fetchSnapshot()
+      }
+    } catch {
+      // EventSource not available (unlikely in modern browsers)
+      setStreamStatus('fallback')
+    }
+
+    return () => {
+      if (esRef.current) {
+        esRef.current.close()
+        esRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseUrl, initialCabinet.cabinet_id, initialCabinet.state])
 
   function handleManualRefresh() {
-    void pollState()
+    void fetchSnapshot()
   }
 
   function handleSuspend() {
@@ -107,19 +166,13 @@ export default function CabinetDetailClient({ cabinet: initialCabinet, baseUrl }
     })
   }
 
-  const STATE_LABELS: Record<string, { dot: string; text: string; label: string }> = {
-    'creating':      { dot: 'bg-amber-400', text: 'text-amber-400', label: 'Creating' },
-    'adopting-bots': { dot: 'bg-amber-400', text: 'text-amber-400', label: 'Adopting bots' },
-    'provisioning':  { dot: 'bg-blue-400',  text: 'text-blue-400',  label: 'Provisioning' },
-    'starting':      { dot: 'bg-blue-400',  text: 'text-blue-400',  label: 'Starting' },
-    'active':        { dot: 'bg-green-400', text: 'text-green-400', label: 'Active' },
-    'suspended':     { dot: 'bg-zinc-500',  text: 'text-zinc-400',  label: 'Suspended' },
-    'failed':        { dot: 'bg-red-500',   text: 'text-red-400',   label: 'Failed' },
-    'archiving':     { dot: 'bg-orange-400',text: 'text-orange-400',label: 'Archiving' },
-    'archived':      { dot: 'bg-zinc-600',  text: 'text-zinc-500',  label: 'Archived' },
-  }
-
   const cfg = STATE_LABELS[cabinet.state] || { dot: 'bg-zinc-500', text: 'text-zinc-400', label: cabinet.state }
+
+  const streamIndicator = streamStatus === 'live'
+    ? <span className="text-xs text-green-600">Live</span>
+    : streamStatus === 'connecting'
+    ? <span className="text-xs text-amber-600">Connecting…</span>
+    : <span className="text-xs text-zinc-600">Fallback mode</span>
 
   return (
     <div>
@@ -137,26 +190,33 @@ export default function CabinetDetailClient({ cabinet: initialCabinet, baseUrl }
               Updated {lastRefreshed.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           )}
+          {streamIndicator}
         </div>
 
-        {/* Manual refresh button */}
+        {/* Manual refresh button (SSE fallback) */}
         <button
           type="button"
           onClick={handleManualRefresh}
           className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-colors min-h-[44px]"
         >
-          <svg className={`h-3.5 w-3.5 ${isPolling ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
           </svg>
           Refresh
         </button>
       </div>
 
-      {/* SSE placeholder note */}
-      <p className="mt-2 text-xs text-zinc-700 italic">
-        {/* TODO (PR 5): Replace 5s polling with real-time SSE stream. */}
-        Polling every 5s. Real-time SSE will arrive in PR 5.
-      </p>
+      {/* Failed state: link to full provisioning log (AC 17) */}
+      {isFailed && (
+        <div className="mt-3">
+          <a
+            href={`/cabinets/${cabinet.cabinet_id}/log`}
+            className="inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 underline underline-offset-2"
+          >
+            View provisioning log
+          </a>
+        </div>
+      )}
 
       {/* Action error */}
       {actionError && (
@@ -199,7 +259,7 @@ export default function CabinetDetailClient({ cabinet: initialCabinet, baseUrl }
         </div>
       )}
 
-      {/* Archive confirmation modal */}
+      {/* Archive confirmation modal (PR 5: includes re-auth step) */}
       {showArchive && (
         <ArchiveConfirm
           cabinetName={cabinet.name}
