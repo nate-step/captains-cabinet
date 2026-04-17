@@ -28,6 +28,32 @@ _(none)_
 
 ## Proposed / awaiting prioritization
 
+### FW-004 — Rename filesystem paths `founders-cabinet` → `captains-cabinet`
+- **Status:** Proposed (Captain caught inconsistency 2026-04-17 msg 1455 during Personal Cabinet provisioning).
+- **Problem:** Captain Decision 2026-04-16 rebranded the product name "Founder's Cabinet" → "Captain's Cabinet" and renamed the GitHub repo, CLAUDE.md references, and taglines. But filesystem paths — `/opt/founders-cabinet`, `/opt/founders-cabinet-personal`, the Docker volume names, every script's hardcoded path — still carry the old name. When Captain stood up Personal Cabinet today he naturally asked "shouldn't this be captains-cabinet?" — yes, it should, and the inconsistency will confuse every forker who follows the provisioning playbook.
+- **Scope of the rename sweep:**
+  1. Directory: `/opt/founders-cabinet` → `/opt/captains-cabinet` (+ `-personal` variants)
+  2. Docker volume + compose file names
+  3. Every hardcoded path in `cabinet/scripts/**/*.sh` (including hooks, record-experience, load-preset, start-officer, notify-officer, reply-to-captain, etc.)
+  4. `cabinet/.env` references + any shell rc exports
+  5. Docs: `docs/provisioning-personal-cabinet.md`, `README.md`, CLAUDE.md comments
+  6. `/home/cabinet/.claude/projects/-opt-founders-cabinet/` project slug (Claude Code auto-generates this from path, so it'll self-update on rename)
+  7. `/tmp/cabinet-*` cache files — path-independent, no rename needed
+- **Migration plan:**
+  1. Announce window (no officer restarts during)
+  2. Stop all officer containers
+  3. `mv /opt/founders-cabinet /opt/captains-cabinet` (+ `-personal`)
+  4. `sed -i 's|/opt/founders-cabinet|/opt/captains-cabinet|g'` across repo
+  5. Update Docker compose volumes + restart containers
+  6. Smoke test: officer startup, tool calls, inter-officer triggers, Cabinet MCP stdio
+  7. Commit + tag as framework migration
+- **Risk:** medium — lots of paths, but grep-able and scriptable. Bigger risk is forgetting the `.claude/projects/` slug refresh (auto-regenerates; verify on first session post-rename).
+- **When:** coordinate with Captain for a quiet window (no active PR work). Not urgent; cosmetic. Pair with the next framework reorg pass.
+- **Owner:** CoS (plan), CTO (execute migration script), COO (validate post-rename)
+- **Source:** Captain msg 1455 — "which btw should be captains-cabinet?"
+
+---
+
 ### FW-003 — Captain-DM cap adjustment (natural-language → platform.yml edit)
 - **Status:** Proposed (Captain-directed 2026-04-17 msg 1453 as follow-on to FW-002).
 - **Problem:** FW-002 gives us clean per-cabinet caps in `instance/config/platform.yml`, but raising them still requires host-shell access. A Captain on the road with Telegram-only access can't raise caps for a blocked officer — even though FW-002's whitelist ensures the officer can reach them to ask.
