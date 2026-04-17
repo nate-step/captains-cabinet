@@ -175,4 +175,65 @@ if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   fi
 fi
 
+# ============================================================
+# 8. CONTEXT_SLUG VALIDATION + CAPACITY COUPLING (Phase 1 CP2)
+# ============================================================
+# YAML files at instance/config/contexts/*.yml are source of truth for
+# known slugs and their capacity (work|personal). Every tool call that
+# writes a context_slug must reference a known slug AND must not cross
+# the capacity boundary of the acting officer.
+#
+# Cache layer: /tmp/cabinet-context-slugs.tsv (slug<TAB>capacity), rebuilt
+# when any yaml in the contexts dir is newer than the cache. Keeps the
+# hook fast (~1ms) on every call.
+
+CONTEXTS_DIR="/opt/founders-cabinet/instance/config/contexts"
+SLUG_CACHE="/tmp/cabinet-context-slugs.tsv"
+
+if [ -d "$CONTEXTS_DIR" ]; then
+  # Rebuild cache if stale or missing. Dir mtime covers both file modifications
+  # AND deletions (Linux bumps dir mtime on unlink); file-newer covers individual
+  # edits. Combined: cache reflects current yaml set even after a deletion.
+  if [ ! -f "$SLUG_CACHE" ] \
+     || [ -n "$(find "$CONTEXTS_DIR" -maxdepth 0 -newer "$SLUG_CACHE" 2>/dev/null)" ] \
+     || [ -n "$(find "$CONTEXTS_DIR" -maxdepth 1 -name '*.yml' -newer "$SLUG_CACHE" 2>/dev/null)" ]; then
+    : > "$SLUG_CACHE"
+    for f in "$CONTEXTS_DIR"/*.yml "$CONTEXTS_DIR"/*.yaml; do
+      [ -f "$f" ] || continue
+      # Strip inline # comments, quotes, and surrounding whitespace before capture.
+      slug=$(awk -F: '/^slug:/{sub(/[ \t]*#.*$/,"",$2); gsub(/^[ \t]+|[ \t\r\n]+$/,"",$2); gsub(/^["'"'"']|["'"'"']$/,"",$2); print $2; exit}' "$f")
+      cap=$(awk -F: '/^capacity:/{sub(/[ \t]*#.*$/,"",$2); gsub(/^[ \t]+|[ \t\r\n]+$/,"",$2); gsub(/^["'"'"']|["'"'"']$/,"",$2); print $2; exit}' "$f")
+      [ -n "$slug" ] && [ -n "$cap" ] && printf "%s\t%s\n" "$slug" "$cap" >> "$SLUG_CACHE"
+    done
+  fi
+
+  # Extract context_slug from tool_input if present (any depth)
+  SLUG_IN_CALL=$(echo "$TOOL_INPUT" | jq -r '.context_slug // (..|.context_slug? // empty)' 2>/dev/null | grep -v '^$' | head -1)
+
+  # Also pull from Bash command args (e.g. record-experience.sh --context-slug foo)
+  if [ -z "$SLUG_IN_CALL" ] && [ "$TOOL_NAME" = "Bash" ]; then
+    BCMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+    SLUG_IN_CALL=$(echo "$BCMD" | grep -oE -- '--context[_-]slug[= ]+[a-z0-9_-]+' | head -1 | awk -F'[= ]' '{print $NF}')
+  fi
+
+  if [ -n "$SLUG_IN_CALL" ]; then
+    # Validate slug exists in cache
+    CTX_CAPACITY=$(awk -F'\t' -v s="$SLUG_IN_CALL" '$1==s{print $2; exit}' "$SLUG_CACHE")
+    if [ -z "$CTX_CAPACITY" ]; then
+      echo "BLOCKED: unknown context_slug '$SLUG_IN_CALL' — add to instance/config/contexts/<slug>.yml first."
+      echo "Known slugs: $(cut -f1 "$SLUG_CACHE" | tr '\n' ' ')"
+      exit 2
+    fi
+
+    # Cross-capacity enforcement: officer's capacity (from env) must match the context's.
+    # OFFICER_CAPACITY defaults to 'work' for the Sensed work preset. Phase 2 will read
+    # from preset.yml or per-officer config, not hardcoded default.
+    OFFICER_CAPACITY="${OFFICER_CAPACITY:-work}"
+    if [ "$OFFICER_CAPACITY" != "$CTX_CAPACITY" ]; then
+      echo "BLOCKED: capacity_check failed — officer '$OFFICER' has capacity '$OFFICER_CAPACITY' but context_slug '$SLUG_IN_CALL' has capacity '$CTX_CAPACITY'. Cross-capacity writes are forbidden."
+      exit 2
+    fi
+  fi
+fi
+
 exit 0
