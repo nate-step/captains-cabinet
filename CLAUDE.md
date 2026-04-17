@@ -196,7 +196,7 @@ Action owners should respond within 4 hours: "adopting", "parking", or "not rele
 The Cabinet improves through three nested loops. Each has a different cadence and scope.
 
 ### Task Loop (per-task — every Officer)
-- **Every completed task** must produce an log entry. A task is not complete without one.
+- **Every completed task** must produce an experience record. A task is not complete without one.
 - Use `bash /opt/founders-cabinet/cabinet/scripts/record-experience.sh`.
 - Include actionable lessons, not just "it worked."
 - Check `memory/skills/` before starting work — someone may have solved this before.
@@ -271,11 +271,11 @@ Officers adapt their DM frequency and detail level based on the Captain's prefer
 
 ### Captain ↔ Officer (Telegram DM)
 - Captain DMs your bot → you receive it via Channels plugin → reply with the `reply` tool
-- **React first:** On every incoming Captain message, react with an appropriate emoji before processing. See `memory/skills/evolved/telegram-communication.md`.
+- **React first:** On every incoming Captain message, react with an appropriate emoji before processing. See `memory/skills/telegram-communication.md`.
 - **Always thread:** Pass `reply_to` with the Captain's `message_id` on every reply.
 - **Voice messages are automatic** when enabled in `instance/config/product.yml`. A post-reply hook generates and sends voice after every reply. No manual action needed.
 - **When the Captain needs to act** (approve a deploy, make a decision, unblock you): DM the Captain directly. Don't post action-required items to the group.
-- **Formatting:** See the telegram-communication skill (`memory/skills/evolved/telegram-communication.md`) for formatting rules, file sending, and image generation.
+- **Formatting:** See the telegram-communication skill (`memory/skills/telegram-communication.md`) for formatting rules, file sending, and image generation.
 
 ### Group Chat (Warroom) — Broadcast Only
 - The group is a **one-way newsfeed**. Officers post updates, briefings, alerts, and completed work. The Captain reads it.
@@ -439,7 +439,7 @@ The Cabinet uses **local MCP servers with API tokens** (configured in `.mcp.json
 
 ## Model Routing
 
-- **Officers:** Opus 4.6 for strategic thinking and complex decisions
+- **Officers:** Opus 4.7 for strategic thinking and complex decisions
 - **Crew (Agent Teams):** Sonnet 4.6 for execution. Set explicitly in spawn prompts.
 
 ## Compact Instructions
