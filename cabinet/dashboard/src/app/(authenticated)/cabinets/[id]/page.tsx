@@ -20,7 +20,10 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getDashboardConfig } from '@/lib/config'
 import CabinetDetailClient from './cabinet-detail-client'
-import type { CabinetRow } from '@/components/cabinets/cabinet-list'
+import { STATE_LABELS } from '@/lib/provisioning/labels'
+import { getAuditEvents } from '@/lib/provisioning/audit'
+import { query } from '@/lib/db'
+import type { CabinetRow } from '@/lib/provisioning/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,22 +62,12 @@ async function fetchCabinetDetail(
   }
 }
 
-async function fetchAuditEvents(
-  id: string,
-  cookieHeader: string,
-  baseUrl: string,
-): Promise<AuditEvent[]> {
-  // Last 3 events — provisioning-status route (PR 5 streams this live;
-  // PR 2 fetches once per page load)
+async function fetchAuditEvents(id: string): Promise<AuditEvent[]> {
+  // PR 5: query audit events directly (server component — no HTTP hop needed)
   try {
-    // NOTE: The provisioning-status endpoint from PR 1 is an SSE stub.
-    // For PR 2, we call the cabinet detail endpoint only (which carries state).
-    // Audit events would require a dedicated endpoint — using the provisioning
-    // events table via a lite query endpoint. Since that endpoint ships in PR 5,
-    // PR 2 returns an empty array here and renders a placeholder.
-    // TODO (PR 5): Wire to GET /api/cabinets/:id/audit-events?limit=3
-    void id; void cookieHeader; void baseUrl
-    return []
+    const events = await getAuditEvents(id)
+    // Return last 3 for the summary panel; full log is at /cabinets/:id/log
+    return events.slice(-3) as AuditEvent[]
   } catch {
     return []
   }
@@ -91,18 +84,6 @@ function formatDate(iso: string): string {
   } catch {
     return iso
   }
-}
-
-const STATE_LABELS: Record<string, { dot: string; text: string; label: string }> = {
-  'creating':      { dot: 'bg-amber-400', text: 'text-amber-400', label: 'Creating' },
-  'adopting-bots': { dot: 'bg-amber-400', text: 'text-amber-400', label: 'Adopting bots' },
-  'provisioning':  { dot: 'bg-blue-400',  text: 'text-blue-400',  label: 'Provisioning' },
-  'starting':      { dot: 'bg-blue-400',  text: 'text-blue-400',  label: 'Starting' },
-  'active':        { dot: 'bg-green-400', text: 'text-green-400', label: 'Active' },
-  'suspended':     { dot: 'bg-zinc-500',  text: 'text-zinc-400',  label: 'Suspended' },
-  'failed':        { dot: 'bg-red-500',   text: 'text-red-400',   label: 'Failed' },
-  'archiving':     { dot: 'bg-orange-400',text: 'text-orange-400',label: 'Archiving' },
-  'archived':      { dot: 'bg-zinc-600',  text: 'text-zinc-500',  label: 'Archived' },
 }
 
 function StateBadge({ state }: { state: string }) {
@@ -140,7 +121,7 @@ export default async function CabinetDetailPage({
 
   const [cabinetResult, auditEvents] = await Promise.all([
     fetchCabinetDetail(id, cookieHeader, baseUrl),
-    fetchAuditEvents(id, cookieHeader, baseUrl),
+    fetchAuditEvents(id),
   ])
 
   if (!cabinetResult.ok || cabinetResult.message === '404') {
@@ -190,16 +171,20 @@ export default async function CabinetDetailPage({
         </div>
       )}
 
-      {/* Live status — PR 2 uses 5s polling stub; SSE is PR 5 */}
+      {/* Live status — PR 5: real SSE subscription */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500">
             Live Status
           </h2>
-          <span className="text-xs text-zinc-600 italic">
-            {/* TODO (PR 5): replace polling with SSE subscription */}
-            Auto-refreshes every 5s
-          </span>
+          {cabinet.state === 'failed' && (
+            <Link
+              href={`/cabinets/${id}/log`}
+              className="text-xs text-red-400 hover:text-red-300 underline underline-offset-2"
+            >
+              View provisioning log
+            </Link>
+          )}
         </div>
         {/* CabinetDetailClient handles polling + actions */}
         <CabinetDetailClient
@@ -228,12 +213,20 @@ export default async function CabinetDetailPage({
 
       {/* Audit trail (last 3 events) */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-4">
-          Recent Events
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500">
+            Recent Events
+          </h2>
+          <Link
+            href={`/cabinets/${id}/log`}
+            className="text-xs text-zinc-500 hover:text-zinc-300 underline underline-offset-2"
+          >
+            View full log
+          </Link>
+        </div>
         {auditEvents.length === 0 ? (
           <p className="text-xs text-zinc-600">
-            Audit event display wires in PR 5 (requires the audit events query endpoint).
+            No provisioning events recorded yet.
           </p>
         ) : (
           <div className="space-y-3">

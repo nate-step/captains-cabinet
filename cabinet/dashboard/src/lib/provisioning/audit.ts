@@ -4,10 +4,16 @@
  * Writes rows to cabinet_provisioning_events. Every state transition,
  * bot adoption, and error goes through here. Payload is scrubbed of
  * secrets before insert.
+ *
+ * PR 5: After each insert, publishes the event to Redis Pub/Sub channel
+ * `cabinet:events:<cabinet_id>` so the SSE stream endpoint can forward it
+ * to connected clients without polling. The SSE endpoint subscribes to this
+ * channel via ioredis SUBSCRIBE.
  */
 
 import { query } from '@/lib/db'
 import type { CabinetState } from './state-machine'
+import redis from '@/lib/redis'
 
 export type EntryPoint = 'dashboard' | 'telegram' | 'worker' | 'system'
 
@@ -78,6 +84,26 @@ export async function writeAuditEvent(event: AuditEventInput): Promise<void> {
         event.error ?? null,
       ]
     )
+    // PR 5: Publish to Redis Pub/Sub so SSE consumers receive state transitions
+    // without polling. The channel name matches what the SSE endpoint subscribes to.
+    // Best-effort: publish failures are logged but never crash provisioning.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = redis as any
+      if (typeof r.publish === 'function') {
+        const pubPayload = JSON.stringify({
+          cabinet_id: event.cabinet_id,
+          event_type: event.event_type,
+          state_before: event.state_before ?? null,
+          state_after: event.state_after ?? null,
+          error: event.error ?? null,
+          timestamp: new Date().toISOString(),
+        })
+        await r.publish(`cabinet:events:${event.cabinet_id}`, pubPayload)
+      }
+    } catch (pubErr) {
+      console.warn('[provisioning/audit] Redis publish failed (non-fatal)', pubErr)
+    }
   } catch (err) {
     // Audit failures must not halt the provisioning flow
     console.error('[provisioning/audit] writeAuditEvent failed', err)
