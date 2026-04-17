@@ -236,4 +236,100 @@ if [ -d "$CONTEXTS_DIR" ]; then
   fi
 fi
 
+# ============================================================
+# 9. MCP SCOPE ENFORCEMENT (Phase 1 CP5)
+# ============================================================
+# cabinet/mcp-scope.yml declares which MCP servers each hired agent may
+# reach. On every MCP tool call (tool_name starts with 'mcp__'), the
+# hook derives the server name and rejects the call if it is not in the
+# acting officer's scope.
+#
+# Cache: /tmp/cabinet-mcp-scope.tsv (officer\tcsv-of-mcps), rebuilt when
+# the yaml is newer than the cache. Same pattern as context cache.
+
+MCP_SCOPE_FILE="/opt/founders-cabinet/cabinet/mcp-scope.yml"
+MCP_SCOPE_CACHE="/tmp/cabinet-mcp-scope.tsv"
+
+if [ -f "$MCP_SCOPE_FILE" ] && echo "$TOOL_NAME" | grep -q '^mcp__'; then
+  # Rebuild cache if stale. Cache format per line:
+  #   agent\tmcp1,mcp2,...
+  # Universals from yaml's top-level 'universal:' list are merged into every
+  # agent's set at build time, so the hook's membership check stays a single
+  # string lookup per tool call.
+  if [ ! -f "$MCP_SCOPE_CACHE" ] || [ "$MCP_SCOPE_FILE" -nt "$MCP_SCOPE_CACHE" ]; then
+    python3 - "$MCP_SCOPE_FILE" "$MCP_SCOPE_CACHE" <<'PY' 2>/dev/null || true
+import re, sys
+src, dst = sys.argv[1], sys.argv[2]
+text = open(src).read()
+out = []
+section = None
+cur_agent = None
+universals = []
+# First pass: collect universals
+for line in text.splitlines():
+    m = re.match(r'^universal:\s*\[([^\]]*)\]', line)
+    if m:
+        universals = [x.strip() for x in m.group(1).split(',') if x.strip()]
+        break
+# Second pass: parse agents/scaffolds
+for line in text.splitlines():
+    if re.match(r'^(agents|scaffolds):\s*$', line):
+        section = line.split(':',1)[0]
+        continue
+    # Reset section when any other top-level key is hit
+    if re.match(r'^[A-Za-z]', line):
+        if not re.match(r'^(agents|scaffolds):\s*$', line):
+            section = None
+        continue
+    if section and re.match(r'^  [A-Za-z][A-Za-z0-9_-]*:\s*$', line):
+        cur_agent = line.strip().rstrip(':')
+        continue
+    if cur_agent and re.match(r'^\s+mcps:\s*\[', line):
+        mcps_raw = line.split('[',1)[1].split(']',1)[0]
+        mcps = [m.strip() for m in mcps_raw.split(',') if m.strip()]
+        # Merge universals (deduped, order preserved with agent's own first)
+        seen = set(mcps)
+        for u in universals:
+            if u not in seen:
+                mcps.append(u)
+                seen.add(u)
+        out.append(f"{cur_agent}\t{','.join(mcps)}")
+        cur_agent = None
+with open(dst, 'w') as f:
+    f.write('\n'.join(out) + '\n')
+PY
+  fi
+
+  # Resolve acting officer
+  AGENT_KEY="${OFFICER:-unknown}"
+  ALLOWED=$(awk -F'\t' -v a="$AGENT_KEY" '$1==a{print $2; exit}' "$MCP_SCOPE_CACHE" 2>/dev/null)
+
+  # Derive MCP server from tool_name. Formats observed:
+  #   mcp__<server>__<tool>                      (e.g. mcp__notion__API-post-page)
+  #   mcp__plugin_<server>_<server>__<tool>      (e.g. mcp__plugin_telegram_telegram__reply)
+  #   mcp__claude_ai_<Service>__<tool>           (e.g. mcp__claude_ai_Google_Drive__authenticate)
+  # Note: assumes single-token server names. Multi-word plugin names
+  # (e.g. a hypothetical mcp__plugin_google_drive_google_drive__...) would
+  # truncate to 'google' under current parser. None in use today.
+  MCP_SERVER=$(echo "$TOOL_NAME" | awk -F'__' '{print $2}')
+  case "$MCP_SERVER" in
+    plugin_*) MCP_SERVER=$(echo "$MCP_SERVER" | sed 's/^plugin_//' | awk -F'_' '{print $1}') ;;
+    claude_ai_*) MCP_SERVER=$(echo "$MCP_SERVER" | sed 's/^claude_ai_//' | tr '[:upper:]' '[:lower:]') ;;
+  esac
+
+  if [ -z "$ALLOWED" ]; then
+    # Unknown officer — fail-warn (not fail-open, not fail-closed). Hard block
+    # would brick hiring flows when a new officer starts before mcp-scope.yml
+    # is updated; silent allow hides configuration drift. Warn + allow lets
+    # the call through while surfacing the gap for the retro.
+    echo "WARN: mcp-scope — officer '$AGENT_KEY' has no entry in cabinet/mcp-scope.yml. Allowing '$MCP_SERVER' call. Add an entry to enforce scope." >&2
+  else
+    # Check membership
+    if ! echo ",$ALLOWED," | grep -qi ",${MCP_SERVER}," ; then
+      echo "BLOCKED: MCP scope check — officer '$OFFICER' is not scoped for MCP server '$MCP_SERVER'. Allowed: $ALLOWED. Edit cabinet/mcp-scope.yml to grant access."
+      exit 2
+    fi
+  fi
+fi
+
 exit 0
