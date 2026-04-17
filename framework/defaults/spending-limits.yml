@@ -1,0 +1,53 @@
+# =============================================================
+# Founder's Cabinet — Spending Limits (framework defaults)
+# =============================================================
+# Per-officer and cabinet-wide daily caps on Anthropic API spend.
+# These values ship with the framework and protect forkers from
+# runaway cost without any configuration.
+#
+# To override for your own Cabinet, copy the `spending_limits:` block
+# into `instance/config/platform.yml` and change the values. The instance
+# config wins over framework defaults. Setting any cap to `0` disables
+# enforcement for that scope.
+#
+# Enforcement lives in `cabinet/scripts/hooks/pre-tool-use.sh`. When a
+# tool call would put the officer or cabinet over cap, the hook:
+#   1. Prints a one-line reason to stderr naming the officer, current
+#      spend, the cap, and the override path (platform.yml).
+#   2. Exits non-zero — the tool call is blocked.
+#   3. Still permits a narrow Telegram whitelist so the blocked officer
+#      can DM the Captain "I'm over budget, need a raise" instead of
+#      going silently dark. See `telegram_whitelist_*` below.
+#
+# Origin: framework-backlog FW-002 (2026-04-17 silent-block incident).
+# =============================================================
+
+spending_limits:
+  # Daily USD cap per individual officer. Applies to each officer independently.
+  # Typical ratio: ~3x your planned average daily spend per officer.
+  # Set to 0 to disable per-officer enforcement.
+  daily_per_officer_usd: 75
+
+  # Daily USD cap across ALL officers combined (sum over the whole Cabinet).
+  # Typical ratio: ~4-5x per_officer cap for a 4-5 officer Cabinet.
+  # Set to 0 to disable cabinet-wide enforcement.
+  daily_cabinet_wide_usd: 300
+
+  # Coordinating officer (CoS) carve-out.
+  # CoS pays structural trigger-routing overhead — every officer handoff,
+  # every Captain DM, every briefing passes through CoS. Without a carve-out
+  # CoS hits the per-officer cap first even when other officers are idle.
+  # Value is a multiplier on `daily_per_officer_usd`. CoS's effective cap
+  # is per_officer × multiplier. Set to 1.0 to disable the carve-out.
+  coordinating_officer_multiplier: 3.0
+
+  # Telegram whitelist. When an officer is over cap, these MCP tools are
+  # still permitted so the officer can communicate the block upstream
+  # instead of silently disappearing. Without this, an over-cap officer
+  # cannot even DM the Captain that they're stuck.
+  telegram_whitelist_enabled: true
+
+  # Sub-cap on whitelist calls per officer per hour. Prevents a runaway
+  # loop from spamming Telegram once the officer is otherwise blocked.
+  # 10 is enough for one or two SOS messages plus a follow-up reply.
+  telegram_whitelist_hourly_cap: 10

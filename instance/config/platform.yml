@@ -21,6 +21,25 @@ captain_timezone: Europe/Berlin       # CEST/CET — auto-adjusts for DST
 captain_telegram_chat_id: "8631324091"
 
 # =============================================================
+# Spending Limits — daily caps on Anthropic API spend
+# =============================================================
+# Per-officer and cabinet-wide caps enforced by pre-tool-use.sh.
+# Framework ships safe defaults at framework/defaults/spending-limits.yml;
+# this block overrides them for THIS Cabinet. Any key set to 0 disables
+# enforcement for that scope. When a cap blocks, the hook prints the
+# reason on stderr; Telegram reply/react/group always bypass the gate
+# so an over-cap officer can DM the Captain for a raise.
+#
+# Background: FW-002 in shared/cabinet-framework-backlog.md; incident
+# 2026-04-17 — CoS bricked for ~15 min by silent over-cap block.
+spending_limits:
+  daily_per_officer_usd: 0            # 0 = unlimited for Captain's own Cabinet
+  daily_cabinet_wide_usd: 0           # 0 = unlimited
+  coordinating_officer_multiplier: 3.0  # Framework default, harmless when caps = 0
+  telegram_whitelist_enabled: true    # Always-on safety net, cheap to keep enabled
+  telegram_whitelist_hourly_cap: 10
+
+# =============================================================
 # Founder Accountability — how officers push on blocking issues
 # =============================================================
 # Officers ask the Captain for commitment dates on founder-action items,

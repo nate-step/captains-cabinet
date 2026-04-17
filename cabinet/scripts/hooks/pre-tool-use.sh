@@ -31,27 +31,232 @@ if [ "$KILLSWITCH" = "active" ]; then
 fi
 
 # ============================================================
-# 2. DAILY SPENDING LIMIT CHECK
+# 2. DAILY SPENDING LIMIT CHECK (FW-002)
 # ============================================================
+# Caps read from instance/config/platform.yml → spending_limits (this Cabinet
+# overrides); framework defaults at framework/defaults/spending-limits.yml.
+# Any cap key set to 0 disables enforcement for that scope.
+#
+# Four contracts (all must hold; regressions break the framework for forkers):
+#   (a) Every non-zero exit prints a one-line reason to stderr naming the
+#       officer, current spend, the cap, and the override path.
+#   (b) Telegram reply/react/send-to-group always bypass the gate (subject
+#       to a separate hourly sub-cap) so a blocked officer can still DM
+#       "I'm over budget, need a raise" instead of going silently dark.
+#   (c) Coordinating officer (cos) gets a 3× multiplier on the per-officer
+#       cap because trigger routing is structural overhead other officers
+#       don't pay. Configurable via coordinating_officer_multiplier.
+#   (d) When config or Redis is unreachable, fail-open with a stderr warn.
+#       Silent-brick is never acceptable; ambiguous configuration should
+#       surface, not disappear.
+#
+# Source of truth for realized spend: cabinet:cost:tokens:daily:$DATE HSET,
+# written by stop-hook.sh from API usage × Opus 4.7 pricing. Legacy
+# cabinet:cost:daily:$DATE byte-count estimate is no longer consulted;
+# CTO's 14:18 2026-04-17 fix corrected the formula.
+#
+# Background: shared/cabinet-framework-backlog.md FW-002; incident
+# 2026-04-17 — CoS bricked for ~15 min when a cap bit silently.
+
 TODAY=$(date -u +%Y-%m-%d)
-DAILY_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:daily:$TODAY" 2>/dev/null)
-DAILY_COST=${DAILY_COST:-0}
+OFFICER="${OFFICER:-${OFFICER_NAME:-unknown}}"
 
-DAILY_LIMIT=30000
-if [ "$DAILY_COST" -ge "$DAILY_LIMIT" ] 2>/dev/null; then
-  echo "DAILY SPENDING LIMIT REACHED. Alert the Captain."
-  exit 2
+# -- Telegram whitelist short-circuit (contract b) --------------------
+# A narrow set of user-facing tools must reach the Captain even when the
+# officer is otherwise capped. Rate-limited so the whitelist cannot be
+# looped-abused.
+IS_TELEGRAM_COMMS=0
+case "$TOOL_NAME" in
+  mcp__plugin_telegram_telegram__reply|mcp__plugin_telegram_telegram__react)
+    IS_TELEGRAM_COMMS=1
+    ;;
+  Bash)
+    _CMD_CHECK=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+    # Tight word-boundary match so `my-send-to-group.shrug` can't false-positive
+    echo "$_CMD_CHECK" | grep -qE '(^|[[:space:]/])send-to-group\.sh([[:space:]]|$)' && IS_TELEGRAM_COMMS=1
+    ;;
+esac
+
+# -- Parse caps (fail-open + warn on config trouble, contract d) -------
+SPENDING_CONFIG_CACHE="/tmp/cabinet-spending-limits.tsv"
+PLATFORM_YML="/opt/founders-cabinet/instance/config/platform.yml"
+FRAMEWORK_DEFAULTS_YML="/opt/founders-cabinet/framework/defaults/spending-limits.yml"
+
+# Rebuild cache when either yaml has been touched since last build, the
+# cache is missing, OR a yaml that was present at last rebuild has been
+# removed (marker file tracks instance presence — without it a deleted
+# platform.yml would keep stale instance values in cache indefinitely).
+# Instance wins; framework defaults fill the gaps.
+_REBUILD=0
+_INSTANCE_MARKER="${SPENDING_CONFIG_CACHE}.instance-exists"
+if [ ! -f "$SPENDING_CONFIG_CACHE" ]; then
+  _REBUILD=1
+else
+  [ -f "$PLATFORM_YML" ] && [ "$PLATFORM_YML" -nt "$SPENDING_CONFIG_CACHE" ] && _REBUILD=1
+  [ -f "$FRAMEWORK_DEFAULTS_YML" ] && [ "$FRAMEWORK_DEFAULTS_YML" -nt "$SPENDING_CONFIG_CACHE" ] && _REBUILD=1
+  # yaml disappearance: marker says it existed last time, now it doesn't
+  [ -f "$_INSTANCE_MARKER" ] && [ ! -f "$PLATFORM_YML" ] && _REBUILD=1
 fi
 
-# Per-officer daily limit
-OFFICER="${OFFICER_NAME:-unknown}"
-OFFICER_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:officer:$OFFICER:$TODAY" 2>/dev/null)
-OFFICER_COST=${OFFICER_COST:-0}
-OFFICER_LIMIT=7500
-if [ "$OFFICER_COST" -ge "$OFFICER_LIMIT" ] 2>/dev/null; then
-  echo "OFFICER DAILY LIMIT REACHED ($OFFICER). Pause non-critical work and alert the Captain."
-  exit 2
+if [ "$_REBUILD" = "1" ]; then
+  if ! python3 - "$PLATFORM_YML" "$FRAMEWORK_DEFAULTS_YML" "$SPENDING_CONFIG_CACHE" <<'PY' 2>/dev/null
+import re, sys
+instance, default, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+
+def parse(path):
+    out = {}
+    if not path:
+        return out
+    try:
+        text = open(path).read()
+    except FileNotFoundError:
+        return out
+    in_block = False
+    for raw in text.splitlines():
+        # Normalize trailing whitespace including CR from CRLF files — without
+        # this, "true\r" survives into shell and breaks the `true` check.
+        line = raw.rstrip('\r\t ')
+        if re.match(r'^spending_limits:\s*$', line):
+            in_block = True
+            continue
+        if in_block:
+            # End of block: any top-level key (no leading whitespace) that isn't blank/comment
+            if line and not line.startswith((' ', '\t')) and not line.lstrip().startswith('#'):
+                break
+            m = re.match(r'^\s+([a-z_]+):\s*([^\s#][^#]*?)?\s*(#.*)?$', line)
+            if m:
+                k = m.group(1)
+                v = (m.group(2) or '').strip().rstrip('\r')
+                # Strip surrounding quotes
+                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                    v = v[1:-1]
+                out[k] = v
+    return out
+
+cfg = parse(default)           # framework defaults first
+cfg.update(parse(instance))    # instance overrides wins
+
+with open(dst, 'w') as f:
+    for k, v in cfg.items():
+        f.write(f"{k}\t{v}\n")
+PY
+  then
+    # Parser crashed (missing python3, broken yaml, permissions on /tmp,
+    # whatever). Fail-open with warn — silent-brick is never acceptable
+    # (FW-002 contract d).
+    echo "pre-tool-use: WARN spending-limits parser failed, using hardcoded framework defaults (\$75/officer, \$300/cabinet)" >&2
+  fi
+  # Track whether platform.yml existed at the time of this rebuild so a
+  # subsequent deletion triggers rebuild instead of leaving stale values.
+  if [ -f "$PLATFORM_YML" ]; then
+    touch "$_INSTANCE_MARKER" 2>/dev/null
+  else
+    rm -f "$_INSTANCE_MARKER" 2>/dev/null
+  fi
 fi
+
+# Read each key with a sane hardcoded fallback (for the case where parsing
+# failed entirely and the cache is empty). Fallback values match framework
+# defaults so a broken cache still gets forker-safe behavior.
+_cfg_get() {
+  local key="$1" fallback="$2"
+  local v
+  v=$(awk -F'\t' -v k="$key" '$1==k{print $2; exit}' "$SPENDING_CONFIG_CACHE" 2>/dev/null)
+  [ -z "$v" ] && v="$fallback"
+  echo "$v"
+}
+
+PER_OFF_CAP_USD=$(_cfg_get daily_per_officer_usd 75)
+CABINET_CAP_USD=$(_cfg_get daily_cabinet_wide_usd 300)
+COS_MULT=$(_cfg_get coordinating_officer_multiplier 3.0)
+TG_WHITELIST_ON=$(_cfg_get telegram_whitelist_enabled true)
+TG_HOURLY_CAP=$(_cfg_get telegram_whitelist_hourly_cap 10)
+
+# Coerce non-numeric values to 0 (unlimited) rather than crash. If caps are
+# garbage, fail-open + warn.
+case "$PER_OFF_CAP_USD" in *[!0-9.]*|'') PER_OFF_CAP_USD=0 ;; esac
+case "$CABINET_CAP_USD" in *[!0-9.]*|'') CABINET_CAP_USD=0 ;; esac
+case "$COS_MULT" in *[!0-9.]*|'') COS_MULT=1 ;; esac
+case "$TG_HOURLY_CAP" in *[!0-9]*|'') TG_HOURLY_CAP=10 ;; esac
+
+# Convert cap USD → cap micro-dollars for integer arithmetic with Redis data.
+# awk handles decimals. Result is integer micro-dollars.
+PER_OFF_CAP_MICRO=$(awk -v v="$PER_OFF_CAP_USD" 'BEGIN{printf "%.0f", v*1000000}')
+CABINET_CAP_MICRO=$(awk -v v="$CABINET_CAP_USD" 'BEGIN{printf "%.0f", v*1000000}')
+
+# CoS carve-out (contract c)
+EFFECTIVE_PER_OFF_CAP_MICRO=$PER_OFF_CAP_MICRO
+if [ "$OFFICER" = "cos" ] && [ "$PER_OFF_CAP_MICRO" -gt 0 ] 2>/dev/null; then
+  EFFECTIVE_PER_OFF_CAP_MICRO=$(awk -v c="$PER_OFF_CAP_MICRO" -v m="$COS_MULT" 'BEGIN{printf "%.0f", c*m}')
+fi
+
+# -- If this call is a Telegram comms whitelist tool, apply hourly sub-cap
+# only (contract b) and exit 0 without checking the main cap.
+if [ "$IS_TELEGRAM_COMMS" = "1" ] && [ "$TG_WHITELIST_ON" = "true" ]; then
+  # When OFFICER is empty or unknown, don't enforce the hourly sub-cap —
+  # an unknown-officer session sharing one global bucket would false-block
+  # Telegram across every misconfigured session at once, recreating the
+  # exact "silent-dark" failure FW-002 is meant to prevent. Fail-open + warn.
+  if [ -z "$OFFICER" ] || [ "$OFFICER" = "unknown" ]; then
+    echo "pre-tool-use: WARN telegram whitelist skipping hourly sub-cap (OFFICER env unset/unknown)" >&2
+    _SKIP_MAIN_CAP=1
+  else
+    _HOUR_BUCKET=$(date -u +%Y%m%d%H)
+    _TG_KEY="cabinet:tg-whitelist:${OFFICER}:${_HOUR_BUCKET}"
+    _TG_COUNT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "$_TG_KEY" 2>/dev/null)
+    # Set TTL on first hit; subsequent INCRs keep the existing TTL.
+    [ "$_TG_COUNT" = "1" ] && redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "$_TG_KEY" 3900 > /dev/null 2>&1
+    if [ -n "$_TG_COUNT" ] && [ "$_TG_COUNT" -gt "$TG_HOURLY_CAP" ] 2>/dev/null; then
+      echo "pre-tool-use: BLOCKED — officer=$OFFICER telegram whitelist hourly sub-cap exceeded ($_TG_COUNT > $TG_HOURLY_CAP). Override: instance/config/platform.yml → spending_limits.telegram_whitelist_hourly_cap" >&2
+      exit 2
+    fi
+    # Whitelisted and under sub-cap: skip main-cap enforcement and proceed.
+    # Fall through to other sections (kill switch already passed, prohibited
+    # actions still checked below, etc.).
+    _SKIP_MAIN_CAP=1
+  fi
+fi
+
+# -- Main cap enforcement (contract a: explicit stderr on every block) --
+if [ "${_SKIP_MAIN_CAP:-0}" != "1" ]; then
+
+  # Per-officer cap
+  if [ "$EFFECTIVE_PER_OFF_CAP_MICRO" -gt 0 ] 2>/dev/null; then
+    OFFICER_COST_MICRO=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "cabinet:cost:tokens:daily:$TODAY" "${OFFICER}_cost_micro" 2>/dev/null)
+    OFFICER_COST_MICRO=${OFFICER_COST_MICRO:-0}
+    case "$OFFICER_COST_MICRO" in *[!0-9]*|'') OFFICER_COST_MICRO=0 ;; esac
+    if [ "$OFFICER_COST_MICRO" -ge "$EFFECTIVE_PER_OFF_CAP_MICRO" ] 2>/dev/null; then
+      OFFICER_COST_USD=$(awk -v v="$OFFICER_COST_MICRO" 'BEGIN{printf "%.2f", v/1000000}')
+      EFFECTIVE_CAP_USD=$(awk -v v="$EFFECTIVE_PER_OFF_CAP_MICRO" 'BEGIN{printf "%.2f", v/1000000}')
+      _NOTE=""
+      [ "$OFFICER" = "cos" ] && [ "$(awk -v m="$COS_MULT" 'BEGIN{print (m>1)}')" = "1" ] && _NOTE=" (includes CoS ${COS_MULT}× coordinator multiplier)"
+      echo "pre-tool-use: BLOCKED — officer=$OFFICER today=\$$OFFICER_COST_USD cap=\$${EFFECTIVE_CAP_USD}${_NOTE}. Override: instance/config/platform.yml → spending_limits.daily_per_officer_usd (0 = unlimited). Telegram tools still allowed to reach Captain." >&2
+      exit 2
+    fi
+  fi
+
+  # Cabinet-wide cap
+  if [ "$CABINET_CAP_MICRO" -gt 0 ] 2>/dev/null; then
+    CABINET_COST_MICRO=0
+    while IFS= read -r fld; do
+      [ -z "$fld" ] && continue
+      case "$fld" in *_cost_micro)
+        v=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "cabinet:cost:tokens:daily:$TODAY" "$fld" 2>/dev/null)
+        v=${v:-0}
+        case "$v" in *[!0-9]*|'') v=0 ;; esac
+        CABINET_COST_MICRO=$((CABINET_COST_MICRO + v))
+        ;;
+      esac
+    done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HKEYS "cabinet:cost:tokens:daily:$TODAY" 2>/dev/null)
+    if [ "$CABINET_COST_MICRO" -ge "$CABINET_CAP_MICRO" ] 2>/dev/null; then
+      CABINET_COST_USD=$(awk -v v="$CABINET_COST_MICRO" 'BEGIN{printf "%.2f", v/1000000}')
+      CABINET_CAP_USD_PRINT=$(awk -v v="$CABINET_CAP_MICRO" 'BEGIN{printf "%.2f", v/1000000}')
+      echo "pre-tool-use: BLOCKED — cabinet-wide today=\$$CABINET_COST_USD cap=\$$CABINET_CAP_USD_PRINT. Override: instance/config/platform.yml → spending_limits.daily_cabinet_wide_usd (0 = unlimited). Telegram tools still allowed to reach Captain." >&2
+      exit 2
+    fi
+  fi
+fi
+unset _SKIP_MAIN_CAP
 
 # ============================================================
 # 3. PROHIBITED ACTIONS

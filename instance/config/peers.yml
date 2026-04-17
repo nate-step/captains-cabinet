@@ -29,10 +29,10 @@
 peers:
   personal:
     role: personal-cabinet
-    endpoint: stdio:/opt/founders-cabinet/cabinet/mcp-server/server.py
+    endpoint: stdio:/opt/founders-cabinet-personal/cabinet/mcp-server/server.py
     capacity: personal
     trust_level: high
-    consented_by_captain: false
+    consented_by_captain: true
     allowed_tools:
       - identify
       - presence
@@ -40,8 +40,7 @@ peers:
       - send_message
       - request_handoff
     notes: >
-      Placeholder for when Captain stands up Personal Cabinet.
-      Leave consented_by_captain=false until provisioning is complete
-      AND Captain has explicitly enabled inter-Cabinet comms.
-      When flipping to true: verify the Personal Cabinet's own peers.yml
-      lists this Work Cabinet with the same allowed_tools reciprocity.
+      Personal Cabinet provisioned 2026-04-17 per Captain msg 1453 (A-D run).
+      Endpoint points at Personal Cabinet's server.py (the one this Work
+      Cabinet calls into). Personal Cabinet has its own peers.yml with a
+      reciprocal work entry.
