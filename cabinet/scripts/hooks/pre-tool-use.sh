@@ -332,4 +332,98 @@ PY
   fi
 fi
 
+# ============================================================
+# 10. CABINET MCP INTER-CABINET TRUST POLICY (Phase 2 CP4)
+# ============================================================
+# When a tool call targets the Cabinet MCP (mcp__cabinet__*) AND crosses
+# Cabinets (send_message / request_handoff), enforce trust policy from
+# instance/config/peers.yml:
+#   - target peer must exist in peers.yml
+#   - consented_by_captain must be true
+#   - the tool must be in that peer's allowed_tools list
+#
+# Cache: /tmp/cabinet-peers.tsv (peer_id<TAB>consented<TAB>allowed_tools_csv)
+# rebuilt when peers.yml is newer than cache (same pattern as CP2 contexts).
+#
+# Tools that DON'T cross Cabinets (local self-query): identify, presence,
+# availability. No peer check for those.
+
+PEERS_FILE="/opt/founders-cabinet/instance/config/peers.yml"
+PEERS_CACHE="/tmp/cabinet-peers.tsv"
+
+if [ -f "$PEERS_FILE" ] && echo "$TOOL_NAME" | grep -q '^mcp__cabinet__'; then
+  # Rebuild cache if stale
+  if [ ! -f "$PEERS_CACHE" ] || [ "$PEERS_FILE" -nt "$PEERS_CACHE" ]; then
+    python3 - "$PEERS_FILE" "$PEERS_CACHE" <<'PY' 2>/dev/null || true
+import re, sys
+src, dst = sys.argv[1], sys.argv[2]
+peers = {}
+current = None
+last_list = None
+for line in open(src):
+    line = line.rstrip()
+    if not line or line.lstrip().startswith('#'):
+        continue
+    if re.match(r'^peers:\s*$', line):
+        continue
+    m = re.match(r'^  ([A-Za-z][A-Za-z0-9_-]*):\s*$', line)
+    if m:
+        current = m.group(1); peers[current] = {}; last_list = None; continue
+    if current is None:
+        continue
+    mk = re.match(r'^\s{4,}([a-z_]+):\s*(.*)$', line)
+    if mk:
+        k, v = mk.group(1), mk.group(2).strip().strip('"\'')
+        if v.startswith('[') and v.endswith(']'):
+            peers[current][k] = [x.strip() for x in v[1:-1].split(',') if x.strip()]
+            last_list = k
+        elif v.lower() in ('true', 'false'):
+            peers[current][k] = v.lower() == 'true'; last_list = None
+        elif v == '':
+            if k == 'allowed_tools':
+                peers[current][k] = peers[current].get(k, []); last_list = k
+            else:
+                peers[current][k] = ''; last_list = None
+        elif v:
+            peers[current][k] = v; last_list = None
+    elif last_list is not None:
+        lm = re.match(r'^\s{4,}- (.+)$', line)
+        if lm:
+            peers[current].setdefault(last_list, []).append(lm.group(1).strip().strip('"\''))
+with open(dst, 'w') as f:
+    for pid, p in peers.items():
+        consented = 'true' if p.get('consented_by_captain') else 'false'
+        tools = ','.join(p.get('allowed_tools', []))
+        f.write(f"{pid}\t{consented}\t{tools}\n")
+PY
+  fi
+
+  CABINET_TOOL=$(echo "$TOOL_NAME" | sed 's/^mcp__cabinet__//')
+
+  case "$CABINET_TOOL" in
+    send_message|request_handoff)
+      TARGET_PEER=$(echo "$TOOL_INPUT" | jq -r '.to_cabinet // empty' 2>/dev/null)
+      if [ -z "$TARGET_PEER" ]; then
+        echo "BLOCKED: Cabinet MCP $CABINET_TOOL call missing to_cabinet parameter."
+        exit 2
+      fi
+      PEER_LINE=$(awk -F'\t' -v p="$TARGET_PEER" '$1==p{print; exit}' "$PEERS_CACHE" 2>/dev/null)
+      if [ -z "$PEER_LINE" ]; then
+        echo "BLOCKED: peer '$TARGET_PEER' not declared in instance/config/peers.yml."
+        exit 2
+      fi
+      CONSENTED=$(echo "$PEER_LINE" | cut -f2)
+      ALLOWED=$(echo "$PEER_LINE" | cut -f3)
+      if [ "$CONSENTED" != "true" ]; then
+        echo "BLOCKED: peer '$TARGET_PEER' has consented_by_captain=false. Flip to true in peers.yml after Captain provisions the peer."
+        exit 2
+      fi
+      if ! echo ",$ALLOWED," | grep -q ",$CABINET_TOOL," ; then
+        echo "BLOCKED: peer '$TARGET_PEER' allowed_tools does not include '$CABINET_TOOL'. Allowed: $ALLOWED."
+        exit 2
+      fi
+      ;;
+  esac
+fi
+
 exit 0

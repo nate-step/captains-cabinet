@@ -104,7 +104,10 @@ scaffolds:
       Phase 3 never federates personal content.
 
 # MCPs that every hired agent gets by default (convenience shorthand for
-# the hook):
-universal:
-  - telegram
-  - library
+# the hook). Inline bracket-list style — the hook's parser reads this
+# specific format. See pre-tool-use.sh section 9 (universal-merge).
+#
+# `cabinet` grants identify/presence/availability to every agent. Write
+# tools (send_message, request_handoff) are gated per-peer via peers.yml
+# + pre-tool-use.sh section 10 (Phase 2 CP4), so universal access is safe.
+universal: [telegram, library, cabinet]
