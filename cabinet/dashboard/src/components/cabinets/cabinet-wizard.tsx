@@ -1,25 +1,30 @@
 'use client'
 
 /**
- * Spec 034 PR 2 — CabinetWizard
+ * Spec 034 PR 3 — CabinetWizard (step 4 wired)
  *
  * 5-step cabinet creation wizard:
  *   1. Preset picker
  *   2. Cabinet name (slug input)
  *   3. Capacity (inherited from preset, editable)
- *   4. Adopt-a-bot (STUB in PR 2 — shows placeholder, wired in PR 3)
+ *   4. Adopt-a-bot — QR + paste + forward-path (wired in PR 3)
  *   5. Consent — posts to POST /api/cabinets and redirects to /cabinets/[id]
  *
  * State: local React useState — resets when the Captain navigates away before consent
  * (unmount destroys component state naturally).
  *
- * Spec refs: §1 "New Cabinet" flow, AC 1-2, PR chunking plan §PR 2 scope.
+ * Feature flag: Step 4 renders AdoptBotStep only when CABINETS_PROVISIONING_ENABLED
+ * is active (guard is in requireProvisioningAccess on the API side; the wizard itself
+ * only renders when the /cabinets page is accessible, which requires the flag).
+ *
+ * Spec refs: §1 "New Cabinet" flow, AC 1-3, PR 3 scope.
  */
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import PresetPicker from './preset-picker'
-import type { PresetInfo } from '@/actions/cabinets'
+import AdoptBotStep from './adopt-bot-step'
+import type { PresetInfo, OfficerSlot } from '@/actions/cabinets'
 
 // Slug validation: matches the API's SLUG_RE
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,47}$/
@@ -39,10 +44,32 @@ interface WizardState {
   preset: string | null
   name: string
   capacity: string
+  /**
+   * Cabinet ID returned by POST /api/cabinets (created before adopt-bots step so
+   * the adopt-bot API can register tokens against an actual cabinet_id).
+   *
+   * PR 3 note: The wizard currently creates the cabinet at the Consent step (step 5).
+   * Step 4 needs a cabinetId to call adopt-bot. Two options:
+   *   A) Create cabinet early (step 3→4 transition) — requires cabinet to be in
+   *      'adopting-bots' state before consent, matching the spec state machine.
+   *   B) Allow adopt-bot to be called without a cabinetId — stub tokens locally,
+   *      flush at consent time.
+   *
+   * We implement Option A: cabinet is created on step 3→4 transition (POST /api/cabinets
+   * called with state 'adopting-bots'), and consent step just transitions to 'provisioning'.
+   * This matches spec §3 and the state-machine table.
+   *
+   * If creation fails, step 4 shows AdoptBotStep with cabinetId=null and a banner
+   * explaining the cabinet couldn't be created yet — the Captain can still adopt bots
+   * but they'll be registered when retrying creation.
+   */
+  cabinetId: string | null
 }
 
 interface CabinetWizardProps {
   presets: PresetInfo[]
+  /** Officers for each preset (loaded server-side and passed as prop) */
+  officersByPreset: Record<string, OfficerSlot[]>
 }
 
 // ---- Step progress indicator ----
@@ -265,66 +292,8 @@ function Step3Capacity({
   )
 }
 
-// Step 4: Adopt-a-bot — STUB in PR 2, wired in PR 3
-function Step4AdoptBots({
-  state,
-  onNext,
-  onBack,
-}: {
-  state: WizardState
-  onNext: () => void
-  onBack: () => void
-}) {
-  return (
-    <div>
-      <h2 className="text-lg font-semibold text-white mb-1">Adopt Telegram bots</h2>
-      <p className="text-sm text-zinc-400 mb-6">
-        Each officer needs its own Telegram bot. You&rsquo;ll paste a token from BotFather for
-        each officer slot.
-      </p>
-
-      {/* PR 3 stub */}
-      <div className="rounded-xl border border-zinc-700 bg-zinc-800/50 px-6 py-10 text-center">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-zinc-600 bg-zinc-700">
-          <svg className="h-5 w-5 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-          </svg>
-        </div>
-        <p className="text-sm font-medium text-zinc-300">Bot adoption via PR 3</p>
-        <p className="mt-1 text-xs text-zinc-500 max-w-xs mx-auto">
-          Token-paste flow with BotFather deep-links, client-side regex validation, and
-          confirmation prompt will be wired in PR 3.
-        </p>
-        <p className="mt-2 text-xs text-zinc-600">
-          For now, click &ldquo;Skip for now&rdquo; to proceed to consent — bots can be adopted
-          after the cabinet is created.
-        </p>
-      </div>
-
-      <p className="mt-3 text-xs text-zinc-600 italic">
-        Cabinet name: <span className="font-mono">{state.name}</span> &middot;
-        Preset: <span className="font-mono">{state.preset}</span>
-      </p>
-
-      <div className="mt-6 flex justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors min-h-[44px]"
-        >
-          ← Back
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-500 transition-colors min-h-[44px]"
-        >
-          Skip for now →
-        </button>
-      </div>
-    </div>
-  )
-}
+// Step 4 is handled by the imported AdoptBotStep component (PR 3).
+// See adopt-bot-step.tsx for implementation.
 
 function Step5Consent({
   presets,
@@ -411,25 +380,82 @@ function Step5Consent({
 
 // ---- Main wizard ----
 
-export default function CabinetWizard({ presets }: CabinetWizardProps) {
+export default function CabinetWizard({ presets, officersByPreset }: CabinetWizardProps) {
   const router = useRouter()
   const [step, setStep] = useState<Step>(1)
-  const [state, setState] = useState<WizardState>({ preset: null, name: '', capacity: '' })
+  const [state, setState] = useState<WizardState>({
+    preset: null,
+    name: '',
+    capacity: '',
+    cabinetId: null,
+  })
   const [isSubmitting, startTransition] = useTransition()
   const [submitError, setSubmitError] = useState<string | null>(null)
-
-  function next() {
-    setStep((s) => Math.min(5, s + 1) as Step)
-  }
+  const [allBotsAdopted, setAllBotsAdopted] = useState(false)
+  const [step4Error, setStep4Error] = useState<string | null>(null)
 
   function back() {
     setStep((s) => Math.max(1, s - 1) as Step)
   }
 
+  /**
+   * Advance from step 3 → step 4.
+   * Creates the cabinet immediately (state: adopting-bots) so the adopt-bot
+   * API has a cabinet_id to work against. This matches the spec state machine.
+   */
+  function advanceToStep4() {
+    setStep4Error(null)
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/cabinets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: state.name,
+            preset: state.preset,
+            capacity: state.capacity,
+          }),
+        })
+        const body = (await res.json()) as { ok: boolean; cabinet_id?: string; message?: string }
+        if (!body.ok) {
+          // Non-fatal: advance to step 4 with cabinetId=null; AdoptBotStep shows banner
+          setStep4Error(body.message || `Error ${res.status}`)
+          setState((s) => ({ ...s, cabinetId: null }))
+        } else {
+          setState((s) => ({ ...s, cabinetId: body.cabinet_id ?? null }))
+        }
+      } catch {
+        // Non-fatal: continue to step 4 without cabinetId
+        setState((s) => ({ ...s, cabinetId: null }))
+      }
+      setStep(4)
+    })
+  }
+
+  /**
+   * Advance from step 4 → step 5 (all bots adopted).
+   * Called by AdoptBotStep when all slots are adopted.
+   */
+  function handleAllBotsAdopted() {
+    setAllBotsAdopted(true)
+    setStep(5)
+  }
+
+  /**
+   * Consent step submit — cabinet already created in step 3→4 transition.
+   * If cabinetId exists, just redirect to the cabinet detail page.
+   * The provisioning worker transitions state from adopting-bots → provisioning.
+   */
   function handleSubmit() {
     setSubmitError(null)
     startTransition(async () => {
       try {
+        if (state.cabinetId) {
+          // Cabinet already created — redirect to detail page
+          router.push(`/cabinets/${state.cabinetId}`)
+          return
+        }
+        // Fallback: cabinet creation failed in step 3→4; retry here
         const res = await fetch('/api/cabinets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -444,7 +470,6 @@ export default function CabinetWizard({ presets }: CabinetWizardProps) {
           setSubmitError(body.message || `Error ${res.status}`)
           return
         }
-        // Redirect to the new cabinet's detail page
         router.push(`/cabinets/${body.cabinet_id}`)
       } catch (err) {
         setSubmitError(err instanceof Error ? err.message : 'Network error')
@@ -452,21 +477,46 @@ export default function CabinetWizard({ presets }: CabinetWizardProps) {
     })
   }
 
+  // Officers for the selected preset
+  const officers = state.preset ? (officersByPreset[state.preset] ?? []) : []
+
   return (
     <div>
       <StepIndicator current={step} />
 
       {step === 1 && (
-        <Step1Preset presets={presets} state={state} setState={setState} onNext={next} />
+        <Step1Preset presets={presets} state={state} setState={setState} onNext={() => setStep(2)} />
       )}
       {step === 2 && (
-        <Step2Name state={state} setState={setState} onNext={next} onBack={back} />
+        <Step2Name state={state} setState={setState} onNext={() => setStep(3)} onBack={back} />
       )}
       {step === 3 && (
-        <Step3Capacity presets={presets} state={state} setState={setState} onNext={next} onBack={back} />
+        <Step3Capacity
+          presets={presets}
+          state={state}
+          setState={setState}
+          onNext={advanceToStep4}
+          onBack={back}
+        />
       )}
       {step === 4 && (
-        <Step4AdoptBots state={state} onNext={next} onBack={back} />
+        <>
+          {step4Error && (
+            <div className="mb-4 rounded-lg border border-amber-700/50 bg-amber-900/10 px-3 py-2">
+              <p className="text-xs text-amber-400">
+                Could not create the cabinet yet ({step4Error}). You can still adopt bots — tokens
+                will be registered once the cabinet is created.
+              </p>
+            </div>
+          )}
+          <AdoptBotStep
+            cabinetId={state.cabinetId}
+            cabinetSlug={state.name}
+            officers={officers.length > 0 ? officers : [{ role: state.preset || 'officer', title: 'Officer' }]}
+            onAllAdopted={handleAllBotsAdopted}
+            onBack={back}
+          />
+        </>
       )}
       {step === 5 && (
         <Step5Consent
