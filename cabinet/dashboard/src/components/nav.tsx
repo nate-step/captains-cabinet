@@ -7,7 +7,7 @@ import { logout } from '@/actions/auth'
 import ProjectSelector from '@/components/project-selector'
 import ModeToggle from '@/components/mode-toggle'
 import { useDashboardMode } from '@/hooks/use-dashboard-mode'
-import { navForMode } from '@/lib/nav-config'
+import { navForMode, ADVANCED_NAV, type NavLink } from "@/lib/nav-config"
 
 // Map nav link hrefs to their matching icon component.
 // Kept colocated here so icon definitions stay with the nav that uses them.
