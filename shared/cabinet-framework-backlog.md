@@ -28,6 +28,23 @@ _(none)_
 
 ## Proposed / awaiting prioritization
 
+### FW-005 — Cross-Cabinet stdio transport is architecturally broken in containers
+- **Status:** Proposed (discovered 2026-04-17 smoke-testing Work↔Personal after Captain's provisioning).
+- **Problem:** Phase 2 Cabinet MCP designed inter-Cabinet comms as stdio subprocess — spawn the target Cabinet's `server.py` directly from the calling Cabinet. That assumes both Cabinets share a filesystem. In the current containerized deployment each Cabinet runs in its own Docker stack with its own volume mount:
+  ```
+  /opt/founders-cabinet:/opt/founders-cabinet   # Work's mount only
+  ```
+  Work's officers cannot see `/opt/founders-cabinet-personal/cabinet/mcp-server/server.py` — the subprocess spawn fails with "no such file or directory." Personal's officers, once provisioned, will have the opposite problem.
+- **Three fix options:**
+  1. **Dual-mount both containers** (simplest, ~30 min): add `/opt/founders-cabinet-personal:/opt/founders-cabinet-personal` to Work's compose, and `/opt/founders-cabinet:/opt/founders-cabinet` to Personal's compose. Stdio subprocess spawn then works. Containers become aware of each other's filesystems. Trade: containers now share OS-level access to both cabinets, weakening the isolation argument for two-Cabinet setup.
+  2. **Phase 3 HTTP transport** (proper): transition inter-Cabinet from stdio to HTTP per `peers.yml`'s `endpoint: http(s)://...` schema. Requires `cabinet/mcp-server/server.py` to expose an HTTP listener (it's already stdio-first but signatures are HTTP-ready) + Docker compose network exposing port for inter-Cabinet + shared_secret_ref bearer auth. ~1-2 days.
+  3. **Defer inter-Cabinet comms entirely** (pragmatic): the primary Personal-Cabinet value (separate capacity, separate memory, separate coaching) works WITHOUT cross-Cabinet calls. Cross-Cabinet was a Phase 2 nice-to-have. Leave `consented_by_captain: true` in peers.yml but acknowledge the stdio path fails silently at subprocess spawn. Revisit with Phase 3 HTTP.
+- **Recommendation:** Option 3 for today. Personal Cabinet works standalone. File stdio limitation clearly. Option 2 when Phase 3 Federation work begins (and when a concrete use case forces the issue). Option 1 as escape hatch if a use case arrives before Phase 3.
+- **Owner:** CoS (decision framework), CTO (implement chosen option)
+- **Source:** Smoke-test discovery 2026-04-17 16:25 UTC; msg 1457 Captain confirmed Personal yaml done.
+
+---
+
 ### FW-004 — Rename filesystem paths `founders-cabinet` → `captains-cabinet`
 - **Status:** Proposed (Captain caught inconsistency 2026-04-17 msg 1455 during Personal Cabinet provisioning).
 - **Problem:** Captain Decision 2026-04-16 rebranded the product name "Founder's Cabinet" → "Captain's Cabinet" and renamed the GitHub repo, CLAUDE.md references, and taglines. But filesystem paths — `/opt/founders-cabinet`, `/opt/founders-cabinet-personal`, the Docker volume names, every script's hardcoded path — still carry the old name. When Captain stood up Personal Cabinet today he naturally asked "shouldn't this be captains-cabinet?" — yes, it should, and the inconsistency will confuse every forker who follows the provisioning playbook.
