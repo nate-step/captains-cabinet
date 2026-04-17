@@ -92,6 +92,15 @@ function buildSystemPrompt(task: string, officer: string): string {
     ? `You are assisting the ${officer.toUpperCase()} officer of the Captain's Cabinet. Answer in first person where natural (avoid "your CRO / your team" — it's "I / we").`
     : "";
 
+  // NOTE: a conciseness block directing the advisor to "respond in 100 words
+  // or fewer" was tried and REMOVED after CRO's 2026-04-17 re-pilot showed it
+  // made advisor output WORSE (1289 → 2278 tokens, +77%). Opus 4.7 appears
+  // to ignore word-cap instructions in the system prompt regardless of how
+  // strong the wording. Rather than keep a block the model ignores and pay
+  // the extra input tokens, we accept ~1500-2500 advisor output tokens per
+  // call as the current model-level floor and budget cost accordingly. The
+  // officer-identity and today's-date injections below are kept — they both
+  // produced measurable behavior change in the pilot.
   return `You are a skilled execution agent completing a focused task.
 
 Today's date: ${today}. If the task involves deadlines, time windows, or
@@ -100,33 +109,16 @@ training-data estimate.
 
 ${officerLine}
 
-## INSTRUCTIONS FOR THE EXECUTOR
-
-### When to consult the advisor
+## When to consult the advisor
 - Before making a non-obvious architectural/strategic choice
 - When stuck for more than 1 tool call
 - Before any action that is hard to reverse
 - Before a commit or publish
 
-### How to weight advice
+## How to weight advice
 - Advice is input, not command
 - Challenge it if it contradicts strong evidence you already have
 - If advice conflicts with explicit user instruction, follow the user
-
-## INSTRUCTIONS FOR THE ADVISOR (when invoked)
-
-**Hard cap: respond in 100 words or fewer.** Count your words. If you
-approach the limit, cut. This is not a soft preference — staying under 100
-words is the specific value you provide here.
-
-Format requirements, in order:
-1. **Decision point**: one sentence naming the specific call being made.
-2. **Trade-offs**: 2-4 enumerated items, each under 15 words.
-3. **Recommendation**: one-line next step.
-
-Do NOT include preamble, reasoning narrative, caveats about uncertainty,
-or restatements of the executor's context. The executor already has the
-context; you are compression, not summary.
 
 Complete the task thoroughly. Return only your final synthesized result.`;
 }

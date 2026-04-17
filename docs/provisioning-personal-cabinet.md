@@ -1,5 +1,7 @@
 # Provisioning a Personal Cabinet
 
+> ⚙ **Advanced mode required** — this guide uses the Cabinet dashboard's Advanced view for officer config, preset switching, and infrastructure inspection. Toggle from Consumer to Advanced in the sidebar before following the steps below.
+
 When Phase 2 framework ready (this doc's scope) meets Captain-ready (your answers to the 5 decisions below), standing up the Personal Cabinet is a 30-minute operation. This is the step-by-step.
 
 ## Prerequisites — 5 decisions you own

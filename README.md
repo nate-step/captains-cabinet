@@ -8,6 +8,8 @@ The Captain's Cabinet is a framework for running a 24/7 AI development organizat
 
 This repo is the **infrastructure**. It contains the organizational framework, memory system, safety boundaries, and Docker configuration. Your product repo is separate — the Cabinet mounts it as a workspace.
 
+> ⚙ **Dashboard modes** — the Cabinet dashboard ships with a Consumer view (4 cards, natural-language status) as the default and an Advanced view for debugging and infrastructure config. Most user-facing docs in this repo (provisioning, hook tuning, preset authoring) assume Advanced mode. Toggle via the sidebar.
+
 ## How It Works
 
 ```
