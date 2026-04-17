@@ -30,6 +30,18 @@
 # Cost tracking:
 #   cabinet:cost:advisor:$OFFICER  — per-officer last-values HSET (24h TTL)
 #   cabinet:cost:advisor:daily:$DATE — per-officer daily HSET (48h TTL)
+#
+# Caller discipline (CRO pilot 2026-04-17):
+#   - Pass --context with stack facts for any stack-specific question.
+#     Without it, the advisor confabulates from common RN/web patterns
+#     (observed: advisor referenced RevenueCat when Sensed uses expo-iap).
+#     Useful context files: your product's package.json, shared/interfaces/
+#     tech-radar.md, relevant spec or migration plan.
+#   - Budget ~1500-2500 advisor output tokens per call. Opus 4.7 does not
+#     honor word-cap instructions in the system prompt; output size is
+#     task-shape-driven, not prompt-driven.
+#   - Use --expected-calls >=3 only when you genuinely plan multiple
+#     advisor consultations (cache pays off from call 3). Below 3, omit.
 
 set -euo pipefail
 
