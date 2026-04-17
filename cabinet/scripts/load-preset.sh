@@ -27,6 +27,32 @@ log() {
 }
 
 # ---------------------------------------------------------------
+# CABINET_ID validator (Phase 1 CP9b)
+# ---------------------------------------------------------------
+# cabinet_id lands in every officer-produced record. Phase 1 default is
+# 'main' (single-Cabinet deployments). Phase 2 adds a second Cabinet
+# instance via CABINET_MODE=multi + per-instance CABINET_ID — if the
+# env var is unset in multi mode the boot aborts rather than silently
+# joining the 'main' namespace. In Phase 1 default mode, the validator
+# only enforces character safety so the value is safe to inject into
+# JSONL log lines.
+CABINET_ID="${CABINET_ID:-main}"
+CABINET_MODE="${CABINET_MODE:-single}"
+
+if ! [[ "$CABINET_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  log "ERROR: CABINET_ID='$CABINET_ID' contains invalid characters (allowed: [a-zA-Z0-9_-])"
+  exit 1
+fi
+
+if [ "$CABINET_MODE" = "multi" ] && [ "$CABINET_ID" = "main" ]; then
+  log "ERROR: CABINET_MODE=multi requires an explicit CABINET_ID (got the default 'main')."
+  log "       Set CABINET_ID=<this-cabinet-slug> in the instance env before loading."
+  exit 1
+fi
+
+export CABINET_ID CABINET_MODE
+
+# ---------------------------------------------------------------
 # Determine active preset
 # ---------------------------------------------------------------
 if [ -n "${1:-}" ]; then
@@ -111,7 +137,8 @@ if [ -n "${NEON_CONNECTION_STRING:-}" ]; then
     "$CABINET_ROOT/cabinet/sql/cabinet_memory.sql" \
     "$CABINET_ROOT/cabinet/sql/library.sql" \
     "$CABINET_ROOT/cabinet/sql/contexts-neon-phase1.sql" \
-    "$CABINET_ROOT/cabinet/sql/cabinet-id-neon-phase1.sql"; do
+    "$CABINET_ROOT/cabinet/sql/cabinet-id-neon-phase1.sql" \
+    "$CABINET_ROOT/cabinet/sql/cabinet-id-neon-phase1b.sql"; do
     if [ -f "$schema" ]; then
       if psql "$NEON_CONNECTION_STRING" -q -f "$schema" > /dev/null 2>&1; then
         log "Applied framework schema (neon): $(basename "$schema")"
@@ -137,7 +164,8 @@ fi
 if [ -n "${DATABASE_URL:-}" ]; then
   for schema in \
     "$CABINET_ROOT/cabinet/sql/contexts-cabinet-phase1.sql" \
-    "$CABINET_ROOT/cabinet/sql/cabinet-id-phase1.sql"; do
+    "$CABINET_ROOT/cabinet/sql/cabinet-id-phase1.sql" \
+    "$CABINET_ROOT/cabinet/sql/cabinet-id-phase1b.sql"; do
     if [ -f "$schema" ]; then
       if psql "$DATABASE_URL" -q -f "$schema" > /dev/null 2>&1; then
         log "Applied framework schema (cabinet-pg): $(basename "$schema")"
