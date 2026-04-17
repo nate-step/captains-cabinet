@@ -1,0 +1,11 @@
+slug: personal
+name: Personal
+capacity: personal
+description: |
+  Captain's personal-capacity context. Placeholder for Phase 1; populated
+  meaningfully in Phase 2 when the Personal Cabinet splits off. Used
+  today ONLY to exercise the cross-capacity enforcement in pre-tool-use.sh
+  — any officer with OFFICER_CAPACITY=work who tries to write a record
+  with context_slug='personal' gets exit-2 blocked. This is the live test
+  fixture that proves CP2's capacity coupling works end-to-end.
+active: true

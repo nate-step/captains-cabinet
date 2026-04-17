@@ -130,6 +130,83 @@ echo ""
 echo "--- CP10: Phase 1 golden eval harness ---"
 [ -f memory/golden-evals/phase-1/pre-captain-test.sh ] && pass "phase-1 eval harness exists" || fail "phase-1 eval harness missing"
 
+# ============================================================
+# BEHAVIOR TESTS — exercise the hook + MCP server, assert exit codes.
+# File-existence tests above gate presence; these gate correctness.
+# Each test pipes crafted JSON into the target and checks the result.
+# ============================================================
+
+echo ""
+echo "--- BEHAVIOR: pre-tool-use.sh context_slug enforcement ---"
+HOOK="/opt/founders-cabinet/cabinet/scripts/hooks/pre-tool-use.sh"
+
+# Force the scope cache fresh so tests pick up current yaml state
+rm -f /tmp/cabinet-context-slugs.tsv /tmp/cabinet-mcp-scope.tsv
+
+# Helper: run the hook with explicit env (env vars must be on the bash
+# invocation, not the echo — prefixing `echo` only scopes them to that
+# subshell, not the piped bash process).
+run_hook() {
+  local envs="$1" json="$2"
+  echo "$json" | env $envs bash "$HOOK" 2>&1
+  echo "EXIT=$?"
+}
+
+# Happy path: known slug, matching capacity
+out=$(run_hook "OFFICER_NAME=cos OFFICER_CAPACITY=work" '{"tool_name":"Bash","tool_input":{"command":"bash record-experience.sh cos success T W L tags --context-slug sensed"}}')
+echo "$out" | grep -q 'EXIT=0' && pass "known slug + matching capacity → allowed" || fail "known slug was blocked unexpectedly: $out"
+
+# Unknown slug → block
+out=$(run_hook "OFFICER_NAME=cos OFFICER_CAPACITY=work" '{"tool_name":"Bash","tool_input":{"command":"bash record-experience.sh cos success T W L tags --context-slug bogus-xyz"}}')
+echo "$out" | grep -q 'EXIT=2' && pass "unknown slug → blocked exit 2" || fail "unknown slug not blocked: $out"
+
+# Cross-capacity mismatch → block (requires personal.yml context)
+out=$(run_hook "OFFICER_NAME=cos OFFICER_CAPACITY=work" '{"tool_name":"Bash","tool_input":{"command":"bash record-experience.sh cos success T W L tags --context-slug personal"}}')
+echo "$out" | grep -q 'EXIT=2' && pass "work-capacity writing personal context → blocked exit 2" || fail "cross-capacity write NOT blocked: $out"
+
+# No context_slug in call → allowed (back-compat with pre-CP2 tool calls)
+out=$(run_hook "OFFICER_NAME=cos OFFICER_CAPACITY=work" '{"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}')
+echo "$out" | grep -q 'EXIT=0' && pass "call without context_slug → allowed (back-compat)" || fail "unrelated call blocked: $out"
+
+echo ""
+echo "--- BEHAVIOR: pre-tool-use.sh MCP scope enforcement ---"
+
+# cos calling an allowed server (telegram) → allow
+out=$(run_hook "OFFICER_NAME=cos" '{"tool_name":"mcp__plugin_telegram_telegram__reply","tool_input":{}}')
+echo "$out" | grep -q 'EXIT=0' && pass "cos → telegram (allowed) → exit 0" || fail "cos blocked from telegram: $out"
+
+# cos calling a disallowed server (neon) → block
+out=$(run_hook "OFFICER_NAME=cos" '{"tool_name":"mcp__neon__run_sql","tool_input":{}}')
+echo "$out" | grep -q 'EXIT=2' && pass "cos → neon (not scoped) → exit 2" || fail "cos MCP scope violation not blocked: $out"
+
+# Unknown officer → warn-and-allow (not fail-open, not fail-closed)
+out=$(run_hook "OFFICER_NAME=ghost" '{"tool_name":"mcp__notion__API-post-page","tool_input":{}}')
+echo "$out" | grep -q 'EXIT=0' && echo "$out" | grep -qi 'WARN' && pass "unknown officer → warn + allow" || fail "unknown officer handling wrong: $out"
+
+echo ""
+echo "--- BEHAVIOR: Cabinet MCP server identify() ---"
+MCP="/opt/founders-cabinet/cabinet/mcp-server/server.py"
+
+# Initialize handshake
+init=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | python3 "$MCP" 2>/dev/null)
+echo "$init" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); assert d['result']['protocolVersion']; assert d['result']['serverInfo']['name']=='cabinet'" 2>/dev/null && pass "initialize returns protocolVersion + serverInfo" || fail "initialize response malformed: $init"
+
+# identify tool call returns required shape
+idr=$(echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"identify"}}' | python3 "$MCP" 2>/dev/null)
+echo "$idr" | python3 -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+payload = json.loads(d['result']['content'][0]['text'])
+assert 'cabinet_id' in payload
+assert 'captain_id' in payload
+assert isinstance(payload['available_agents'], list)
+assert len(payload['available_agents']) >= 5
+" 2>/dev/null && pass "identify() returns cabinet_id + captain_id + available_agents (>=5 hired)" || fail "identify() payload malformed: $idr"
+
+# Unknown tool returns proper JSON-RPC error
+err=$(echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"bogus"}}' | python3 "$MCP" 2>/dev/null)
+echo "$err" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); assert d['error']['code']==-32601" 2>/dev/null && pass "unknown tool returns JSON-RPC error -32601" || fail "unknown-tool error shape wrong: $err"
+
 echo ""
 echo "========================="
 echo "PASS: $PASS"
