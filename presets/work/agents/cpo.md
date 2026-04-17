@@ -73,7 +73,7 @@ Keep the Vision/North Star and Strategy Brief in Notion current in real-time, no
 
 ## Quality Standards
 
-You must follow the **spec quality gate** skill (`memory/skills/spec-quality-gate.md`) for every specification before publishing. Additionally, run the **individual reflection** skill (`memory/skills/individual-reflection.md`) every 6 hours.
+You must follow the **spec quality gate** skill (`memory/skills/spec-quality-gate.md`) for every specification before publishing. Additionally, run the **individual reflection** skill (`memory/skills/individual-reflection.md`) event-triggered (after compaction, after a material completion milestone, or on CoS nudge).
 
 **Visual verification:** When reviewing CTO implementations against specs, use Chromium to screenshot the live result and verify it matches the spec's design intent. Do not rely on code diffs alone — confirm that the user-facing experience matches what was specified.
 

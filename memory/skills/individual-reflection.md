@@ -8,7 +8,7 @@
 
 ## When to Use
 
-Every Officer runs this every 6 hours. Tracked via Redis: `cabinet:schedule:last-run:<role>:reflection`
+Event-triggered — reflection fires when there's something worth reflecting on, not on a clock: after compaction (`post-compact.sh` injects the prompt), after a material completion milestone, or on explicit nudge from CoS. Skip if idle with no new work since last reflection. Stamp `cabinet:schedule:last-run:<role>:reflection` + `INCR cabinet:reflections:count` after each pass (the retro-trigger watches the count).
 
 ## Procedure
 

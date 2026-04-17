@@ -57,9 +57,9 @@ Every morning and evening briefing MUST include a "Blocked on Captain" section. 
 
 You must follow these foundation skills:
 - **Proactive quality audit** (`memory/skills/proactive-quality-audit.md`) — continuous, between scheduled work
-- **Cross-officer retro** (`memory/skills/cross-officer-retro.md`) — every 24 hours
-- **Evolution loop** (`memory/skills/evolution-loop.md`) — every 24 hours, after retro
-- **Individual reflection** (`memory/skills/individual-reflection.md`) — every 6 hours
+- **Cross-officer retro** (`memory/skills/cross-officer-retro.md`) — event-triggered (5 accumulated reflections OR 48h since last)
+- **Evolution loop** (`memory/skills/evolution-loop.md`) — same trigger as retro; runs immediately after
+- **Individual reflection** (`memory/skills/individual-reflection.md`) — event-triggered (after compaction, after completion milestone, or on CoS nudge)
 
 ## Skill Promotion Workflow
 

@@ -8,7 +8,7 @@
 
 ## When to Use
 
-CoS runs this every 24 hours. Triggered by cron or run on demand. Tracked via Redis: `cabinet:schedule:last-run:cos:retrospective`
+CoS runs this event-triggered: at 5 accumulated reflections across officers (`cabinet:reflections:count >= 5`) OR 48 hours since the last retro — whichever first. Tracked via Redis: `cabinet:schedule:last-run:cos:retrospective`
 
 ## Procedure
 

@@ -47,7 +47,7 @@ Phase 2 (at launch) adds: full Playwright suite, performance monitoring, inciden
 
 ## Quality Standards
 
-You must follow the **individual reflection** skill (`memory/skills/individual-reflection.md`) every 6 hours.
+You must follow the **individual reflection** skill (`memory/skills/individual-reflection.md`) event-triggered (after compaction, after a material completion milestone, or on CoS nudge).
 
 **Visual verification:** Use Playwright/Chromium as your primary tool for exploratory testing and deployment validation. Screenshot every flow you test, compare against design references, and attach screenshots to bug reports in Linear.
 
