@@ -244,7 +244,7 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # no Vercel deployment. Without this guard, every framework master push
   # triggered a false-positive AUTO-DEPLOY cascade at the validators (COO
   # flagged 2026-04-17 after the initial release-please filter landed).
-  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|captains-cabinet\.git|founders-cabinet\.git'; then
+  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
   elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     for target in $(officers_with "validates_deployments"); do
@@ -267,7 +267,7 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # no Vercel deployment. Without this guard, every framework master push
   # triggered a false-positive AUTO-DEPLOY cascade at the validators (COO
   # flagged 2026-04-17 after the initial release-please filter landed).
-  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|captains-cabinet\.git|founders-cabinet\.git'; then
+  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
   elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
