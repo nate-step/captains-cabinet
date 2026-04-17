@@ -5,20 +5,25 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { logout } from '@/actions/auth'
 import ProjectSelector from '@/components/project-selector'
+import ModeToggle from '@/components/mode-toggle'
+import { useDashboardMode } from '@/hooks/use-dashboard-mode'
+import { navForMode } from '@/lib/nav-config'
 
-const links = [
-  { href: '/', label: 'Dashboard', icon: DashboardIcon },
-  { href: '/project', label: 'Project', icon: ProjectIcon },
-  { href: '/officers', label: 'Officers', icon: OfficersIcon },
-  { href: '/health', label: 'Health', icon: HealthIcon },
-  { href: '/settings', label: 'Settings', icon: SettingsIcon },
-  { href: '/governance', label: 'Governance', icon: GovernanceIcon },
-  { href: '/integrations', label: 'Integrations', icon: IntegrationsIcon },
-  { href: '/costs', label: 'Costs', icon: CostsIcon },
-  { href: '/crons', label: 'Crons', icon: CronsIcon },
-  { href: '/library', label: 'Library', icon: LibraryIcon },
-  { href: 'https://terminal.sensed.app', label: 'Terminal', icon: TerminalIcon, external: true },
-]
+// Map nav link hrefs to their matching icon component.
+// Kept colocated here so icon definitions stay with the nav that uses them.
+const ICON_FOR_HREF: Record<string, () => React.ReactElement> = {
+  '/': DashboardIcon,
+  '/project': ProjectIcon,
+  '/officers': OfficersIcon,
+  '/health': HealthIcon,
+  '/settings': SettingsIcon,
+  '/governance': GovernanceIcon,
+  '/integrations': IntegrationsIcon,
+  '/costs': CostsIcon,
+  '/crons': CronsIcon,
+  '/library': LibraryIcon,
+  'https://terminal.sensed.app': TerminalIcon,
+}
 
 function DashboardIcon() {
   return (
@@ -184,17 +189,85 @@ interface ProjectInfo {
 export default function Nav({
   projects,
   activeProject,
+  consumerModeEnabled = true,
 }: {
   projects?: ProjectInfo[]
   activeProject?: string
+  /** Set to false to disable the Consumer/Advanced toggle entirely (dev-tool mode). */
+  consumerModeEnabled?: boolean
 }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  return consumerModeEnabled ? (
+    <NavWithMode
+      projects={projects}
+      activeProject={activeProject}
+      pathname={pathname}
+      mobileOpen={mobileOpen}
+      setMobileOpen={setMobileOpen}
+    />
+  ) : (
+    <NavStatic
+      projects={projects}
+      activeProject={activeProject}
+      pathname={pathname}
+      mobileOpen={mobileOpen}
+      setMobileOpen={setMobileOpen}
+      links={ADVANCED_NAV}
+    />
+  )
+}
+
+// NavWithMode and NavStatic share rendering but differ in whether they
+// subscribe to mode state. Splitting guarantees that when consumerModeEnabled
+// is false the useDashboardMode hook is never called — no localStorage reads,
+// no window event listeners, no re-renders on cross-tab storage events.
+// Spec 032 plan §feature-flag requires this inertness.
+function NavWithMode(props: NavInnerProps) {
+  const [mode] = useDashboardMode()
+  const links = navForMode(mode, true)
+  return <NavChrome {...props} links={links} mode={mode} consumerModeEnabled />
+}
+
+function NavStatic(props: NavInnerProps & { links: NavLink[] }) {
+  return <NavChrome {...props} mode="advanced" consumerModeEnabled={false} />
+}
+
+type NavInnerProps = {
+  projects?: ProjectInfo[]
+  activeProject?: string
+  pathname: string
+  mobileOpen: boolean
+  setMobileOpen: (v: boolean) => void
+}
+
+function NavChrome({
+  projects,
+  activeProject,
+  pathname,
+  mobileOpen,
+  setMobileOpen,
+  links,
+  mode,
+  consumerModeEnabled,
+}: NavInnerProps & {
+  links: NavLink[]
+  mode: 'consumer' | 'advanced'
+  consumerModeEnabled: boolean
+}) {
+  // Two visual indicators for Advanced mode (NN/G research via CRO pressure-
+  // test). Indicator 1: toggle label carries current-state text. Indicator 2:
+  // left purple accent bar + darker header stripe. Chose a hue shift over a
+  // pure luminance bump so it registers for viewers with any dyschromatopsia
+  // — Stripe test-mode pattern.
+  const isAdvanced = consumerModeEnabled && mode === 'advanced'
+  const sidebarBg = isAdvanced ? 'bg-zinc-900' : 'bg-zinc-900'
+  const advancedAccent = isAdvanced ? 'border-l-2 border-purple-500/70' : ''
 
   return (
     <>
       {/* Mobile header */}
-      <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4 py-3 md:hidden">
+      <div className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-zinc-800 px-4 py-3 md:hidden ${sidebarBg}`}>
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-white">Cabinet</span>
           {projects && projects.length > 0 && (
@@ -221,7 +294,7 @@ export default function Nav({
 
       {/* Sidebar — desktop always visible, mobile slides in */}
       <aside
-        className={`fixed top-0 left-0 z-40 flex h-full w-64 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform md:translate-x-0 ${
+        className={`fixed top-0 left-0 z-40 flex h-full w-64 flex-col border-r border-zinc-800 transition-transform md:translate-x-0 ${sidebarBg} ${advancedAccent} ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -241,7 +314,8 @@ export default function Nav({
         <nav className="flex-1 space-y-1 px-3 py-4">
           {links.map((link) => {
             const active = pathname === link.href
-            const isExternal = 'external' in link && link.external
+            const isExternal = link.external === true
+            const Icon = ICON_FOR_HREF[link.href]
             const className = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
               active
                 ? 'bg-zinc-800 text-white'
@@ -251,7 +325,7 @@ export default function Nav({
               return (
                 <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer"
                   onClick={() => setMobileOpen(false)} className={className}>
-                  <link.icon />
+                  {Icon && <Icon />}
                   {link.label}
                   <svg className="ml-auto h-3 w-3 text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
@@ -262,12 +336,19 @@ export default function Nav({
             return (
               <Link key={link.href} href={link.href}
                 onClick={() => setMobileOpen(false)} className={className}>
-                <link.icon />
+                {Icon && <Icon />}
                 {link.label}
               </Link>
             )
           })}
         </nav>
+
+        {/* Mode toggle — always visible when the consumer mode feature is enabled */}
+        {consumerModeEnabled && (
+          <div className="border-t border-zinc-800 px-3 py-3">
+            <ModeToggle />
+          </div>
+        )}
 
         {/* Logout */}
         <div className="border-t border-zinc-800 p-3">

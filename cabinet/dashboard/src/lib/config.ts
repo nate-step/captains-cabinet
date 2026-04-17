@@ -82,6 +82,32 @@ export function getConfig(): Record<string, unknown> {
   }
 }
 
+/**
+ * Dashboard feature flags — Spec 032.
+ *
+ * consumer_mode_enabled: whether the Consumer/Advanced toggle is exposed at
+ * all. When false, the dashboard behaves exactly as it did pre-Spec 032:
+ * no toggle, no localStorage checks, full admin nav.
+ *
+ * Reads from platform.yml's dashboard block (merged into product.yml at
+ * assembly time). Unset → safe default that keeps the feature enabled.
+ *
+ * Note: consumer_mode_default is reserved for a later PR once first-visit
+ * default-mode selection is wired end-to-end. Not exposed as a DashboardConfig
+ * field until then to avoid shipping dead config.
+ */
+export interface DashboardConfig {
+  consumerModeEnabled: boolean
+}
+
+export function getDashboardConfig(): DashboardConfig {
+  const raw = (getConfig().dashboard || {}) as Record<string, unknown>
+  const enabled = raw.consumer_mode_enabled
+  return {
+    consumerModeEnabled: enabled === false ? false : true,
+  }
+}
+
 export interface OfficerConfig {
   title: string
   botUsername: string

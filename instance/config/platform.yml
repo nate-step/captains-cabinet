@@ -40,6 +40,23 @@ spending_limits:
   telegram_whitelist_hourly_cap: 10
 
 # =============================================================
+# Dashboard — Consumer Mode (Spec 032)
+# =============================================================
+# The Consumer/Advanced toggle surfaces a 4-card natural-language dashboard
+# for non-developer founders, while Advanced keeps the current admin UI.
+# Consumer is the default for first-time users. Once a user toggles to
+# Advanced, the toggle stays there permanently (no re-defaulting — CRO v3
+# pressure-test: Home Assistant saw 14% of users never find the toggle).
+#
+# Set consumer_mode_enabled: false to disable the feature entirely — the
+# dashboard behaves exactly as pre-Spec-032, full admin nav only.
+dashboard:
+  consumer_mode_enabled: true         # Master switch for the toggle + Consumer UI
+# consumer_mode_default is reserved — will be wired when the first-visit
+# default-mode selection lands end-to-end in a follow-up PR. Setting it now
+# has no effect.
+
+# =============================================================
 # Founder Accountability — how officers push on blocking issues
 # =============================================================
 # Officers ask the Captain for commitment dates on founder-action items,
