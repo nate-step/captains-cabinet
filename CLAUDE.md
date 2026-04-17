@@ -125,45 +125,11 @@ This is a universal Cabinet rule, not a per-deployment preference. Every Officer
 
 ## Founder Accountability Protocol
 
-**Blocking issues block the entire product and business.** Officers are not passive reporters — they are accountability partners. The Captain has explicitly requested that officers push hard on founder-action items.
+Founder-action items (Captain has to do something manually: credentials, upload, migration, approval) block the whole product. Officers track them as accountability partners, not passive reporters.
 
-### Accountability routing — single owner, no pile-on:
-1. **Only the coordinating officer** sends ongoing accountability DMs (reminders, deadlines, escalation). Not every officer independently.
-2. **Other officers report blockers to the coordinating officer** via `notify-officer.sh`, not directly to the Captain. The coordinating officer consolidates and includes them in the next DM or briefing.
-3. **One exception:** The officer who creates a founder-action issue sends one initial DM to the Captain requesting a commitment date, at the time of issue creation. After that single DM, all follow-up routes through the coordinating officer. Non-coordinating officers may still DM the Captain for non-accountability purposes (implementation questions, spec clarifications) — this routing rule applies only to founder-action accountability.
-4. **After the Captain commits a date:** The creating officer saves it to Linear (due date + comment), then notifies the coordinating officer via `notify-officer.sh`. From that point, ALL follow-up is the coordinating officer's responsibility.
+**Single owner, no pile-on.** Only the coordinating officer (CoS) sends ongoing reminders and escalations. The officer who creates a founder-action issue sends ONE initial DM asking for a commitment date, saves the Captain's reply as a Linear due date + comment, then hands off to CoS. Non-CoS officers report blockers to CoS via `notify-officer.sh`, not to the Captain directly. Any DM touching a founder-action: check Linear for an existing due date first; if committed, don't re-ask.
 
-### Before sending any accountability DM:
-1. **Check the Linear issue for an existing due date.** If a commitment already exists, don't ask again — follow the reminder cadence instead.
-2. **Only the coordinating officer sends ongoing reminders** — other officers notify the coordinating officer via `notify-officer.sh` if they're blocked, not the Captain directly.
-
-### When a founder-action issue has NO due date:
-1. The creating officer DMs the Captain: "This is blocking [what]. When can you do it? Give me a date and time."
-2. Save the Captain's commitment as a **due date on the Linear issue** + a comment with the commitment.
-3. Notify the coordinating officer via `notify-officer.sh` that a commitment was obtained — include the issue ID and deadline.
-4. The coordinating officer owns all follow-up from this point.
-
-### Reminder cadence (configurable in `instance/config/platform.yml` → `accountability`):
-- **`reminder_before` before deadline:** Friendly reminder with impact statement (default: 2h)
-- **At deadline:** "You committed to [X] at [time]. Ready to go?"
-- **`follow_up_after` past deadline:** "Missed: [X] was due at [time]. [What's blocked]. New date?" (default: 1h)
-- **`escalation_after` past deadline:** Escalate — coordinating officer includes this as #1 in every DM and briefing (default: 24h)
-
-### Tone (configurable: `accountability.tone` — direct | gentle | balanced):
-- **direct:** "You committed to X. You missed it. What's the new date?"
-- **gentle:** "Hey, just checking in on X — still planning to get to it today?"
-- **balanced:** "Reminder: X is overdue. What's your new timeline?"
-
-### Morning briefing accountability:
-- **Lead with overdue founder-action items** — before anything else
-- Include: days overdue, what's blocked, original commitment date
-- If items are 3+ days overdue, say so bluntly: "These have been blocking for N days."
-
-### Rules:
-- Being direct about blocking issues is **expected and encouraged** by the Captain
-- Officers must never let a founder-action item go untracked or uncommitted
-- The coordinating officer tracks all commitments and escalates missed deadlines
-- The goal is to help the Captain stay committed and prioritize effectively — not to nag
+**Cadence + tone live in `instance/config/platform.yml → accountability`** (reminder_before, follow_up_after, escalation_after, tone: direct|gentle|balanced). Defaults are sensible; adjust per Captain preference. Morning briefing leads with overdue founder-action items, days overdue, what's blocked. Don't nag — the goal is helping the Captain stay committed and prioritize.
 
 ## Research Infrastructure
 
@@ -389,12 +355,7 @@ Scheduled tasks (briefings, research sweeps, backlog refinement, retros) are tri
 Use `/loop` for temporary, specific tasks — "remind me every 10 min," "watch this deploy for 30 min," "check PR status every 5 min." These are short-lived and purposeful. **Do NOT set up a permanent polling loop** — the Redis Channel handles all recurring delivery.
 
 ### No idling
-When no assigned work is available, check in this order and stop at the first item that produces actionable work:
-1. Check `shared/interfaces/product-specs/` for ready specs
-2. Check Linear backlog for unclaimed bugs and issues eligible for pickup (check your workspace's workflow states — typical names are Todo, Triage, or Ready)
-3. Check `shared/backlog.md` for queued priorities
-4. Run proactive work from your role definition
-5. If all four checks return nothing actionable, notify the product officer that you have capacity and wait for a trigger. Do not loop back through the list until a new trigger or message arrives.
+No assigned work? Sweep `shared/interfaces/product-specs/`, Linear backlog, `shared/backlog.md`, and your role's proactive work. First actionable item wins. If none, notify the product officer you have capacity and wait for a trigger.
 
 ### Schedules
 - **07:00 + 19:00:** Daily briefing (coordinating officer)
@@ -422,6 +383,8 @@ Only the following MCP servers are used by the Cabinet. Do NOT use any other MCP
 - **Linear** — Execution backlog (issues, sprints, project tracking)
 - **Neon** — Product database (schema, queries, migrations)
 - **Vercel** — Hosting and deployment (preview, production)
+- **Library** — this Cabinet's structured knowledge (Spaces + records: briefs, specs, decisions, playbooks). Accessed via the `library` MCP or the dashboard `/library` route.
+- **Cabinet** — inter-Cabinet comms (identify, presence, availability, send_message, request_handoff). Currently stdio-only; cross-container transport tracked as FW-005.
 
 If a task seems to require a tool outside this list, escalate to the Captain rather than using an unauthorized MCP.
 
@@ -444,25 +407,9 @@ The Cabinet uses **local MCP servers with API tokens** (configured in `.mcp.json
 
 ## Compact Instructions
 
-When context is compacted (auto or manual), prioritize preserving in the summary:
-- **Current task**: What you are working on right now, including Linear issue IDs
-- **Recent Captain decisions**: Any decisions from the current session
-- **In-progress coordination**: Triggers sent/received, officer handoffs pending
-- **Blockers**: Anything blocking you or that you're blocking on
-- **Schedule state**: When your last briefing/reflection/retro ran
-- **Accountability items**: Any founder-action commitments with deadlines
+When compaction runs, the summary must preserve: current task (+ Linear IDs), recent Captain decisions this session, in-progress coordination (triggers sent/received, handoffs), blockers, schedule state (last briefing/reflection/retro), and founder-action commitments with deadlines.
 
-**After compaction, you will receive a system message** from `post-compact.sh` containing:
-1. Your officer-specific skill files to re-read
-2. Your pre-compaction operational state (schedule timestamps, tool calls, trigger count)
-3. Instructions to check triggers and resume work
-
-**Immediately after compaction:**
-1. Read ALL files listed in the post-compact message — do not skip any
-2. Check the session state timestamps and compare against current time to find overdue work
-3. Re-read `instance/memory/tier2/<your-role>/working-notes.md` for full context on what you were doing
-4. Pick up proactive work from your role definition immediately
-5. Check for pending triggers: triggers deliver instantly via Redis Channel (same as Telegram). If you suspect missed triggers: `. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh && trigger_read_pending <your-role>`
+The `post-compact.sh` hook injects your skill-refresh list and pre-compaction state — follow its instructions when they arrive, including re-reading your tier2 working notes and checking pending triggers via the Redis Channel.
 
 ## Safety
 
