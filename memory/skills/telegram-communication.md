@@ -20,45 +20,7 @@ On **every** incoming Telegram message from the Captain, immediately react with 
 react(chat_id="123", message_id="456", emoji="👀")
 ```
 
-**Suggested mapping — pick the emoji that best matches the message tone/content. Vary your choices:**
-
-| Emoji | Use when... |
-|-------|-------------|
-| 👀 | Reading/investigating |
-| 👍 | Simple acknowledgment |
-| 🔥 | Good news, impressive result |
-| 🤔 | Thinking about it, complex question |
-| ⚡ | On it, taking action |
-| 🎉 | Celebrating a win |
-| 💯 | Strong agreement |
-| 🏆 | Milestone reached |
-| 🙏 | Thank you / grateful |
-| ❤ | Love it / appreciated |
-| 🤝 | Deal / agreement |
-| 👨‍💻 | Working on it |
-| 🤯 | Mind blown / surprising finding |
-| ✍ | Writing / documenting |
-| 👏 | Well done / applause |
-| 🤣 | That's funny |
-| 🤓 | Nerdy / technical deep-dive |
-| 💩 | That's bad / broken |
-| 😡 | Frustrated / critical issue |
-| 👎 | Disagree / bad idea |
-| 😢 | Unfortunate / sad news |
-| 🥱 | Boring / low priority |
-| 😈 | Mischievous / bold move |
-| 🙈 | Oops / embarrassing |
-| 🤷‍♀ | Shrug / unclear |
-| 😐 | Neutral / meh |
-| 😍 | Excited about something |
-| 🤗 | Warm / supportive |
-| 🤪 | Wild / unexpected |
-| 🕊 | Peace / resolution |
-
-**Rules:**
-- React FIRST, then process/reply. The reaction is instant read-acknowledgment.
-- Don't always use the same emoji — match the tone of the message.
-- Only these emoji work with Telegram Bot API. Others return `REACTION_INVALID`.
+Pick an emoji that matches the message — vary your choices. The Telegram Bot API only accepts a fixed whitelist (👍 👎 ❤ 🔥 👀 🎉 🤔 😢 😁 🤯 🤬 🥰 🎃 💯 🏆 🙏 🤝 👨‍💻 ✍ 👏 🤣 🤓 💩 😡 🥱 😈 🙈 😐 😍 🤗 🕊 etc); anything outside it returns `REACTION_INVALID`. React FIRST, then process/reply.
 
 ### Always reply to the specific message
 
