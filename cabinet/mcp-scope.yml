@@ -86,6 +86,23 @@ scaffolds:
       inbox triage. No Linear (EA isn't on product backlog); no Neon /
       Vercel (no production access).
 
+  physical-coach:
+    mcps: [library, telegram]
+    rationale: >
+      Personal-capacity. Longitudinal tracking of sleep, training, recovery.
+      Library writes to personal Spaces only; no Notion (work business-brain
+      is not personal domain); no Linear / Neon / Vercel (no product-infra
+      access); Phase 2 will add Cabinet MCP calls to Work Cabinet for
+      handoffs when Captain crosses capacity contexts mid-conversation.
+
+  mindfulness-coach:
+    mcps: [library, telegram]
+    rationale: >
+      Personal-capacity. Reflection and emotional-awareness work. Narrowest
+      MCP surface by design — Captain DM + Library for personal-capacity
+      Spaces. No external data sources without a coaching_consent_log entry.
+      Phase 3 never federates personal content.
+
 # MCPs that every hired agent gets by default (convenience shorthand for
 # the hook):
 universal:

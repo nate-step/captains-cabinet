@@ -1,0 +1,35 @@
+# instance/config/retention.yml
+# Retention windows for personal-capacity data, referenced by the personal
+# preset safety-addendum §"Forbidden operations". Captain adjusts these
+# when the Personal Cabinet goes live; defaults below are reasonable
+# starting points.
+#
+# Format:
+#   <table_name>:
+#     <source_slug>: <days>   # retention in days
+#     default: <days>         # fallback if source not listed
+#
+# Semantics:
+#   - Rows older than <days> are HARD-deleted on the next retention sweep.
+#   - Captain's right-to-delete (Constitution Addendum §8) overrides retention
+#     always: a deletion request removes data regardless of age.
+#   - No soft-delete; no "archived but present." Gone is gone.
+
+longitudinal_metrics:
+  healthkit: 180        # sleep, HRV, active energy, etc.
+  oura: 180
+  manual: 730           # self-reported entries — kept longer
+  default: 180
+
+coaching_narratives:
+  observation: 365
+  pattern: 730          # longer-lived — the arc needs history
+  handoff: 365
+  deletion: -1          # meta-log entries never auto-expire
+  default: 365
+
+coaching_consent_log:
+  default: -1           # consent history is permanent (audit trail)
+
+coaching_experiments:
+  default: 730          # completed experiments kept 2 years

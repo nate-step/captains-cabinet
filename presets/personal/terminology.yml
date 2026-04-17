@@ -1,0 +1,15 @@
+# presets/personal/terminology.yml
+# Personal preset terminology overrides.
+#
+# These are defaults; instance/agents/*.md overlays can override per-role.
+# Framework code reads these at preset-load time so a Cabinet running
+# personal preset sees "coach" everywhere "officer" would be in work preset.
+
+agent_role: coach            # work preset uses "officer"
+work_unit: practice          # work preset uses "task"
+output_store: shared_interfaces
+backlog: adhoc_inbox         # work preset uses "linear_or_library"
+
+# Extra-personal terminology (not in work preset):
+reflection: journaling        # personal-flavored term for reflection loop
+ritual: practice_session      # recurring consent-gated interaction

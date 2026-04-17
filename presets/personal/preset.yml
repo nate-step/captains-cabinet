@@ -1,0 +1,44 @@
+# presets/personal/preset.yml
+# Personal preset — coaching / life-operator shape.
+#
+# Captain's Cabinet running in personal capacity. Agents are coaches, not
+# officers. The warroom defaults to Captain DM rather than per-context
+# groups. Autonomy is consent-gated (no "execute without checking").
+#
+# Phase 2 (2026-04-17) populated this from an empty placeholder. Scaffolds
+# ship per CD4; Captain hires via the hire-agent skill (CD7 hire-time
+# naming convention) when he stands up a live Personal Cabinet.
+
+name: personal
+description: >
+  Coaching / life-operator shape. Agents as domain coaches (Physical Coach,
+  Mindfulness Coach), longitudinal memory schemas, consent-gated autonomy,
+  Captain DM as the default communication channel. Paired with the Cabinet
+  MCP for inter-Cabinet handoffs from Work Cabinet.
+
+# Hire-time naming convention applies (Captain decision 2026-04-16 CD7).
+# The "personal" style defaults agents to human names like Alex or Ava.
+# Captain's CoS proposes 3 names per archetype at hire time; Captain picks.
+naming_style: personal
+
+# Agent archetypes shipped scaffolded for this preset. SCAFFOLD only —
+# loader skips these until they appear in cabinet/mcp-scope.yml under
+# agents: (single-source-of-truth pattern per Phase 1 polish).
+agent_archetypes:
+  - physical-coach      # Longitudinal physical state: sleep, training, nutrition, recovery
+  - mindfulness-coach   # Meditation, reflection, emotional awareness, consent-gated journaling
+
+# Personal-preset terminology overrides. See terminology.yml for the full map.
+terminology:
+  agent_role: coach
+  work_unit: practice
+  output_store: shared_interfaces
+  backlog: adhoc_inbox
+
+# Lower default autonomy. Personal-Cabinet agents ask before acting;
+# they do not execute independently on sensitive personal data.
+autonomy_level: consent_gated
+
+# Personal-capacity workspace (Phase 2+). No product repo mount;
+# instead, Captain's personal-data directory when he sets one.
+workspace_mount: /workspace/personal
