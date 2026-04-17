@@ -105,8 +105,8 @@ grep -q 'mcp.*scope\|scope.*check' cabinet/scripts/hooks/pre-tool-use.sh 2>/dev/
 
 echo ""
 echo "--- CP6: Ad-hoc task inbox (Library space 'Inbox') ---"
-# Expect: Library space 'Inbox' exists with schema (title, owner, state, context, captured_at, due)
-inbox_id=$(PSQL "SELECT id FROM kb_spaces WHERE slug='inbox' OR name='Inbox' LIMIT 1")
+# Expect: Library space 'Inbox' exists with schema (title, owner, state, context_slug, captured_at, due)
+inbox_id=$(PROD_PSQL "SELECT id FROM library_spaces WHERE name='Inbox' LIMIT 1")
 [ -n "$inbox_id" ] && pass "Library space 'Inbox' exists (id=$inbox_id)" || fail "Library space 'Inbox' missing"
 
 echo ""
