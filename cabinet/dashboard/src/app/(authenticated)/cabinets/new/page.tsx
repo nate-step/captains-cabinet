@@ -1,24 +1,30 @@
 /**
- * Spec 034 PR 2 — /cabinets/new — Cabinet creation wizard
+ * Spec 034 PR 3 — /cabinets/new — Cabinet creation wizard
  *
- * Server component that loads presets, then hands off to CabinetWizard
- * (client component) for the multi-step interactive flow.
+ * Server component that loads presets + preset officers, then hands off to
+ * CabinetWizard (client component) for the multi-step interactive flow.
+ *
+ * PR 3 change: also loads officersByPreset (map of preset slug → officer slots)
+ * so step 4 (AdoptBotStep) knows which slots to render without a client-side
+ * filesystem read.
  *
  * Feature-flag gate: same pattern as /cabinets — renders "Not configured"
- * when CABINETS_PROVISIONING_ENABLED is off.
+ * when CABINETS_PROVISIONING_ENABLED is off. Step 4 never loads AdoptBotStep
+ * when the flag is off (wizard itself is gated here).
  *
- * Spec refs: §1 "New Cabinet flow", AC 2, PR 2 scope.
+ * Spec refs: §1 "New Cabinet flow", AC 2-3, PR 3 scope.
  */
 
 import Link from 'next/link'
 import { getDashboardConfig } from '@/lib/config'
-import { getPresets } from '@/actions/cabinets'
+import { getPresets, getPresetOfficers } from '@/actions/cabinets'
+import type { OfficerSlot } from '@/actions/cabinets'
 import CabinetWizard from '@/components/cabinets/cabinet-wizard'
 
 export const dynamic = 'force-dynamic'
 
 export default async function NewCabinetPage() {
-  // Feature-flag gate
+  // Feature-flag gate — when disabled, AdoptBotStep never renders (this page never renders)
   const dashConfig = getDashboardConfig()
   const envEnabled = process.env.CABINETS_PROVISIONING_ENABLED === 'true'
   if (!dashConfig.consumerModeEnabled && !envEnabled) {
@@ -38,8 +44,17 @@ export default async function NewCabinetPage() {
     )
   }
 
-  // Load presets on the server (reads filesystem)
+  // Load presets + officers on the server (reads filesystem)
   const presets = await getPresets()
+
+  // Build officersByPreset map: { [presetSlug]: OfficerSlot[] }
+  const officersByPreset: Record<string, OfficerSlot[]> = {}
+  await Promise.all(
+    presets.map(async (preset) => {
+      const officers = await getPresetOfficers(preset.slug)
+      officersByPreset[preset.slug] = officers
+    })
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -60,7 +75,7 @@ export default async function NewCabinetPage() {
 
       {/* Wizard shell */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 sm:p-8">
-        <CabinetWizard presets={presets} />
+        <CabinetWizard presets={presets} officersByPreset={officersByPreset} />
       </div>
     </div>
   )

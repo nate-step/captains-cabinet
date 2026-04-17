@@ -146,3 +146,53 @@ export async function resumeCabinet(cabinetId: string): Promise<{ ok: boolean; m
 export async function archiveCabinet(cabinetId: string): Promise<{ ok: boolean; message?: string }> {
   return cabinetsPost(cabinetId, 'archive')
 }
+
+// ----------------------------------------------------------------
+// Preset officer discovery (Spec 034 PR 3)
+// ----------------------------------------------------------------
+
+export interface OfficerSlot {
+  /** Role slug matching agent_archetypes entry e.g. 'cos', 'cto' */
+  role: string
+  /** Human-readable title parsed from the agent .md file heading */
+  title: string
+}
+
+/**
+ * Return the list of hired officer slots for a preset.
+ *
+ * Reads the preset.yml agent_archetypes list (non-scaffolded only — lines
+ * beginning with '#' in the YAML are comment-skipped by the YAML parser).
+ * Parses each agent .md file for the first H1 heading to extract a title.
+ *
+ * Falls back to role.toUpperCase() if the agent file is missing.
+ * Returns empty array if preset not found.
+ */
+export async function getPresetOfficers(presetSlug: string): Promise<OfficerSlot[]> {
+  const presetFile = path.join(PRESETS_DIR, presetSlug, 'preset.yml')
+  try {
+    const raw = fs.readFileSync(presetFile, 'utf8')
+    const parsed = yaml.load(raw) as Record<string, unknown>
+    const archetypes = parsed?.agent_archetypes
+    if (!Array.isArray(archetypes)) return []
+
+    const agentsDir = path.join(PRESETS_DIR, presetSlug, 'agents')
+
+    return archetypes
+      .filter((a): a is string => typeof a === 'string')
+      .map((role) => {
+        let title = role.toUpperCase()
+        try {
+          const mdPath = path.join(agentsDir, `${role}.md`)
+          const mdContent = fs.readFileSync(mdPath, 'utf8')
+          const match = mdContent.match(/^#\s+(.+)/m)
+          if (match) title = match[1].trim()
+        } catch {
+          // Agent file missing — use role slug as title
+        }
+        return { role, title }
+      })
+  } catch {
+    return []
+  }
+}
