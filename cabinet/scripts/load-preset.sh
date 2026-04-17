@@ -184,29 +184,59 @@ fi
 AGENTS_DIR="$CABINET_ROOT/.claude/agents"
 mkdir -p "$AGENTS_DIR"
 
-# 1. Copy preset agents (baseline). Skip TEMPLATE and SCAFFOLD role defs —
-# scaffolds (Phase 1 CP4+) are staged role definitions that Captain hasn't
-# hired yet. A scaffold is identified by a first-line SCAFFOLD banner block
-# (`> **SCAFFOLD...` within the first 5 lines). Hiring via
-# `cabinet/scripts/create-officer.sh` removes the banner and the loader
-# starts copying it on next boot.
+# 1. Copy preset agents (baseline). Single source of truth for the
+# hired-vs-scaffold distinction is `cabinet/mcp-scope.yml`: agents
+# listed under `agents:` are hired (copied to .claude/agents/), agents
+# under `scaffolds:` are staged but not activated. The SCAFFOLD banner
+# inside role-def .md files is now advisory-only for human readers;
+# the loader does not inspect it. This keeps a single authoritative
+# list instead of three drift-prone ones (per Apr 17 review).
+MCP_SCOPE_FILE="$CABINET_ROOT/cabinet/mcp-scope.yml"
+
+# Extract hired agent slugs from `agents:` section. Awk walks sections
+# and emits only the direct children of `agents:` (two-space indent,
+# trailing colon). Tolerates comments and the universal:/cabinet: keys.
+list_hired_agents() {
+  [ -f "$MCP_SCOPE_FILE" ] || return
+  awk '
+    /^agents:[[:space:]]*$/     { section = "agents"; next }
+    /^scaffolds:[[:space:]]*$/  { section = "scaffolds"; next }
+    /^[A-Za-z]/                 { section = "" }
+    section == "agents" && /^  [A-Za-z][A-Za-z0-9_-]*:[[:space:]]*$/ {
+      name = $0
+      sub(/^  /, "", name)
+      sub(/:.*$/, "", name)
+      print name
+    }
+  ' "$MCP_SCOPE_FILE"
+}
+
 if [ -d "$PRESET_DIR/agents" ]; then
-  copied=0
-  skipped=0
-  for src in "$PRESET_DIR/agents"/*.md; do
-    [ -f "$src" ] || continue
-    basename=$(basename "$src")
-    # Skip TEMPLATE.md
-    [ "$basename" = "TEMPLATE.md" ] && continue
-    # Skip SCAFFOLD role defs — not yet hired
-    if head -5 "$src" | grep -q 'SCAFFOLD'; then
-      skipped=$((skipped + 1))
-      continue
+  if [ ! -f "$MCP_SCOPE_FILE" ]; then
+    log "ERROR: $MCP_SCOPE_FILE missing — cannot determine hired agents. Skipping agent population."
+  else
+    HIRED=$(list_hired_agents)
+    if [ -z "$HIRED" ]; then
+      log "WARN: no agents listed in $MCP_SCOPE_FILE under 'agents:' — skipping."
+    else
+      copied=0
+      skipped=0
+      for src in "$PRESET_DIR/agents"/*.md; do
+        [ -f "$src" ] || continue
+        basename=$(basename "$src")
+        [ "$basename" = "TEMPLATE.md" ] && continue
+        slug="${basename%.md}"
+        # Copy iff the slug is in the hired list from mcp-scope.yml.
+        if echo "$HIRED" | grep -qx "$slug"; then
+          cp "$src" "$AGENTS_DIR/$basename"
+          copied=$((copied + 1))
+        else
+          skipped=$((skipped + 1))
+        fi
+      done
+      log "Populated agents from preset: $copied hired (per mcp-scope.yml), $skipped staged"
     fi
-    cp "$src" "$AGENTS_DIR/$basename"
-    copied=$((copied + 1))
-  done
-  log "Populated agents from preset: $copied hired, $skipped scaffolds skipped"
+  fi
 fi
 
 # 2. Instance overrides (take precedence)
