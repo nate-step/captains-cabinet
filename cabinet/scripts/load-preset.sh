@@ -154,16 +154,29 @@ fi
 AGENTS_DIR="$CABINET_ROOT/.claude/agents"
 mkdir -p "$AGENTS_DIR"
 
-# 1. Copy preset agents (baseline)
+# 1. Copy preset agents (baseline). Skip TEMPLATE and SCAFFOLD role defs —
+# scaffolds (Phase 1 CP4+) are staged role definitions that Captain hasn't
+# hired yet. A scaffold is identified by a first-line SCAFFOLD banner block
+# (`> **SCAFFOLD...` within the first 5 lines). Hiring via
+# `cabinet/scripts/create-officer.sh` removes the banner and the loader
+# starts copying it on next boot.
 if [ -d "$PRESET_DIR/agents" ]; then
+  copied=0
+  skipped=0
   for src in "$PRESET_DIR/agents"/*.md; do
     [ -f "$src" ] || continue
     basename=$(basename "$src")
     # Skip TEMPLATE.md
     [ "$basename" = "TEMPLATE.md" ] && continue
+    # Skip SCAFFOLD role defs — not yet hired
+    if head -5 "$src" | grep -q 'SCAFFOLD'; then
+      skipped=$((skipped + 1))
+      continue
+    fi
     cp "$src" "$AGENTS_DIR/$basename"
+    copied=$((copied + 1))
   done
-  log "Populated agents from preset: $(ls "$PRESET_DIR/agents"/*.md 2>/dev/null | grep -v TEMPLATE | wc -l) files"
+  log "Populated agents from preset: $copied hired, $skipped scaffolds skipped"
 fi
 
 # 2. Instance overrides (take precedence)
