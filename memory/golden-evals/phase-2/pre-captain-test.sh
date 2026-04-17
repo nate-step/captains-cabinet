@@ -116,6 +116,34 @@ out=$(run_hook "OFFICER_NAME=cos" '{"tool_name":"mcp__cabinet__send_message","to
 echo "$out" | grep -q 'EXIT=2' && echo "$out" | grep -q 'consented_by_captain=false' && pass "send_message → unconsented peer → blocked exit 2 with clear reason" || fail "unconsented peer handling wrong: $out"
 
 echo ""
+echo "--- BEHAVIOR: happy-path inter-Cabinet (temp-flip consent, server accepts) ---"
+# This is the test that catches server.py/loader parser drift (the CP8
+# review bug). Temporarily flip consented_by_captain to true, invoke
+# send_message via the MCP server directly (bypassing the hook), and
+# assert the server-side defense-in-depth check accepts — not refuses
+# with 'send_message_not_in_peer_allowed_tools'.
+cp instance/config/peers.yml /tmp/peers-backup.yml
+sed -i 's/consented_by_captain: false/consented_by_captain: true/' instance/config/peers.yml
+# Direct server call (bypasses hook; tests server's own peer check)
+svr_out=$(echo '{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"send_message","arguments":{"to_cabinet":"personal","from_agent":"cos","content":"happy-path test"}}}' | python3 "$MCP" 2>/dev/null)
+# Restore before assertions so cleanup happens even on fail
+cp /tmp/peers-backup.yml instance/config/peers.yml
+rm /tmp/peers-backup.yml
+# Expected: status=queued (redis XADD worked) OR status=error with message about redis
+# NOT expected: status=refused with reason send_message_not_in_peer_allowed_tools
+# (that would be the parser drift bug).
+echo "$svr_out" | python3 -c "
+import sys,json
+d = json.loads(sys.stdin.read())
+p = json.loads(d['result']['content'][0]['text'])
+# Must not be a refusal for the tool-not-in-allowed reason (parser-drift regression)
+assert p.get('status') != 'refused' or p.get('reason') != 'send_message_not_in_peer_allowed_tools', \
+    f'PARSER DRIFT REGRESSION: {p}'
+# Accepted outcomes: queued (redis OK), or error (redis unreachable — still not a refusal)
+assert p.get('status') in ('queued', 'error'), f'unexpected status: {p}'
+" 2>/dev/null && pass "server.py read_peers() correctly parses allowed_tools list (no drift from loader)" || fail "parser drift regression: $svr_out"
+
+echo ""
 echo "--- BEHAVIOR: split-cabinet.sh dry-run ---"
 out=$(bash cabinet/scripts/split-cabinet.sh --target-cabinet personal --capacity personal 2>&1)
 echo "$out" | grep -q 'Mode: DRY-RUN' && pass "split-cabinet default is dry-run" || fail "split not dry-run by default"

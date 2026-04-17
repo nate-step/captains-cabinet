@@ -74,13 +74,13 @@ peers:
     consented_by_captain: true
 ```
 
-**On `/opt/founders-cabinet-personal/` (Personal Cabinet):** add a reciprocal `work` peer:
+**On `/opt/founders-cabinet-personal/` (Personal Cabinet):** add a reciprocal `work` peer. IMPORTANT: the endpoint points at the **Work Cabinet's** server.py (the one you're communicating with), not your own — but the path must match wherever Work Cabinet lives on this host:
 
 ```yaml
 peers:
   work:
     role: work-cabinet
-    endpoint: stdio:/opt/founders-cabinet/cabinet/mcp-server/server.py
+    endpoint: stdio:/opt/founders-cabinet/cabinet/mcp-server/server.py   # WORK Cabinet's server
     capacity: work
     trust_level: high
     consented_by_captain: true
@@ -91,6 +91,16 @@ peers:
       - send_message
       - request_handoff
 ```
+
+And symmetrically on Work Cabinet's peers.yml, the `personal` peer's `endpoint:` line must point at the Personal Cabinet's server:
+
+```yaml
+peers:
+  personal:
+    endpoint: stdio:/opt/founders-cabinet-personal/cabinet/mcp-server/server.py   # PERSONAL Cabinet's server
+```
+
+Each Cabinet points at the OTHER Cabinet's server.py — never its own.
 
 ### Step 6 — Populate the hired-agent list in `cabinet/mcp-scope.yml` on Personal Cabinet
 

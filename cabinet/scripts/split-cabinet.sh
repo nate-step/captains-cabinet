@@ -13,12 +13,16 @@
 # cross-DB INSERT mode — this script gains a `--mode cross-db` flag then.
 #
 # Usage:
-#   split-cabinet.sh --target-cabinet <id> --capacity <work|personal> [--apply] [--batch-size N]
+#   split-cabinet.sh --target-cabinet <id> --capacity <work|personal> [--apply]
 #
 #   --target-cabinet    peer id from instance/config/peers.yml (required)
 #   --capacity          which capacity of rows to restamp (required; work|personal)
 #   --apply             actually write (default: dry-run — count + sample + zero writes)
-#   --batch-size        UPDATE batch size for large tables (default 1000)
+#
+# Each table's UPDATE runs as a single transaction. For Cabinet tables
+# at Sensed scale (~2k rows/table) this completes in well under a
+# second; if future growth makes this too heavy (>100k rows/table),
+# add a ctid-chunked loop here — not before.
 #
 # Safety:
 #   - Default is dry-run. --apply is required to touch rows.
@@ -45,20 +49,18 @@ CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
 TARGET_CABINET=""
 CAPACITY=""
 APPLY=0
-BATCH_SIZE=1000
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --target-cabinet) TARGET_CABINET="$2"; shift 2 ;;
     --capacity) CAPACITY="$2"; shift 2 ;;
     --apply) APPLY=1; shift ;;
-    --batch-size) BATCH_SIZE="$2"; shift 2 ;;
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
 if [ -z "$TARGET_CABINET" ] || [ -z "$CAPACITY" ]; then
-  echo "Usage: split-cabinet.sh --target-cabinet <id> --capacity <work|personal> [--apply] [--batch-size N]" >&2
+  echo "Usage: split-cabinet.sh --target-cabinet <id> --capacity <work|personal> [--apply]" >&2
   exit 2
 fi
 

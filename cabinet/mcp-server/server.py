@@ -100,38 +100,61 @@ def read_simple_yaml_key(
 
 
 def read_peers() -> list[dict[str, Any]]:
-    """Read instance/config/peers.yml. CP3 writes the schema; until then
-    returns []. Each peer dict carries keys: id, role, endpoint, capacity,
-    trust_level, consented_by_captain, allowed_tools (list)."""
+    """Read instance/config/peers.yml. Each peer dict carries keys:
+    id, role, endpoint, capacity, trust_level, consented_by_captain,
+    allowed_tools (list), optional peer_version / shared_secret_ref / notes.
+
+    Parser matches load-preset.sh and pre-tool-use.sh §10 parser exactly:
+    tracks `last_list_key` so yaml-list-continuation (`- item`) lines
+    attach to whatever list key came above, not hardcoded to
+    allowed_tools. This is the Phase 2 CP8-review fix — the server's
+    parser was drifting from the loader's, which would have silently
+    refused send_message/request_handoff the moment Captain flipped
+    consent (list read as empty string, tool-in-list check fails)."""
     if not PEERS_YML.exists():
         return []
     peers: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
-    for line in PEERS_YML.read_text().splitlines():
-        # Top-level `peers:` header (optional; we support both with and without)
-        if line.startswith("peers:"):
+    last_list_key: str | None = None
+    for raw in PEERS_YML.read_text().splitlines():
+        line = raw.rstrip()
+        if not line or line.lstrip().startswith("#"):
             continue
-        # Peer entry header: two-space-indented name:
+        if re.match(r"^peers:\s*$", line):
+            continue
         m = re.match(r"^  ([A-Za-z][A-Za-z0-9_-]*):\s*$", line)
         if m:
             if current is not None:
                 peers.append(current)
             current = {"id": m.group(1)}
+            last_list_key = None
             continue
         if current is None:
             continue
-        # Nested key (4+ space indent): key: value
         mk = re.match(r"^\s{4,}([a-z_]+):\s*(.*)$", line)
         if mk:
             key, val = mk.group(1), mk.group(2).strip().strip("\"'")
-            # Simple list literal: [a, b, c]
             if val.startswith("[") and val.endswith("]"):
                 items = [x.strip() for x in val[1:-1].split(",") if x.strip()]
                 current[key] = items
+                last_list_key = key
             elif val.lower() in ("true", "false"):
                 current[key] = val.lower() == "true"
+                last_list_key = None
+            elif val == "":
+                # Empty value: either a list-will-follow or a folded-scalar
+                current[key] = [] if key == "allowed_tools" else ""
+                last_list_key = key if key == "allowed_tools" else None
             else:
                 current[key] = val
+                last_list_key = None
+        elif last_list_key is not None:
+            lm = re.match(r"^\s{4,}- (.+)$", line)
+            if lm:
+                item = lm.group(1).strip().strip("\"'")
+                current.setdefault(last_list_key, [])
+                if isinstance(current[last_list_key], list):
+                    current[last_list_key].append(item)
     if current is not None:
         peers.append(current)
     return peers
