@@ -90,3 +90,23 @@ _(none)_
 - **Golden eval:** pipe a synthetic JSON (officer=cos, today=$76, cap=$75) into the hook, assert (a) non-zero exit, (b) stderr contains the blocked-reason line, (c) Telegram tools still return 0 exit; repeat with platform.yml cap=0 and assert all tools pass.
 - **Owner:** CoS (spec + golden eval), CTO (implement)
 - **Source:** Captain direct reply 2026-04-17 15:50 UTC after CoS bricked ~15 min by silent cap; `captain-decisions.md` row same date.
+
+---
+
+### FW-016 — Delete byte-count cost-write path in post-tool-use.sh (partially-applied fix)
+- **Status:** Proposed (discovered 2026-04-17 23:00 UTC by CTO).
+- **Problem:** A prior session's summary claimed the byte-count cost-tracking path was removed from `post-tool-use.sh`, but git log shows no such commit. Lines 66-88 still write `COST_CENTS = wc -c-derived garbage` to three legacy keys:
+  - `cabinet:cost:daily:$DATE` (plain integer via INCRBY)
+  - `cabinet:cost:officer:$OFFICER:$DATE`
+  - `cabinet:cost:monthly:$MONTH`
+- **Actual state:** `pre-tool-use.sh` was correctly switched to read from `cabinet:cost:tokens:daily:$DATE` HSET (stop-hook writes real costs there). So the spending-cap gate is safe. But:
+  - `cost-dashboard.sh`, `dashboard/src/lib/redis.ts`, `test-escalation.sh`, and `run-golden-evals.sh` all still read from the legacy keys → display/test values are ~3.44x under-reality
+  - `HGETALL cabinet:cost:daily:$TODAY` returns `WRONGTYPE` because the key is a plain integer (from INCRBY), not a hash
+- **Fix:**
+  1. Delete lines 66-88 of `cabinet/scripts/hooks/post-tool-use.sh` (the whole "COST TRACKING (rough estimate)" block). Keep the activity-string block below it intact.
+  2. Update `cost-dashboard.sh` + `dashboard/src/lib/redis.ts` to read from `cabinet:cost:tokens:daily:$DATE` HSET and sum `officer_cost_micro` fields (divide by 10000 to get cents).
+  3. Update `test-escalation.sh` and `run-golden-evals.sh` to write/read HSET format.
+  4. Verify no other consumer reads the legacy keys after removal.
+- **Golden eval:** after fix, `HGETALL cabinet:cost:tokens:daily:$DATE` returns real values; legacy keys return nil; dashboard daily total matches `SUM(*_cost_micro) / 10000 / 100 = $X`.
+- **Owner:** CTO (implement, small diff, ~40 LOC across 4 files). Safe to self-merge per Captain meta-rule if CoS pre-acks.
+- **Source:** CTO session 2026-04-17 23:00 UTC, observed `WRONGTYPE` on HGETALL + grep for `cabinet:cost:daily` showed live write path still active.
