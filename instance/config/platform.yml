@@ -37,7 +37,7 @@ spending_limits:
   daily_cabinet_wide_usd: 0           # 0 = unlimited
   coordinating_officer_multiplier: 3.0  # Framework default, harmless when caps = 0
   telegram_whitelist_enabled: true    # Always-on safety net, cheap to keep enabled
-  telegram_whitelist_hourly_cap: 10
+  telegram_whitelist_hourly_cap: 100  # bumped 2026-04-19 per Captain "no limits" directive; FW-002.2 will add 0=unlimited semantic
 
 # =============================================================
 # Dashboard — Consumer Mode (Spec 032)
