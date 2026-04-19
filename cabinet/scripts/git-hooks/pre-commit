@@ -1,0 +1,95 @@
+#!/bin/bash
+# pre-commit.sh — Checkpoint-review enforcement (FW-019)
+#
+# Gates any commit whose staged diff exceeds CP_REVIEW_THRESHOLD lines.
+# Requires a review artifact at shared/interfaces/reviews/<branch>-<sha>.md
+# (or matching the pattern) created in the last 30 minutes.
+#
+# Override: COMMIT_NO_REVIEW=1 git commit ... (for docs-only / trivial fixes).
+# Captain directive 2026-04-19 msg 1535: "eat our own dog food, starting
+# with phase A" — gated behavior ships now, feature work follows.
+#
+# Exit 0 = allow commit, Exit 1 = block (git semantics for hooks).
+# Stderr gets the reason on block (never silent).
+
+set -u
+
+# ---- Config ----
+CP_REVIEW_THRESHOLD="${CP_REVIEW_THRESHOLD:-300}"   # LOC threshold
+REVIEW_DIR_REL="shared/interfaces/reviews"
+REVIEW_MAX_AGE_MIN="${CP_REVIEW_MAX_AGE_MIN:-30}"   # artifact must be recent
+
+# Skip if explicitly overridden (e.g., docs-only commits)
+if [ "${COMMIT_NO_REVIEW:-}" = "1" ]; then
+  echo "pre-commit: checkpoint-review bypassed via COMMIT_NO_REVIEW=1" >&2
+  exit 0
+fi
+
+# Merge commits carry diffs from the merge itself, not from new work.
+# Skip enforcement on merges — the feature-branch side should already
+# have been gated commit-by-commit.
+if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Find repo root (hook is installed in <repo>/.git/hooks/pre-commit)
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$REPO_ROOT" ]; then
+  echo "pre-commit: not in a git repo — skipping" >&2
+  exit 0
+fi
+
+# Measure staged diff size (added + removed lines — "churn")
+# Use --numstat for precise line counts; skip binary files ("-").
+DIFF_LINES=$(git diff --cached --numstat 2>/dev/null | awk '$1 != "-" && $2 != "-" { added += $1; removed += $2 } END { print added + removed + 0 }')
+
+# Under threshold → pass through silently. Most commits.
+if [ "$DIFF_LINES" -le "$CP_REVIEW_THRESHOLD" ] 2>/dev/null; then
+  exit 0
+fi
+
+# Over threshold — require a recent review artifact.
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+REVIEW_DIR="$REPO_ROOT/$REVIEW_DIR_REL"
+
+# Look for any review file matching the branch slug, modified within the
+# last N minutes. Slugify by replacing / with - (git branch slashes).
+BRANCH_SLUG=$(echo "$BRANCH" | tr '/' '-')
+
+RECENT_REVIEW=""
+if [ -d "$REVIEW_DIR" ]; then
+  # find -mmin accepts negative minutes as "modified less than N minutes ago"
+  RECENT_REVIEW=$(find "$REVIEW_DIR" -maxdepth 2 -type f -name "*${BRANCH_SLUG}*" -mmin "-${REVIEW_MAX_AGE_MIN}" 2>/dev/null | head -1)
+  # Fallback: any review file matching branch, regardless of age — useful
+  # when a build spans longer than REVIEW_MAX_AGE_MIN. Still requires SOMETHING.
+  if [ -z "$RECENT_REVIEW" ]; then
+    RECENT_REVIEW=$(find "$REVIEW_DIR" -maxdepth 2 -type f -name "*${BRANCH_SLUG}*" 2>/dev/null | head -1)
+  fi
+fi
+
+if [ -n "$RECENT_REVIEW" ]; then
+  # Accept. Note the artifact used in stderr for the developer's log.
+  echo "pre-commit: checkpoint-review artifact found: ${RECENT_REVIEW#$REPO_ROOT/}" >&2
+  exit 0
+fi
+
+# No review artifact → block.
+cat >&2 <<EOF
+pre-commit: BLOCKED — diff is ${DIFF_LINES} LOC (threshold ${CP_REVIEW_THRESHOLD}).
+
+Checkpoint-review required for large commits (FW-019, Captain directive 2026-04-19).
+
+To unblock:
+  1. Spawn a reviewer subagent on your staged diff (\`git diff --cached\`).
+  2. Write the review to: ${REVIEW_DIR_REL}/${BRANCH_SLUG}-cp<n>.md
+     (any filename containing "${BRANCH_SLUG}" works)
+  3. Retry the commit.
+
+For docs-only / trivial fixes, override with:
+  COMMIT_NO_REVIEW=1 git commit ...
+
+Why: end-of-build reviews miss design drift and drown the reviewer in
+context. Checkpoint-review catches issues cheaply, one slice at a time.
+EOF
+
+exit 1
