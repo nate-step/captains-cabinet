@@ -93,6 +93,19 @@ _(none)_
 
 ---
 
+### FW-007 — Force-push refusal pre-push hook on master (shared-tree safety)
+- **Status:** Proposed (retro 2026-04-19 P-008).
+- **Problem:** On 2026-04-17, CTO ran `git reset --hard origin/master` in the shared working tree, wiping 4 unpushed CoS commits (FW-002, FW-002.1, FW-004, FW-005, constitution rules). CoS re-applied, but the structural hazard remains: any officer in the shared tree can destroy another officer's unpushed work with one command. Also captured in `feedback_git_staging_shared_tree.md` but that's vigilance, not a gate.
+- **Desired end state:** `.git/hooks/pre-push` refuses `git push --force` (and `--force-with-lease`) to `master` unless an env var + announcement exists. Something like: require `FORCE_PUSH_ANNOUNCED=<ISO-timestamp-within-5min>` AND a matching line in a shared log `shared/interfaces/force-push-log.md`. Without both, hook exits non-zero with clear stderr.
+- **Also cover:** `git reset --hard` in the working tree — harder to gate (no pre-reset hook), but we can:
+  - Add a wrapper `git-reset-hard` in PATH that verifies no uncommitted work across any officer's uncommitted-changes marker (Redis key `cabinet:uncommitted:<officer>`), refusing if any marker present
+  - Each officer's pre-tool-use hook writes `cabinet:uncommitted:<officer>` marker when it detects `git add` or `git commit` to local-only ref; clears on push
+- **Owner:** CTO implement, CoS golden-eval.
+- **Risk:** false-positive refusing legitimate `--force-with-lease` after a rebase. Mitigation: `--force-with-lease` still refuses, but the announcement requirement is one-command (`echo "rebase push $(date -u +%FT%TZ) <reason>" >> shared/interfaces/force-push-log.md && FORCE_PUSH_ANNOUNCED=$(date -u +%FT%TZ) git push --force-with-lease`).
+- **Source:** CTO session 2026-04-17; CoS retro 2026-04-19 P-008.
+
+---
+
 ### FW-016 — Delete byte-count cost-write path in post-tool-use.sh (partially-applied fix)
 - **Status:** Proposed (discovered 2026-04-17 23:00 UTC by CTO).
 - **Problem:** A prior session's summary claimed the byte-count cost-tracking path was removed from `post-tool-use.sh`, but git log shows no such commit. Lines 66-88 still write `COST_CENTS = wc -c-derived garbage` to three legacy keys:
