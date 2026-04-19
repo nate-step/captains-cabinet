@@ -93,6 +93,15 @@ _(none)_
 
 ---
 
+### FW-019 — Checkpoint-review pre-commit hook ✓ SHIPPED
+- **Status:** DONE — commit 84632d1 on master 2026-04-19. `cabinet/scripts/git-hooks/pre-commit` gates commits >300 LOC without a review artifact; `cabinet/scripts/install-git-hooks.sh` activates for forkers. Golden eval 9/9 pass. Skill at `memory/skills/evolved/checkpoint-review.md`.
+- **Source:** Captain msgs 1531+1532+1535 — checkpoint-based review during build not end-of-build, enforced via hook not skill, eat-our-own-dog-food starting with Phase A.
+- **Framework impact:** every Cabinet fork that runs install-git-hooks.sh once post-clone inherits the gate. Applies to all officers + Crew agents equally.
+- **Override:** `COMMIT_NO_REVIEW=1` env var for docs-only / trivial fixes.
+- **Dogfooded:** FW-019 commit itself (318 LOC) passed through with self-review at `shared/interfaces/reviews/master-fw-019-cp1.md`.
+
+---
+
 ### FW-018 — Host-agent + admin bot (CoS gets operator-level access; Captain gets dead-man switch)
 - **Status:** Spec drafted (Spec 035), Captain approved direction 2026-04-19, routed to CoO adversary + CRO pressure-test, CTO after that.
 - **Problem:** Officers run in Docker containers with no path to the host. Every container-boundary-crossing op (rebuild dashboard, restart a wedged officer, edit .env, docker compose up) currently falls to Captain's manual shell work. Non-tech captains shouldn't have to ever touch a terminal.
