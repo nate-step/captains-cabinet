@@ -93,6 +93,21 @@ _(none)_
 
 ---
 
+### FW-018 — Host-agent + admin bot (CoS gets operator-level access; Captain gets dead-man switch)
+- **Status:** Spec drafted (Spec 035), Captain approved direction 2026-04-19, routed to CoO adversary + CRO pressure-test, CTO after that.
+- **Problem:** Officers run in Docker containers with no path to the host. Every container-boundary-crossing op (rebuild dashboard, restart a wedged officer, edit .env, docker compose up) currently falls to Captain's manual shell work. Non-tech captains shouldn't have to ever touch a terminal.
+- **Solution:** Host-agent daemon on host (root, Unix socket, peer-cred auth); host MCP exposed only to CoS; append-only audit log; Captain-only admin bot running on host OUTSIDE the Cabinet failure domain (four cmds: pause/restart/rollback/show-recent); dangerous-pattern watcher pushes Telegram alerts on rm -rf / or similar; GitOps auto-rebuild on master push. CoS gets operator-level access; other officers route through CoS.
+- **Trust model:** CoS = operator with privilege. Safety is audit log + alerts + dead-man switch, not privilege allowlist.
+- **Spec:** `shared/interfaces/product-specs/035-host-agent-admin-bot.md` v1.
+- **Review chain:** CoO adversary → CRO pressure-test → CTO tech-review → Captain ack of Q1–Q4 → CTO Phase A implementation.
+- **Effort estimate:** ~2 days CTO + 1 day CoS golden eval. ~1100 LOC.
+- **Bundles:** a secondary fix to pre-tool-use.sh Section 3 (prohibited-actions) — make it platform.yml-configurable and propagate FW-002 stderr-on-block fix to remaining 22 exit-2 paths. Without this, host MCP calls would be blocked by the existing hardcoded substring match on "docker|systemctl|sudo".
+- **One-time Captain cost:** BotFather tap for the admin bot (FW-001 upstream-blocker still unresolved; no programmatic bot creation from Telegram).
+- **Owner:** CoS (spec + golden eval), CTO (implement).
+- **Source:** Captain msg 1513+1515+1516 (2026-04-19) — "How can you get access to host... access to everything would make it frictionless... restart and reset switch somewhere in case you mess up and become unresponsive."
+
+---
+
 ### FW-007 — Force-push refusal pre-push hook on master (shared-tree safety)
 - **Status:** Proposed (retro 2026-04-19 P-008).
 - **Problem:** On 2026-04-17, CTO ran `git reset --hard origin/master` in the shared working tree, wiping 4 unpushed CoS commits (FW-002, FW-002.1, FW-004, FW-005, constitution rules). CoS re-applied, but the structural hazard remains: any officer in the shared tree can destroy another officer's unpushed work with one command. Also captured in `feedback_git_staging_shared_tree.md` but that's vigilance, not a gate.
