@@ -1,0 +1,38 @@
+[Unit]
+Description=Cabinet Admin Bot — Telegram control interface (Spec 035 Phase A)
+Documentation=https://github.com/nate-step/captains-cabinet/blob/master/cabinet/admin-bot/bot.py
+After=network.target
+Wants=network.target
+
+# Admin bot intentionally does NOT depend on the host-agent service.
+# It must remain reachable even when host-agent is down or wedged.
+# Admin bot is the safety valve for recovering a stuck Cabinet stack.
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+
+# Run as root — needs docker socket access + filesystem write for pause flag
+User=root
+Group=root
+
+# Load the Telegram bot token from the env file (mode 0600, set by bootstrap-host.sh)
+EnvironmentFile=/etc/cabinet/admin-bot.env
+
+# Source of truth for the bot
+ExecStart=/usr/bin/python3 /opt/founders-cabinet/cabinet/admin-bot/bot.py
+
+# KillMode=mixed: SIGTERM to main process, then SIGKILL to any remaining
+# processes in the cgroup. Required for python-telegram-bot graceful shutdown
+# (CRO pin per spec line 170).
+KillMode=mixed
+TimeoutStopSec=15
+
+# Logging goes to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cabinet-admin-bot
+
+[Install]
+WantedBy=multi-user.target

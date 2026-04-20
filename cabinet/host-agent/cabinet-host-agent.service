@@ -1,0 +1,34 @@
+[Unit]
+Description=Cabinet Host-Agent Daemon (Spec 035 Phase A)
+Documentation=https://github.com/nate-step/captains-cabinet/blob/master/cabinet/host-agent/server.py
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+
+# Run as root — agent needs to exec privileged docker/git commands
+User=root
+Group=root
+
+# Ensure the runtime socket directory exists (tmpfs survives reboots via this)
+RuntimeDirectory=cabinet
+RuntimeDirectoryMode=0750
+
+# Source of truth for the daemon
+ExecStart=/usr/bin/python3 /opt/founders-cabinet/cabinet/host-agent/server.py
+
+# Logging goes to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cabinet-host-agent
+
+# Security hardening (minimal — PoC; 035-hardening will tighten further)
+# Keep process alive even when Telegram bot container restarts
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

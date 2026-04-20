@@ -28,11 +28,14 @@ cabinet: main
 
 agents:
   cos:
-    mcps: [notion, linear, library, telegram]
+    mcps: [notion, linear, library, telegram, host]
     rationale: >
       Coordination and briefings. Not code; CoS does not touch Neon or
       Vercel directly — that's CTO/COO. Library for Phase 1 inbox and
       memory lookups; Notion for legacy business brain until migration.
+      host: Spec 035 Phase A host-agent tools (run, rebuild_service,
+      restart_officer, tail_logs, edit_file, read_file). CoS-only scope —
+      no other officer is allowed host MCP access.
 
   cto:
     mcps: [neon, vercel, linear, library, telegram]
