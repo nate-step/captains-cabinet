@@ -2,11 +2,16 @@ services:
   # ============================================================
   # Officers Container — runs all Officer sessions in tmux
   # ============================================================
+  # Spec 035 Phase A: single container runs all officers in tmux.
+  # user: cabinet-cos UID 60001:60000 for SO_PEERCRED auth to host-agent.
+  # Run bootstrap-host.sh first, then compose down+up.
   officers:
     build:
       context: .
       dockerfile: Dockerfile.officer
     container_name: ${CABINET_PREFIX:-cabinet}-officers
+    # Spec 035 Phase A: cabinet-cos UID 60001 / cabinet GID 60000.
+    user: "60001:60000"
     env_file:
       - .env
     environment:
@@ -26,21 +31,9 @@ services:
       - claude-auth:/home/cabinet/.claude
       # Persist Channels plugin state
       - channels-state:/home/cabinet/.claude-channels
+      # Spec 035 Phase A: host-agent socket (read-only mount).
+      - /run/cabinet:/run/cabinet:ro
     working_dir: /opt/founders-cabinet
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - cabinet-net
-
-  # ============================================================
-  # PostgreSQL + pgvector — episodic memory & structured logs
-  # ============================================================
   postgres:
     image: pgvector/pgvector:pg16
     container_name: ${CABINET_PREFIX:-cabinet}-postgres
