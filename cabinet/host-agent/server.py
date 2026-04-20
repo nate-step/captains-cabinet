@@ -48,6 +48,7 @@ import logging
 import os
 import socket
 import struct
+import subprocess
 import sys
 import tempfile
 import time
@@ -463,7 +464,27 @@ async def tool_edit_file(args: dict, request_id: str, audit_fd: int) -> dict:
     error_code: str | None = None
 
     # Write diff to a temp file, then apply with git apply --unsafe-paths
-    # git apply is transactional: on failure the file is unchanged
+    # git apply is transactional: on failure the file is unchanged.
+    #
+    # --directory choice (Q3 fix 2026-04-20): unified diffs carry paths
+    # relative to the repo root (a/cabinet/.../server.py), not relative
+    # to the target file's parent. For files inside a git repo, use the
+    # repo's toplevel as --directory so multi-file patches apply to the
+    # right locations. For bare files outside any repo, fall back to the
+    # target's parent (single-file patch semantics).
+    def _apply_directory(target_path: Path) -> str:
+        try:
+            probe = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=str(target_path.parent),
+                capture_output=True, text=True, timeout=5,
+            )
+            if probe.returncode == 0 and probe.stdout.strip():
+                return probe.stdout.strip()
+        except Exception:
+            pass
+        return str(target_path.parent)
+
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".patch", delete=False, encoding="utf-8"
@@ -474,7 +495,7 @@ async def tool_edit_file(args: dict, request_id: str, audit_fd: int) -> dict:
         try:
             proc = await asyncio.create_subprocess_exec(
                 "git", "apply", "--unsafe-paths",
-                "--directory", str(target.parent),
+                "--directory", _apply_directory(target),
                 tmp_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
