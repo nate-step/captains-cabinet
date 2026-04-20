@@ -176,6 +176,33 @@ while true; do
           redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:autocompact-count:$officer" > /dev/null 2>&1
         fi
       fi
+
+      # PERMISSION-PROMPT DETECT (FW-020) — alert Captain when an officer is
+      # stuck on a Claude Code approval prompt. Officers in bypass-permissions
+      # mode never show this; only default-permission officers can block here.
+      # Lesson (2026-04-20): CTO stuck 27h on "Do you want to create .mcp.json?"
+      # because CTO wasn't in bypass-permissions mode like CoO/CPO/CRO.
+      # Signature: "Esc to cancel · Tab to amend" is unique to these prompts.
+      if echo "$PANE_TAIL" | grep -qE 'Esc to cancel.*Tab to amend'; then
+        LAST_PROMPT_ALERT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:supervisor:last-prompt-alert:$officer" 2>/dev/null)
+        if [ -z "$LAST_PROMPT_ALERT" ] || [ "$((NOW - LAST_PROMPT_ALERT))" -gt 1800 ] 2>/dev/null; then
+          log "Officer $officer blocked on permission prompt — alerting Captain"
+          primary="${PRIMARY_OFFICER:-cos}"
+          token_var="TELEGRAM_${primary^^}_TOKEN"
+          token="${!token_var:-}"
+          captain="${CAPTAIN_TELEGRAM_ID:-}"
+          if [ -n "$token" ] && [ -n "$captain" ]; then
+            PROMPT_Q=$(echo "$PANE_TAIL" | grep -m1 -E '^[[:space:]]*(Do you want|Allow)' | sed 's/^ *//' | head -c 200)
+            [ -z "$PROMPT_Q" ] && PROMPT_Q="approval prompt in ${officer} pane"
+            curl -s -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+              -d chat_id="$captain" \
+              -d text="⏸️ *${officer}* blocked on permission prompt: ${PROMPT_Q}. Ask ${primary} to press approval or enable bypass-permissions (shift+tab in pane)." \
+              -d parse_mode="Markdown" > /dev/null 2>&1
+          fi
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:supervisor:last-prompt-alert:$officer" "$NOW" EX 1800 > /dev/null 2>&1
+          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCR "cabinet:supervisor:prompt-alert-count:$officer" > /dev/null 2>&1
+        fi
+      fi
     fi
   done
 
