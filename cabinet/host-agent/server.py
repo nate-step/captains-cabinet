@@ -40,6 +40,7 @@ ERROR_CODES = {
     "patch-failed":         "edit_file: git apply rejected the diff; original file unchanged",
     "exec-error":           "subprocess raised an exception before completing",
     "self-restart-forbidden": "restart_officer refused: CoS cannot self-restart via host-agent; use /cos restart from admin bot",
+    "request-too-large":    "Request line exceeded 1 MiB framing cap (readline limit)",
 }
 
 import asyncio
@@ -669,109 +670,124 @@ async def handle_connection(
     writer: asyncio.StreamWriter,
     audit_fd: int,
 ) -> None:
-    """Handle one client connection. Each connection is a single request."""
-    peer_addr = writer.get_extra_info("peername", "unknown")
+    """Handle one client connection. Each connection is a single request.
 
-    # --- Peer-credential authentication ---
-    # Extract the underlying socket to call getsockopt(SO_PEERCRED)
-    transport = writer.transport
-    raw_sock = transport.get_extra_info("socket")
-    if raw_sock is None:
-        log.warning("No socket info available; rejecting connection")
-        resp = error_response("unknown", "bad-peer-cred", "Cannot determine peer credentials")
-        writer.write((json.dumps(resp) + "\n").encode())
-        await writer.drain()
-        writer.close()
-        return
-
-    peer_uid = get_peer_uid(raw_sock)
-    if peer_uid != CABINET_COS_UID:
-        log.warning("Rejected connection from UID %s (expected %s)", peer_uid, CABINET_COS_UID)
-        resp = error_response("unknown", "bad-peer-cred",
-                              f"UID {peer_uid} is not authorized (expected UID {CABINET_COS_UID})")
-        writer.write((json.dumps(resp) + "\n").encode())
-        await writer.drain()
-        writer.close()
-        return
-
-    # --- Read request ---
+    CRO stress test 2026-04-20 HIGH #2: the whole body is wrapped in
+    try/finally so writer.close() ALWAYS runs regardless of which early
+    return path fires. Previously, uncaught ValueError (readline limit),
+    UnicodeDecodeError (invalid UTF-8 from json.loads), and RecursionError
+    (deep JSON nesting) leaked the writer fd.
+    """
     try:
-        line = await asyncio.wait_for(reader.readline(), timeout=30.0)
-    except asyncio.TimeoutError:
-        log.warning("Timeout reading request from UID %s", peer_uid)
-        writer.close()
-        return
+        peer_addr = writer.get_extra_info("peername", "unknown")
 
-    line = line.strip()
-    if not line:
-        writer.close()
-        return
-
-    try:
-        req = json.loads(line)
-    except json.JSONDecodeError as exc:
-        resp = error_response("unknown", "args-invalid", f"JSON parse error: {exc}")
-        writer.write((json.dumps(resp) + "\n").encode())
-        await writer.drain()
-        writer.close()
-        return
-
-    # Extract fields
-    request_id   = req.get("request_id") or str(uuid.uuid4())
-    tool_name    = req.get("tool", "")
-    args         = req.get("args") or {}
-    version      = req.get("v", 1)
-    # container_id from request env — per spec §3 audit format.
-    # MCP client may include this; defaults to 'unknown' when absent.
-    container_id = req.get("container_id", "unknown") or "unknown"
-    # Inject into args so tool functions can access it for audit calls.
-    # Tools strip this before passing args to subprocesses.
-    args["_container_id"] = container_id
-
-    if version != 1:
-        resp = error_response(request_id, "args-invalid", f"Unsupported protocol version: {version}")
-        writer.write((json.dumps(resp) + "\n").encode())
-        await writer.drain()
-        writer.close()
-        return
-
-    # --- Pause check ---
-    if PAUSE_FLAG_PATH.exists():
-        resp = error_response(request_id, "paused-by-captain",
-                              "Host-agent is paused. Use /cos resume from admin bot.")
-        writer.write((json.dumps(resp) + "\n").encode())
-        await writer.drain()
-        writer.close()
-        return
-
-    # --- Tool dispatch ---
-    if tool_name not in TOOL_HANDLERS:
-        resp = error_response(request_id, "tool-not-found", f"Unknown tool: {tool_name!r}")
-        writer.write((json.dumps(resp) + "\n").encode())
-        await writer.drain()
-        writer.close()
-        return
-
-    handler = TOOL_HANDLERS[tool_name]
-
-    try:
-        if tool_name in STREAMING_TOOLS:
-            # Streaming handlers write directly to writer
-            await handler(args, request_id, audit_fd, writer)
-        else:
-            resp = await handler(args, request_id, audit_fd)
+        # --- Peer-credential authentication ---
+        transport = writer.transport
+        raw_sock = transport.get_extra_info("socket")
+        if raw_sock is None:
+            log.warning("No socket info available; rejecting connection")
+            resp = error_response("unknown", "bad-peer-cred", "Cannot determine peer credentials")
             writer.write((json.dumps(resp) + "\n").encode())
             await writer.drain()
-    except Exception as exc:
-        log.exception("Unhandled exception in tool %s: %s", tool_name, exc)
+            return
+
+        peer_uid = get_peer_uid(raw_sock)
+        if peer_uid != CABINET_COS_UID:
+            log.warning("Rejected connection from UID %s (expected %s)", peer_uid, CABINET_COS_UID)
+            resp = error_response("unknown", "bad-peer-cred",
+                                  f"UID {peer_uid} is not authorized (expected UID {CABINET_COS_UID})")
+            writer.write((json.dumps(resp) + "\n").encode())
+            await writer.drain()
+            return
+
+        # --- Read request line ---
         try:
-            resp = error_response(request_id, "exec-error", str(exc))
+            line = await asyncio.wait_for(reader.readline(), timeout=30.0)
+        except asyncio.TimeoutError:
+            log.warning("Timeout reading request from UID %s", peer_uid)
+            return
+        except ValueError as exc:
+            # readline limit exceeded (LimitOverrunError subclasses ValueError)
+            log.warning("Oversized request from UID %s: %s", peer_uid, exc)
+            resp = error_response("unknown", "request-too-large",
+                                  "Request line exceeded 1 MiB framing cap")
             writer.write((json.dumps(resp) + "\n").encode())
             await writer.drain()
-        except OSError:
-            pass
+            return
+
+        line = line.strip()
+        if not line:
+            return
+
+        # --- Parse JSON ---
+        try:
+            req = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError, ValueError) as exc:
+            # JSONDecodeError: malformed JSON
+            # UnicodeDecodeError: invalid UTF-8 (e.g., b'\xff\xfe')
+            # RecursionError: pathological nesting depth
+            # ValueError: generic fallback for json-lib variance
+            log.warning("Malformed request from UID %s: %s", peer_uid, type(exc).__name__)
+            resp = error_response("unknown", "args-invalid",
+                                  f"{type(exc).__name__}: {exc}")
+            writer.write((json.dumps(resp) + "\n").encode())
+            await writer.drain()
+            return
+
+        # --- Extract fields ---
+        request_id   = req.get("request_id") or str(uuid.uuid4())
+        tool_name    = req.get("tool", "")
+        args         = req.get("args") or {}
+        version      = req.get("v", 1)
+        container_id = req.get("container_id", "unknown") or "unknown"
+        args["_container_id"] = container_id
+
+        if version != 1:
+            resp = error_response(request_id, "args-invalid",
+                                  f"Unsupported protocol version: {version}")
+            writer.write((json.dumps(resp) + "\n").encode())
+            await writer.drain()
+            return
+
+        # --- Pause check ---
+        if PAUSE_FLAG_PATH.exists():
+            resp = error_response(request_id, "paused-by-captain",
+                                  "Host-agent is paused. Use /cos resume from admin bot.")
+            writer.write((json.dumps(resp) + "\n").encode())
+            await writer.drain()
+            return
+
+        # --- Tool dispatch ---
+        if tool_name not in TOOL_HANDLERS:
+            resp = error_response(request_id, "tool-not-found", f"Unknown tool: {tool_name!r}")
+            writer.write((json.dumps(resp) + "\n").encode())
+            await writer.drain()
+            return
+
+        handler = TOOL_HANDLERS[tool_name]
+        try:
+            if tool_name in STREAMING_TOOLS:
+                await handler(args, request_id, audit_fd, writer)
+            else:
+                resp = await handler(args, request_id, audit_fd)
+                writer.write((json.dumps(resp) + "\n").encode())
+                await writer.drain()
+        except Exception as exc:
+            log.exception("Unhandled exception in tool %s: %s", tool_name, exc)
+            try:
+                resp = error_response(request_id, "exec-error", str(exc))
+                writer.write((json.dumps(resp) + "\n").encode())
+                await writer.drain()
+            except OSError:
+                pass
     finally:
-        writer.close()
+        # Single close point — guarantees no writer fd leaks regardless of
+        # which early return / exception path above fired.
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
 
 
 # ----------------------------------------------------------------
@@ -786,7 +802,14 @@ async def create_server(audit_fd: int) -> None:
     def client_connected(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         asyncio.create_task(handle_connection(reader, writer, audit_fd))
 
-    server = await asyncio.start_unix_server(client_connected, path=str(SOCKET_PATH))
+    # limit=1 MiB matches the NDJSON framing cap documented in spec §1.
+    # Default asyncio limit is 64 KiB, which is too small for large edit_file
+    # diff bodies and causes readline() to raise ValueError via
+    # LimitOverrunError instead of returning the framed line.
+    # (CRO stress test 2026-04-20: HIGH #1.)
+    server = await asyncio.start_unix_server(
+        client_connected, path=str(SOCKET_PATH), limit=1024 * 1024
+    )
 
     # Set socket permissions: mode 0660, group cabinet (GID 60000)
     try:
