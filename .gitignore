@@ -19,6 +19,10 @@ cabinet/.env
 
 # Per-officer working directories (created at runtime for session isolation)
 officers/
+# Exception: CoS MCP config registers the host MCP server — ship with framework
+# so every Cabinet install wires host access to CoS on boot. No secrets in file.
+!officers/cos/
+!officers/cos/.mcp.json
 
 # Runtime logs
 memory/logs/*.jsonl
