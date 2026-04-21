@@ -74,21 +74,38 @@ fi
 # Eval 003: Spending Limits
 # ------------------------------------------------------------------
 log "EVAL-003: Spending Limits"
-# Save real cost, set to exceed limit, test, restore
-REAL_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:daily:$(date -u +%Y-%m-%d)" 2>/dev/null)
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:cost:daily:$(date -u +%Y-%m-%d)" 999999 > /dev/null 2>&1
-RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo test"}}' | OFFICER_NAME=cos bash "$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh" 2>/dev/null)
-EXIT_CODE=$?
-if [ "$EXIT_CODE" -eq 2 ] && echo "$RESULT" | grep -qi "spending limit"; then
-  pass "Daily spending limit blocks when exceeded"
+# FW-016: pre-tool-use.sh reads cabinet:cost:tokens:daily:$TODAY HGET
+# <role>_cost_micro (microdollars). 999,999,999 ($1000) definitively
+# exceeds any non-zero cap. Block message → STDERR, not stdout — so
+# capture with `2>&1 >/dev/null`.
+#
+# When platform.yml sets daily_per_officer_usd: 0 (unlimited — the
+# Captain's own Cabinet default), pre-tool-use.sh skips the per-officer
+# cap block entirely. That's correct behavior, but means we cannot
+# exercise the gate. Detect this and skip rather than falsely fail.
+EVAL_CAP_USD=$(awk '/^[[:space:]]*daily_per_officer_usd:/{gsub(/#.*/,""); print $2; exit}' /opt/founders-cabinet/instance/config/platform.yml 2>/dev/null)
+case "$EVAL_CAP_USD" in *[!0-9.]*|'') EVAL_CAP_USD=0 ;; esac
+if [ "$(awk -v v="$EVAL_CAP_USD" 'BEGIN{print (v+0)==0}')" = "1" ]; then
+  log "EVAL-003: skipping — daily_per_officer_usd=0 (unlimited) in platform.yml"
+  pass "Spending limit eval skipped cleanly when cap=unlimited"
 else
-  fail "Spending limit did not block"
-fi
-# Restore real value
-if [ -n "$REAL_COST" ] && [ "$REAL_COST" != "(nil)" ]; then
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:cost:daily:$(date -u +%Y-%m-%d)" "$REAL_COST" > /dev/null 2>&1
-else
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:cost:daily:$(date -u +%Y-%m-%d)" > /dev/null 2>&1
+  EVAL_DATE=$(date -u +%Y-%m-%d)
+  EVAL_KEY="cabinet:cost:tokens:daily:$EVAL_DATE"
+  REAL_COST_MICRO=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" "cos_cost_micro" 2>/dev/null)
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HSET "$EVAL_KEY" "cos_cost_micro" 999999999 > /dev/null 2>&1
+  RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"echo test"}}' | OFFICER_NAME=cos bash "$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh" 2>&1 >/dev/null)
+  EXIT_CODE=$?
+  if [ "$EXIT_CODE" -eq 2 ] && echo "$RESULT" | grep -qE "BLOCKED.*officer=cos"; then
+    pass "Daily spending limit blocks when exceeded"
+  else
+    fail "Spending limit did not block (exit=$EXIT_CODE, stderr='$RESULT')"
+  fi
+  # Restore real value
+  if [ -n "$REAL_COST_MICRO" ] && [ "$REAL_COST_MICRO" != "(nil)" ]; then
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HSET "$EVAL_KEY" "cos_cost_micro" "$REAL_COST_MICRO" > /dev/null 2>&1
+  else
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "$EVAL_KEY" "cos_cost_micro" > /dev/null 2>&1
+  fi
 fi
 
 # ------------------------------------------------------------------

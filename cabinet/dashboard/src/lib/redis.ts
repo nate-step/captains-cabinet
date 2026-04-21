@@ -44,25 +44,15 @@ const mockStore: Record<string, string> = {
   'cabinet:schedule:last-run:cos:retro': new Date(Date.now() - 20 * 3600000).toISOString(),
 }
 
-// Populate 30 days of daily cost + per-officer cost data
-for (let i = 0; i < 30; i++) {
-  const dateStr = daysAgo(i)
-  const totalCents = dailyCosts[i]
-  mockStore[`cabinet:cost:daily:${dateStr}`] = String(totalCents)
-  for (const role of officers) {
-    const weight = officerWeights[role]
-    // Add some randomness per officer
-    const jitter = 0.8 + Math.random() * 0.4
-    const officerCost = Math.round(totalCents * weight * jitter)
-    mockStore[`cabinet:cost:officer:${role}:${dateStr}`] = String(officerCost)
-  }
-}
+// FW-016: legacy cabinet:cost:daily:* + cabinet:cost:officer:*:* keys were
+// removed; tokens:daily HSET is the single source of truth. getCostHistory
+// now reads from HSET and converts microdollars → cents.
 
 // Mock hash store for HGETALL support
 const mockHashStore: Record<string, Record<string, string>> = {}
 
-// Populate mock token cost data (new system)
-for (let i = 0; i < 7; i++) {
+// Populate mock token cost data — 30 days for getCostHistory backfill.
+for (let i = 0; i < 30; i++) {
   const dateStr = daysAgo(i)
   const hash: Record<string, string> = {}
   for (const role of officers) {
@@ -127,10 +117,13 @@ export interface DailyCostEntry {
 }
 
 export async function getCostHistory(days: number): Promise<DailyCostEntry[]> {
-  // Discover officers dynamically from Redis expected keys (not hardcoded)
+  // FW-016: read cabinet:cost:tokens:daily:<date> HSET; sum *_cost_micro
+  // per officer and convert microdollars → cents (1 cent = 10000 micro).
+  // Legacy cabinet:cost:daily:* and cabinet:cost:officer:*:* keys are gone.
   const officerKeys = await redis.keys('cabinet:officer:expected:*')
-  const officers = officerKeys.map(k => k.replace('cabinet:officer:expected:', ''))
-  // Fallback if no expected keys found
+  const officers = officerKeys
+    .map(k => k.replace('cabinet:officer:expected:', ''))
+    .filter(k => !k.includes(':'))
   if (officers.length === 0) officers.push('cos', 'cto', 'cpo', 'cro', 'coo')
 
   const entries: DailyCostEntry[] = []
@@ -140,13 +133,14 @@ export async function getCostHistory(days: number): Promise<DailyCostEntry[]> {
     d.setDate(d.getDate() - i)
     const dateStr = d.toISOString().split('T')[0]
 
-    const totalStr = await redis.get(`cabinet:cost:daily:${dateStr}`)
-    const total = totalStr ? parseInt(totalStr, 10) : 0
-
+    const hash = await redis.hgetall(`cabinet:cost:tokens:daily:${dateStr}`)
     const officerCosts: Record<string, number> = {}
+    let total = 0
     for (const role of officers) {
-      const costStr = await redis.get(`cabinet:cost:officer:${role}:${dateStr}`)
-      officerCosts[role] = costStr ? parseInt(costStr, 10) : 0
+      const micro = hash ? parseInt(hash[`${role}_cost_micro`] || '0', 10) : 0
+      const cents = Math.round(micro / 10000)
+      officerCosts[role] = cents
+      total += cents
     }
 
     entries.push({ date: dateStr, total, officers: officerCosts })

@@ -62,30 +62,16 @@ fi
 # Write JSON log line
 echo "{\"ts\":\"$TIMESTAMP\",\"cabinet_id\":\"$CABINET_ID\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE"
 
-# ============================================================
-# 2. COST TRACKING (rough estimate)
-# ============================================================
-INPUT_TOKENS=$(echo "$TOOL_INPUT" | wc -c)
-OUTPUT_TOKENS=$(echo "$TOOL_OUTPUT" | wc -c)
-
-# Rough cost estimate in cents (very approximate)
-# Opus: ~$15/MTok input, ~$75/MTok output → ~0.0015¢/char in, ~0.0075¢/char out
-# Using ~4 chars per token as rough estimate
-COST_CENTS=$(( (INPUT_TOKENS * 15 / 4000000 + OUTPUT_TOKENS * 75 / 4000000) ))
-COST_CENTS=$((COST_CENTS > 0 ? COST_CENTS : 1))  # minimum 1 cent per action
-
-# Increment daily cost counter (expires after 48h)
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCRBY "cabinet:cost:daily:$TODAY" "$COST_CENTS" > /dev/null 2>&1
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:daily:$TODAY" 172800 > /dev/null 2>&1
-
-# Increment per-officer daily counter
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCRBY "cabinet:cost:officer:$OFFICER:$TODAY" "$COST_CENTS" > /dev/null 2>&1
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:officer:$OFFICER:$TODAY" 172800 > /dev/null 2>&1
-
-# Increment monthly counter
-MONTH=$(date -u +%Y-%m)
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INCRBY "cabinet:cost:monthly:$MONTH" "$COST_CENTS" > /dev/null 2>&1
-redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:monthly:$MONTH" 2764800 > /dev/null 2>&1
+# NOTE: Accurate per-tool cost tracking is handled by the cost-aware
+# Anthropic wrapper which writes microdollar-accurate values to the
+# cabinet:cost:tokens:daily:<date> HSET (fields <role>_cost_micro,
+# <role>_input, <role>_output, <role>_cache_write, <role>_cache_read).
+# The legacy byte-count COST TRACKING block here (cabinet:cost:daily,
+# cabinet:cost:officer:*, cabinet:cost:monthly) was removed in FW-016:
+# it double-counted alongside the wrapper and under-reported by ~100×
+# because byte length ≠ token count for jq-stringified tool I/O.
+# Consumers (cost-dashboard.sh, dashboard/redis.ts, test-escalation.sh,
+# run-golden-evals.sh EVAL-003) read from the tokens:daily HSET.
 
 # ============================================================
 # 3. ACTIVITY STRING — Card 1 YOUR CABINET (Spec 032 PR 3)

@@ -152,8 +152,8 @@ fi
 # ============================================================
 echo ""
 echo "8. Safety infrastructure checks"
-# Check that spending limit keys can be read
-SPENDING=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:daily:$(date -u +%Y-%m-%d)" 2>/dev/null)
+# Check that spending limit keys can be read (FW-016: tokens:daily HSET is source of truth)
+SPENDING=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGETALL "cabinet:cost:tokens:daily:$(date -u +%Y-%m-%d)" 2>/dev/null | head -1)
 test_step "Daily cost counter is readable" "true" "$([ -n "$SPENDING" ] || [ "$SPENDING" = "" ] && echo "true")"
 
 # Check Redis is healthy

@@ -19,24 +19,49 @@ TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 # ============================================================
 # Gather cost data from Redis
 # ============================================================
-DAILY_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:daily:$TODAY" 2>/dev/null)
-DAILY_COST=${DAILY_COST:-0}
+# FW-016: source of truth is cabinet:cost:tokens:daily:<date> HSET,
+# populated by the cost-aware Anthropic wrapper in microdollars.
+# Fields: <role>_cost_micro (+ _input, _output, _cache_write, _cache_read).
+# Divide micro by 10000 to get cents (1 cent = 10000 microdollars).
+# Note: post-FW-016 numbers will be LOWER than pre-FW-016 readings — the
+# old byte-count INCRBY over-counted (byte length ≠ tokens, ~100× off)
+# AND double-counted alongside the wrapper. New numbers are accurate.
 
-YESTERDAY_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:daily:$YESTERDAY" 2>/dev/null)
-YESTERDAY_COST=${YESTERDAY_COST:-0}
+# Sum all *_cost_micro fields from one HSET — returns microdollars.
+sum_cost_micro() {
+  local key="$1"
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGETALL "$key" 2>/dev/null | \
+    awk 'NR%2==1{k=$0} NR%2==0{if(k~/_cost_micro$/)s+=$0} END{print s+0}'
+}
 
-MONTHLY_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:monthly:$MONTH" 2>/dev/null)
-MONTHLY_COST=${MONTHLY_COST:-0}
+# Read one officer's cost_micro field — returns microdollars.
+officer_cost_micro() {
+  local role="$1" key="$2"
+  local m
+  m=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$key" "${role}_cost_micro" 2>/dev/null)
+  echo "${m:-0}"
+}
+
+DAILY_COST_MICRO=$(sum_cost_micro "cabinet:cost:tokens:daily:$TODAY")
+DAILY_COST=$((DAILY_COST_MICRO / 10000))
+
+YESTERDAY_COST_MICRO=$(sum_cost_micro "cabinet:cost:tokens:daily:$YESTERDAY")
+YESTERDAY_COST=$((YESTERDAY_COST_MICRO / 10000))
+
+# Monthly: sum across every tokens:daily HSET whose date matches YYYY-MM-*.
+MONTHLY_COST_MICRO=0
+while IFS= read -r mkey; do
+  [ -z "$mkey" ] && continue
+  m=$(sum_cost_micro "$mkey")
+  MONTHLY_COST_MICRO=$((MONTHLY_COST_MICRO + m))
+done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" --scan --pattern "cabinet:cost:tokens:daily:${MONTH}-*" 2>/dev/null)
+MONTHLY_COST=$((MONTHLY_COST_MICRO / 10000))
 
 # Per-officer today
-COS_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:officer:cos:$TODAY" 2>/dev/null)
-COS_COST=${COS_COST:-0}
-CTO_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:officer:cto:$TODAY" 2>/dev/null)
-CTO_COST=${CTO_COST:-0}
-CPO_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:officer:cpo:$TODAY" 2>/dev/null)
-CPO_COST=${CPO_COST:-0}
-CRO_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:cost:officer:cro:$TODAY" 2>/dev/null)
-CRO_COST=${CRO_COST:-0}
+COS_COST=$(( $(officer_cost_micro cos "cabinet:cost:tokens:daily:$TODAY") / 10000 ))
+CTO_COST=$(( $(officer_cost_micro cto "cabinet:cost:tokens:daily:$TODAY") / 10000 ))
+CPO_COST=$(( $(officer_cost_micro cpo "cabinet:cost:tokens:daily:$TODAY") / 10000 ))
+CRO_COST=$(( $(officer_cost_micro cro "cabinet:cost:tokens:daily:$TODAY") / 10000 ))
 
 # Restart counts
 COS_RESTARTS=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:supervisor:restart-count:cos" 2>/dev/null)

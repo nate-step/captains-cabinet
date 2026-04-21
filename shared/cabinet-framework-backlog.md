@@ -199,20 +199,13 @@ _(none)_
 
 ---
 
-### FW-016 — Delete byte-count cost-write path in post-tool-use.sh (partially-applied fix)
-- **Status:** Proposed (discovered 2026-04-17 23:00 UTC by CTO).
-- **Problem:** A prior session's summary claimed the byte-count cost-tracking path was removed from `post-tool-use.sh`, but git log shows no such commit. Lines 66-88 still write `COST_CENTS = wc -c-derived garbage` to three legacy keys:
-  - `cabinet:cost:daily:$DATE` (plain integer via INCRBY)
-  - `cabinet:cost:officer:$OFFICER:$DATE`
-  - `cabinet:cost:monthly:$MONTH`
-- **Actual state:** `pre-tool-use.sh` was correctly switched to read from `cabinet:cost:tokens:daily:$DATE` HSET (stop-hook writes real costs there). So the spending-cap gate is safe. But:
-  - `cost-dashboard.sh`, `dashboard/src/lib/redis.ts`, `test-escalation.sh`, and `run-golden-evals.sh` all still read from the legacy keys → display/test values are ~3.44x under-reality
-  - `HGETALL cabinet:cost:daily:$TODAY` returns `WRONGTYPE` because the key is a plain integer (from INCRBY), not a hash
-- **Fix:**
-  1. Delete lines 66-88 of `cabinet/scripts/hooks/post-tool-use.sh` (the whole "COST TRACKING (rough estimate)" block). Keep the activity-string block below it intact.
-  2. Update `cost-dashboard.sh` + `dashboard/src/lib/redis.ts` to read from `cabinet:cost:tokens:daily:$DATE` HSET and sum `officer_cost_micro` fields (divide by 10000 to get cents).
-  3. Update `test-escalation.sh` and `run-golden-evals.sh` to write/read HSET format.
-  4. Verify no other consumer reads the legacy keys after removal.
-- **Golden eval:** after fix, `HGETALL cabinet:cost:tokens:daily:$DATE` returns real values; legacy keys return nil; dashboard daily total matches `SUM(*_cost_micro) / 10000 / 100 = $X`.
-- **Owner:** CTO (implement, small diff, ~40 LOC across 4 files). Safe to self-merge per Captain meta-rule if CoS pre-acks.
-- **Source:** CTO session 2026-04-17 23:00 UTC, observed `WRONGTYPE` on HGETALL + grep for `cabinet:cost:daily` showed live write path still active.
+### FW-016 — Delete byte-count cost-write path in post-tool-use.sh
+- **Status:** DONE 2026-04-21 — 5 files, 99+/77-. Sonnet adversary review caught one BLOCKER pre-commit (EVAL-003 false-fail when `daily_per_officer_usd=0`) and one L nit (display-drop migration note); both fixed. Legacy keys (`cabinet:cost:daily:*`, `cabinet:cost:officer:*:*`, `cabinet:cost:monthly:*`) will expire naturally via their 48h/32d TTLs — no flush needed.
+- **What shipped:**
+  - `cabinet/scripts/hooks/post-tool-use.sh` — deleted byte-count INCRBY block (section 2), replaced with an explanatory comment pointing to the wrapper + HSET.
+  - `cabinet/scripts/cost-dashboard.sh` — reads tokens:daily HSET, awk-sums `*_cost_micro` fields, micro→cents conversion, SCAN across YYYY-MM-* for monthly. Smoke-tested against real Redis: realistic numbers ($66.72/day, $524.79/month, plausible per-officer splits).
+  - `cabinet/dashboard/src/lib/redis.ts` — `getCostHistory` rewritten to read HSET, drops legacy mockStore seeding, mock HSET loop extended 7→30 days to cover `getCostHistory(30)`.
+  - `cabinet/scripts/test-escalation.sh:156` — swaps `GET` on legacy key for `HGETALL` on tokens:daily.
+  - `cabinet/scripts/run-golden-evals.sh` EVAL-003 — was silently broken on two counts (wrote legacy key that pre-tool-use no longer reads; greppped stdout for a stderr message). Now: HSET writes `cos_cost_micro=999999999`, captures stderr via `2>&1 >/dev/null`, greps `BLOCKED.*officer=cos`. Skips gracefully when platform.yml cap=0.
+- **Why this mattered:** byte-count INCRBY under-reported by ~100× (byte length ≠ tokens) AND double-counted alongside the cost-aware Anthropic wrapper. Dashboard showed inflated-but-wrong numbers. More dangerous: EVAL-003 was quietly passing as a no-op for an unknown stretch — golden evals must not silently rot.
+- **Source:** CTO session 2026-04-17 23:00 UTC discovered drift; CTO session 2026-04-21 19:00 UTC shipped the fix during /loop proactive work.
