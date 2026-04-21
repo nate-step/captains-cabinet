@@ -57,9 +57,24 @@ require_commands() {
   if [[ ${#missing[@]} -gt 0 ]]; then
     die "Missing required commands: ${missing[*]}. Install them and retry."
   fi
-  # python-telegram-bot check (needed for admin-bot)
-  python3 -c "import telegram" 2>/dev/null \
-    || warn "python-telegram-bot not installed. Install with: pip3 install python-telegram-bot==22.7"
+  # python-telegram-bot — required for admin-bot. Auto-install if missing.
+  # Ubuntu 24.04+ ships python3 without pip; install both if needed.
+  # Task #49 / HOST-SETUP.md — captured from first-install friction 2026-04-21.
+  if ! command -v pip3 >/dev/null 2>&1; then
+    info "pip3 not found — installing python3-pip (apt)."
+    apt-get update -qq >/dev/null 2>&1 \
+      && apt-get install -y -qq python3-pip >/dev/null 2>&1 \
+      || die "Failed to install python3-pip. Install manually: apt install -y python3-pip"
+  fi
+  if ! python3 -c "import telegram" 2>/dev/null; then
+    info "Installing python-telegram-bot==22.7 (pip3 --break-system-packages)."
+    # --break-system-packages required on PEP 668 systems (Python 3.12+).
+    # Version pinned to match CRO library pressure-test (KillMode=mixed compat).
+    pip3 install --break-system-packages --quiet python-telegram-bot==22.7 \
+      || die "Failed to install python-telegram-bot. Try: pip3 install --break-system-packages python-telegram-bot==22.7"
+    python3 -c "import telegram" 2>/dev/null \
+      || die "python-telegram-bot install reported success but import still fails."
+  fi
 }
 
 # ----------------------------------------------------------------
