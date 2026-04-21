@@ -357,9 +357,28 @@ fi
 # ============================================================
 # 6. LAYER 1 GATE — CTO must run Crew review before push/merge
 # ============================================================
+# FW-029: two-phase guard to prevent substring-amplification.
+# The old single-regex check matched ANY CMD containing `git push main`
+# as a substring — including `git commit -m "...git push main..."`
+# heredoc bodies, `echo "git push main"` debug prints, and
+# `cat /tmp/log | grep 'git push main'` — each of which CONSUMED the
+# cabinet:layer1:cto:reviewed key via the DEL on match, forcing a re-SET
+# before the actual push. Same amplification class as FW-028, but with
+# state-consumption semantics.
+#
+# Phase 1 (anchor): CMD must START with a deploy SUBCOMMAND —
+#   git push / gh pr / gh api / curl — optionally prefixed by
+#   priv-esc / env VAR=X / timeout. Subcommand-level narrowing rejects
+#   `git commit`, `git log`, `gh pr view` etc. at Phase 1 so substring
+#   action matches on their -m/--grep bodies cannot trip the gate.
+# Phase 2 (action regex): actual push-to-main-or-master / pr-merge pattern.
+# AND-composed so both must pass to trip the gate.
+# Action regex covers BOTH `main` (Sensed product repo) and `master`
+# (framework repo default) — CTO pushes to both.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge'; then
+  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+push|gh[[:space:]]+pr|gh[[:space:]]+api|curl[[:space:]])' && \
+     echo "$CMD" | grep -qE 'git push.*(main|master)([[:space:];]|$)|gh pr merge'; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
       echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
@@ -372,9 +391,15 @@ fi
 # ============================================================
 # 7. CI GREEN GATE — CTO must verify CI before merge
 # ============================================================
+# FW-029: same two-phase guard as Layer 1. Prevents echoes of
+# `pulls/N/merge` URLs (in docs, logs, debug prints) from consuming
+# the cabinet:layer1:cto:ci-green key. Anchor narrowed to deploy
+# subcommand (git push / gh pr / gh api / curl) so `git commit -m
+# "...pulls/42/merge..."` bodies cannot pass Phase 1.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
+  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+push|gh[[:space:]]+pr|gh[[:space:]]+api|curl[[:space:]])' && \
+     echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then
       echo "CI GREEN GATE: Run 'bash /opt/founders-cabinet/cabinet/scripts/verify-deploy.sh ci <commit-sha>' and confirm CI is green before merging. After CI passes, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:ci-green 1 EX 300" >&2

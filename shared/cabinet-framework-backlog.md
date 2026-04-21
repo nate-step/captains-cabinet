@@ -307,3 +307,49 @@ _(none)_
 - **Effort:** S (~1h — shipped).
 - **Owner:** CTO.
 - **Source:** COO observation during SEN-559 Universal Links deploy validation 2026-04-21 21:57 UTC. Phase A shipped 2026-04-21 22:XX UTC.
+
+### FW-029 — pre-tool-use.sh gate amplification (state-consuming substring match)
+- **Status:** Phase A SHIPPED 2026-04-21.
+- **Symptom (confirmed operationally):** The Layer 1 gate (`pre-tool-use.sh:362`) and CI Green gate (`:377`) matched substring `git push.*main|gh pr merge` / `pulls/[0-9]+/merge` anywhere in CMD. Each match CONSUMED the `cabinet:layer1:cto:reviewed` / `cabinet:layer1:cto:ci-green` Redis key. Observed during FW-028 commit 89d82e7: `git commit -m` heredoc containing `git push` references in the commit body triggered the gate, consumed the reviewed key, forcing a re-SET before the actual push. Same substring-amplification class as FW-028 but with state-consumption semantics.
+- **Amplification vectors (CTO session only, gate scoped `OFFICER=cto`):**
+  - `git commit -m "...git push main..."` → Layer 1 fires, key consumed.
+  - `echo "for cmd in \"git push origin main\"..."` → Layer 1 fires, key consumed.
+  - `cat /tmp/log | grep 'git push main'` → Layer 1 fires, key consumed.
+  - `gh api repos/.../pulls/42/merge -X PUT` → CI Green fires, key consumed (wanted — this IS the merge). But: `echo "pulls/42/merge"` ALSO fires CI Green, key consumed (false-positive).
+- **Root cause:** Same as FW-028 — substring-match regex over payload, no command-start anchor. Additionally, Layer 1 action regex was main-only, missing framework-repo `master` branch.
+- **Fix applied (Phase A):**
+  1. **Two-phase check** — Layer 1 and CI Green gates now AND-compose (anchor && action). Anchor narrowed to DEPLOY SUBCOMMAND (`git push | gh pr | gh api | curl`), with optional priv-esc/env VAR=X/timeout prefix stack inherited from FW-028. Subcommand-level narrowing means `git commit`, `git log`, `gh pr view` fail Phase 1 — substring match on their bodies can no longer trip the gate.
+  2. **Layer 1 action regex widened** from `git push.*main|git push.*origin main|gh pr merge` to `git push.*(main|master)|gh pr merge` — covers both Sensed product (`main`) and framework repo (`master`).
+  3. **EVAL-014** pins anchor count=2 (Layer 1 + CI Green), FW-029 marker count>=2, 7 Layer 1 positives (incl. master + tokenized URL + env multi-assignment + gh pr merge) / 7 negatives (commits/echoes/for-loops/cats/bash -c/comments), 2 CI Green positives (curl PUT + gh api) / 3 negatives.
+- **Scope gaps (acknowledged, NOT in Phase A — all theoretical, zero current officer usage per COO recon grep):**
+  - (a) Compound prefix `cd X && git push origin main` — anchor SILENCES (`cd` not in prefix alternation).
+  - (b) Shell `export FOO=bar && git push...` — anchor SILENCES (`export` not in prefix).
+  - (c) Bare var-assign without `env` keyword: `GITHUB_PAT=foo git push...` — anchor SILENCES. **Notable instance:** the documented force-push protocol `FORCE_PUSH_ANNOUNCED=$TS git push --force-with-lease origin master` (cabinet/scripts/git-hooks/pre-push lines 21-25) passes Phase 1 silently. Accidentally correct for AUTO-DEPLOY (framework force-push shouldn't notify Sensed validators) but masks a Layer 1 gap — force-push to framework master bypasses Crew-review gate.
+  - (d) Quoted value with space: `env FOO="bar baz" git push...` — anchor SILENCES (quantifier won't traverse internal quoted space).
+  - (e) Multi-line CMD with line 1 non-deploy (e.g., `cd /opt/fake\ngit push...`) — anchor SILENCES via `head -n1`.
+  - **FW-028-class gap preserved:** `git log --grep 'git push main'` style literal-arg forms still pass anchor (starts with `git log`... wait, post-fix anchor is `git push` subcommand-specific, so `git log` is REJECTED). Narrow-anchor fix closes this too.
+- **EVAL-014 extractor fragility (non-blocking, flagged by COO):** `sed -E "s/.*grep -qE '([^']+)'.*/\1/"` breaks if a future action regex contains literal apostrophe. Extractor for L1 regex updated to match on distinctive `gh pr merge` tail (survives main|master widening). Could harden further with hex-escape or character-class extraction.
+- **Blast radius before fix:** CTO gate-state consumed on any intermediate command mentioning push/merge text; forced re-SET of reviewed/ci-green keys before the actual action. Not catastrophic (state recoverable via re-SET) but confusing and context-burning. Post-fix: gate fires only on deploy-subcommand invocations with action-pattern match.
+- **Effort:** S (actual ~30min — matched estimate).
+- **Owner:** CTO.
+- **Source:** CTO self-discovery post-FW-028 ship 2026-04-21 22:25 UTC (scanned other hooks for same amplification pattern). COO adversary review of FW-028 commit 89d82e7 surfaced additional forward-looking scope gaps (a-e + force-push note) 2026-04-21 22:30 UTC.
+- **Adversary-found CODE BUG fixed pre-commit:** Layer 1 action regex `git push.*(main|master)` over-matched on feature-branch names containing `main`/`master` as substrings (`feature/maintenance-window-2026` → `.*main`tenance matches; `feature/master-plan` → `.*master`-plan matches). Fixed by adding trailing word-boundary `([[:space:];]|$)` to mirror post-tool-use.sh:267's `(main|master)([[:space:];]|$)` pattern. Two negative test cases appended to EVAL-014. Sonnet adversary Finding #1, 2026-04-21.
+
+### FW-030 — Layer 1 gate: `git -C <dir> push` silently bypasses anchor
+- **Status:** Proposed 2026-04-21 (Sonnet adversary Finding #2 on FW-029).
+- **Symptom:** FW-029's narrowed anchor `git[[:space:]]+push` requires literal `git` directly followed by whitespace then `push`. The `-C <dir>` directory-override flag intervenes, so `git -C /workspace/product push origin main` silently fails Phase 1 — Crew-review gate bypassed.
+- **Current usage:** Zero. Grep confirms `git -C` push appears only in EVAL-013 test matrix, not in any actual officer invocation. Documented CTO push form (see `reference_github_push_invocation.md` memory) uses explicit tokenized-URL — `git push https://x-access-token:$PAT@... main`.
+- **Fix (when operational):** Extend anchor alternation to include `git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push`. Pin with EVAL-014 positive case.
+- **Effort:** XS (~10min, single regex edit + one eval case).
+- **Owner:** CTO when first officer script adopts `git -C` push.
+
+### FW-031 — Layer 1 gate: mirror / HEAD / tag pushes silently bypass
+- **Status:** Proposed 2026-04-21 (Sonnet adversary Finding #3 on FW-029).
+- **Symptom:** Layer 1 action regex `git push.*(main|master)([[:space:];]|$)|gh pr merge` requires literal `main`/`master` in the refspec. These legitimate deploy forms fail Phase 2 and bypass Crew-review:
+  - `git push origin HEAD` (implicit branch, HEAD resolves to current which is often master)
+  - `git push --mirror` (mirror push, dangerous — force-pushes all refs)
+  - `git push origin v1.0.0` (tag push — production releases)
+- **Current usage:** Zero. Documented CTO push form always names the branch explicitly.
+- **Fix (when operational):** Widen Layer 1 action alternatives to include `git push[^[:space:]]*[[:space:]]+--mirror`, `git push[^;]*HEAD([[:space:];]|$)`, and tag-ref pattern `git push[^;]*[[:space:]]+v[0-9]+\.[0-9]+\.[0-9]+([[:space:];]|$)`. Pin each with EVAL-014 positive case.
+- **Effort:** S (~20min, regex widen + 3 eval cases).
+- **Owner:** CTO when first officer script adopts mirror/HEAD/tag push.

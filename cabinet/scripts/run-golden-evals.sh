@@ -819,6 +819,146 @@ else
 fi
 
 # ------------------------------------------------------------------
+# Eval 014: pre-tool-use.sh FW-029 gate anchors (Layer 1 + CI Green)
+# ------------------------------------------------------------------
+# FW-029 (2026-04-21): the Layer 1 gate (CTO push/merge review) and CI
+# Green gate (CTO merge-after-CI) used substring-match regex over CMD.
+# Every intermediate CTO command mentioning `git push main` or
+# `pulls/N/merge` in its text (commit heredocs, echoes, greps, logs)
+# consumed the gate-reviewed/ci-green Redis key via the DEL on match.
+# Observed during FW-028 commit 89d82e7: the commit message containing
+# push references consumed the reviewed key, requiring a re-SET before
+# the actual push.
+#
+# Fix: AND-composed two-phase check — Phase 1 is the FW-028 command-
+# start anchor (CMD starts with git/gh/curl, optionally priv-esc-prefixed),
+# Phase 2 is the existing action regex (push-to-main OR pr-merge OR
+# pulls/N/merge). Only commands that BOTH start with a deploy-style
+# executable AND contain the action substring trip the gate.
+#
+# This eval pins:
+#   (a) Count=2 across pre-tool-use.sh — both gates received the anchor.
+#   (b) AND-composed structure present — head -n1 | grep -qE '<anchor>'
+#       followed by `&&` on the same block.
+#   (c) Positive matrix: actual push/merge invocations still trip gates.
+#   (d) Negative matrix: commits/echoes/for-loops with push/merge text
+#       do NOT trip gates (no state consumption).
+log "EVAL-014: pre-tool-use.sh FW-029 gate anchor invariants (Layer 1 + CI Green)"
+EV14_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh"
+EV14_FAILURE=""
+
+if [ ! -f "$EV14_HOOK" ]; then
+  EV14_FAILURE="pre-tool-use.sh not found at $EV14_HOOK"
+else
+  # Static pins — both gates received the FW-029 anchor.
+  EV14_ANCHOR_COUNT=$(grep -c "head -n1 | grep -qE '\^\[\[:space:\]\]" "$EV14_HOOK")
+  EV14_FW029_MARKER_COUNT=$(grep -cF 'FW-029' "$EV14_HOOK")
+
+  if [ "$EV14_ANCHOR_COUNT" -lt 2 ]; then
+    EV14_FAILURE="FW-029 anchor count=$EV14_ANCHOR_COUNT (expected 2 — Layer 1 + CI Green). Partial revert would reopen gate-state amplification in un-anchored gate."
+  elif [ "$EV14_FW029_MARKER_COUNT" -lt 2 ]; then
+    EV14_FAILURE="FW-029 marker count=$EV14_FW029_MARKER_COUNT (expected >=2 — comment marker removed, regression risk)."
+  else
+    # Extract the anchor regex. Both gates use the same — head -1 safe.
+    EV14_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '\^\[\[:space:\]\]" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    # Extract the Layer 1 action regex and the CI Green action regex.
+    # Match on distinctive `gh pr merge` tail so EVAL survives future
+    # action-regex widening (main|master) without another extractor edit.
+    EV14_L1_RE=$(grep -E "grep -qE '[^']*gh pr merge'" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    EV14_CI_RE=$(grep -E "grep -qE 'pulls/\[0-9\]\+/merge'" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    if [ -z "$EV14_ANCHOR_RE" ] || [ -z "$EV14_L1_RE" ] || [ -z "$EV14_CI_RE" ]; then
+      EV14_FAILURE="regex extraction returned empty — anchor=$EV14_ANCHOR_RE, L1=$EV14_L1_RE, CI=$EV14_CI_RE (sed pattern drift — rewrite EVAL-014 extractor)"
+    fi
+  fi
+
+  if [ -z "$EV14_FAILURE" ]; then
+    # Layer 1 positive matrix — gate MUST fire (anchor AND action both match).
+    for cmd in \
+      "git push origin main" \
+      "git push origin master" \
+      "git push origin HEAD:main" \
+      "git push origin refs/heads/main" \
+      "git push https://x-access-token:FAKE@github.com/STEP-Network/Sensed main" \
+      "env FOO=bar git push origin main" \
+      "gh pr merge 42 --squash"; do
+      anchor_ok=false
+      action_ok=false
+      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_L1_RE" && action_ok=true
+      if ! $anchor_ok || ! $action_ok; then
+        EV14_FAILURE="Layer 1 gate would FAIL to fire on legitimate push/merge: $cmd (anchor=$anchor_ok action=$action_ok). Real push would slip past Crew-review requirement."
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV14_FAILURE" ]; then
+    # Layer 1 negative matrix — at least ONE phase must reject.
+    # These are commands that mention push/merge text but are not actual
+    # push/merge invocations. Gate-state amplification would consume the
+    # reviewed key on these under the old single-regex check.
+    for cmd in \
+      'git commit -m "message mentioning git push origin main"' \
+      'echo "git push origin main"' \
+      'for cmd in "git push origin main"; do echo "$cmd"; done' \
+      'cat /tmp/log.txt | grep "git push origin main"' \
+      "bash -c 'git push origin main'" \
+      '# git push origin main' \
+      'echo "gh pr merge 42"' \
+      'git push origin feature/maintenance-window-2026' \
+      'git push origin feature/master-plan'; do
+      anchor_ok=false
+      action_ok=false
+      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_L1_RE" && action_ok=true
+      if $anchor_ok && $action_ok; then
+        EV14_FAILURE="Layer 1 gate WRONGLY fires on non-deploy command: $cmd — gate-reviewed key would be consumed without a real push, forcing unnecessary re-SET."
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV14_FAILURE" ]; then
+    # CI Green positive matrix — gate MUST fire on actual API merge calls.
+    for cmd in \
+      "curl -X PUT https://api.github.com/repos/STEP-Network/Sensed/pulls/42/merge" \
+      "gh api repos/STEP-Network/Sensed/pulls/42/merge -X PUT"; do
+      anchor_ok=false
+      action_ok=false
+      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_CI_RE" && action_ok=true
+      if ! $anchor_ok || ! $action_ok; then
+        EV14_FAILURE="CI Green gate would FAIL to fire on legitimate API merge: $cmd (anchor=$anchor_ok action=$action_ok). Merge would slip past CI-green requirement."
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV14_FAILURE" ]; then
+    # CI Green negative matrix — non-merge commands mentioning pulls/N/merge text.
+    for cmd in \
+      'echo "hit endpoint pulls/42/merge"' \
+      'cat /tmp/doc.md | grep "pulls/42/merge"' \
+      'git commit -m "docs: pulls/42/merge API notes"'; do
+      anchor_ok=false
+      action_ok=false
+      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_CI_RE" && action_ok=true
+      if $anchor_ok && $action_ok; then
+        EV14_FAILURE="CI Green gate WRONGLY fires on non-merge command: $cmd — ci-green key would be consumed without a real merge."
+        break
+      fi
+    done
+  fi
+fi
+
+if [ -n "$EV14_FAILURE" ]; then
+  fail "$EV14_FAILURE"
+else
+  pass "FW-029 gate anchors classify Layer 1 + CI Green amplification cases correctly (real push/merge trips gate, intermediate echoes/commits/harnesses do not)"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""
