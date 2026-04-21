@@ -24,8 +24,8 @@ import {
   handleMessage,
   startPollingLoop,
   loadState,
-} from '../../../../../../telegram-manager-bot/provisioning-flow'
-import type { BotMessage } from '../../../../../../telegram-manager-bot/provisioning-flow'
+} from '@/lib/provisioning/flow'
+import type { BotMessage } from '@/lib/provisioning/flow'
 
 export const dynamic = 'force-dynamic'
 
