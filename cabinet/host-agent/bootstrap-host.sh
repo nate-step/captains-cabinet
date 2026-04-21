@@ -75,6 +75,22 @@ require_commands() {
     python3 -c "import telegram" 2>/dev/null \
       || die "python-telegram-bot install reported success but import still fails."
   fi
+
+  # Spec 039 Phase A wet-run ETL deps — Linear + GitHub extract, Postgres upsert.
+  # Installed on host so migrate-sources-to-officer-tasks.sh can run outside
+  # officer containers when those containers lack the deps (durable fix is
+  # Dockerfile.officer update — tracked as Captain founder-action 2026-04-21).
+  local py_missing=()
+  python3 -c "import psycopg2" 2>/dev/null || py_missing+=("psycopg2-binary")
+  python3 -c "import requests" 2>/dev/null || py_missing+=("requests")
+  python3 -c "import yaml" 2>/dev/null || py_missing+=("PyYAML")
+  if [[ ${#py_missing[@]} -gt 0 ]]; then
+    info "Installing Spec 039 ETL deps: ${py_missing[*]} (pip3 --break-system-packages)."
+    pip3 install --break-system-packages --quiet "${py_missing[@]}" \
+      || die "Failed to install ETL deps (${py_missing[*]}). Try: pip3 install --break-system-packages ${py_missing[*]}"
+    python3 -c "import psycopg2, requests, yaml" 2>/dev/null \
+      || die "ETL deps install reported success but imports still fail."
+  fi
 }
 
 # ----------------------------------------------------------------
