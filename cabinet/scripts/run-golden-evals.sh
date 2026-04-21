@@ -482,6 +482,117 @@ else
 fi
 
 # ------------------------------------------------------------------
+# Eval 011: deploy-detection regex invariants (FW-027 Phase B / COO M-4)
+# ------------------------------------------------------------------
+# Two regexes in post-tool-use.sh block 5 (auto-notify validators) and
+# block 6 (verify-deploy reminder) classify bash commands as deploys.
+# COO Phase A review flagged two edge cases:
+#   M-4a: `git push main` (bare, upstream-tracked) did NOT match — fixed
+#         by changing `.*[[:space:]]` to `(.*[[:space:]])?` (optional
+#         intermediate arg instead of required).
+#   M-4b: `git push --dry-run origin main` fires AUTO-DEPLOY even though
+#         --dry-run never pushes anything — fixed with a skip elif that
+#         runs BEFORE the deploy elif in the chain.
+#
+# This eval extracts the deploy + dry-run regexes directly from the hook
+# source (so future rewrites exercise the new patterns, not a frozen
+# copy) and runs them against positive/negative test cases. The contract
+# is "these inputs must classify this way" — not a regex diff.
+#
+# Also asserts: (a) dry-run skip elif appears BEFORE the deploy elif in
+# file order, otherwise the skip never fires; (b) both block 5 and block 6
+# received the fix (2 dry-run elifs + 2 deploy elifs total).
+log "EVAL-011: deploy-detection regex invariants (FW-027 Phase B / COO M-4)"
+EV11_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+EV11_FAILURE=""
+
+if [ ! -f "$EV11_HOOK" ]; then
+  EV11_FAILURE="post-tool-use.sh not found at $EV11_HOOK"
+else
+  EV11_DEPLOY_RE=$(grep -E "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+  EV11_DRYRUN_RE=$(grep -E "elif echo .*--dry-run" "$EV11_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+  EV11_DRYRUN_LINE=$(grep -nE "elif echo .*--dry-run" "$EV11_HOOK" | head -1 | cut -d: -f1)
+  EV11_DEPLOY_LINE=$(grep -nE "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK" | head -1 | cut -d: -f1)
+  EV11_DRYRUN_COUNT=$(grep -cE "elif echo .*--dry-run" "$EV11_HOOK")
+  EV11_DEPLOY_COUNT=$(grep -cE "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK")
+
+  if [ -z "$EV11_DEPLOY_RE" ]; then
+    EV11_FAILURE="deploy regex extraction returned empty (hook rewrite broke extraction? update EVAL-011 pattern)"
+  elif [ -z "$EV11_DRYRUN_RE" ]; then
+    EV11_FAILURE="dry-run skip regex extraction returned empty (M-4b skip elif missing or extraction broken)"
+  elif [ "$EV11_DRYRUN_LINE" -gt "$EV11_DEPLOY_LINE" ]; then
+    EV11_FAILURE="dry-run skip elif (line $EV11_DRYRUN_LINE) is AFTER deploy elif (line $EV11_DEPLOY_LINE) — skip will never fire"
+  elif [ "$EV11_DRYRUN_COUNT" -ne 2 ] || [ "$EV11_DEPLOY_COUNT" -ne 2 ]; then
+    EV11_FAILURE="expected 2 dry-run skips + 2 deploy elifs (block 5 + block 6), got dry-run=$EV11_DRYRUN_COUNT deploy=$EV11_DEPLOY_COUNT"
+  else
+    for cmd in \
+      "git push origin main" \
+      "git push main" \
+      "git push https://x-access-token:FAKE@github.com/STEP-Network/Sensed main" \
+      "git push origin master"; do
+      if ! echo "$cmd" | grep -qE "$EV11_DEPLOY_RE"; then
+        EV11_FAILURE="deploy regex FAILED expected-positive: $cmd"
+        break
+      fi
+    done
+
+    if [ -z "$EV11_FAILURE" ]; then
+      for cmd in \
+        "git push release-please--branches--main" \
+        "git push origin feature-branch"; do
+        if echo "$cmd" | grep -qE "$EV11_DEPLOY_RE"; then
+          EV11_FAILURE="deploy regex WRONGLY matched expected-negative: $cmd"
+          break
+        fi
+      done
+    fi
+
+    if [ -z "$EV11_FAILURE" ]; then
+      # Dry-run positives (skip MUST fire): long-form --dry-run + short-form -n
+      # before and after the refspec. The -n cases catch Sonnet adversary
+      # finding #1 (short-form dry-run falling through to AUTO-DEPLOY).
+      for cmd in \
+        "git push --dry-run origin main" \
+        "git push origin main --dry-run" \
+        "git push -n origin main" \
+        "git push origin main -n"; do
+        if ! echo "$cmd" | grep -qE "$EV11_DRYRUN_RE"; then
+          EV11_FAILURE="dry-run skip regex FAILED to match: $cmd (M-4b skip won't fire)"
+          break
+        fi
+      done
+    fi
+
+    if [ -z "$EV11_FAILURE" ]; then
+      # Dry-run negatives (skip MUST NOT fire):
+      # - plain deploy: obvious non-match
+      # - chained-command forms: greedy `.*` originally crossed `&&` and
+      #   swallowed a subsequent command's flag text, suppressing
+      #   AUTO-DEPLOY for real pushes (Sonnet adversary finding #2). The
+      #   new [^&;] scope-limiter blocks that.
+      # - bare `-n` as part of another token (--no-force): `-n` pattern
+      #   requires [[:space:]] separator, so `--no-force` shouldn't hit.
+      for cmd in \
+        "git push origin main" \
+        "git push origin main && git commit -m 'test --dry-run'" \
+        "git push origin main && git commit -m 'test -n'" \
+        "git push --no-force origin main"; do
+        if echo "$cmd" | grep -qE "$EV11_DRYRUN_RE"; then
+          EV11_FAILURE="dry-run skip regex WRONGLY matched real push: $cmd (would suppress AUTO-DEPLOY)"
+          break
+        fi
+      done
+    fi
+  fi
+fi
+
+if [ -n "$EV11_FAILURE" ]; then
+  fail "$EV11_FAILURE"
+else
+  pass "deploy-detection regex classifies M-4 cases correctly (bare push matches, --dry-run skipped, release-please skipped, both blocks synced)"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""

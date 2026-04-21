@@ -250,7 +250,11 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # flagged 2026-04-17 after the initial release-please filter landed).
   if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
-  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+.*[[:space:]](main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
+  elif echo "$CMD" | grep -qE 'git push[^&;]*--dry-run|git push[[:space:]]+([^&;]*[[:space:]])?-n([[:space:]]|$)'; then
+    :  # noop — --dry-run or short-form -n skip; [^&;] stops the scan at
+    #   && / ; so a chained command's flag text doesn't falsely trip
+    #   (COO M-4b + Sonnet adversary findings #1 + #2, 2026-04-21)
+  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(.*[[:space:]])?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     for target in $(officers_with "validates_deployments"); do
       trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
     done
@@ -273,7 +277,10 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # flagged 2026-04-17 after the initial release-please filter landed).
   if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
-  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+.*[[:space:]](main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
+  elif echo "$CMD" | grep -qE 'git push[^&;]*--dry-run|git push[[:space:]]+([^&;]*[[:space:]])?-n([[:space:]]|$)'; then
+    :  # noop — --dry-run or short-form -n; skip verify-deploy reminder
+    #   (COO M-4b + Sonnet adversary findings #1 + #2, 2026-04-21)
+  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(.*[[:space:]])?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
     echo "REMINDER: Update shared/interfaces/deployment-status.md with current deploy state."
   fi
