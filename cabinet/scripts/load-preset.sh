@@ -250,7 +250,8 @@ if [ -n "${NEON_CONNECTION_STRING:-}" ]; then
     "$CABINET_ROOT/cabinet/sql/cabinet-id-neon-phase1.sql" \
     "$CABINET_ROOT/cabinet/sql/cabinet-id-neon-phase1b.sql" \
     "$CABINET_ROOT/cabinet/sql/session-memories-context-slug.sql" \
-    "$CABINET_ROOT/cabinet/sql/2026-04-17-spec-034-provisioning-schema.sql"; do
+    "$CABINET_ROOT/cabinet/sql/2026-04-17-spec-034-provisioning-schema.sql" \
+    "$CABINET_ROOT/cabinet/sql/038-officer-tasks.sql"; do
     if [ -f "$schema" ]; then
       if psql "$NEON_CONNECTION_STRING" -q -f "$schema" > /dev/null 2>&1; then
         log "Applied framework schema (neon): $(basename "$schema")"
