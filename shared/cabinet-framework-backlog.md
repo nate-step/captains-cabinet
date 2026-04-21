@@ -153,13 +153,17 @@ _(none)_
 ---
 
 ### FW-022 — Pre-tool-use hook CI green gate stderr routing
-- **Status:** Proposed (2026-04-21 re-validated during PR-3 self-merge).
-- **Problem:** `cabinet/scripts/hooks/pre-tool-use.sh` lines 369-381 block `curl .../pulls/[0-9]+/merge` until `cabinet:layer1:cto:ci-green` Redis key is set. The hook echoes instructions to stdout, not stderr. Claude Code's hook engine treats stdout as tool-stdout (not operator-visible on block) — manifests as silent "No stderr output" rejection. Per memory `feedback_silent_hook_exits.md`, this was supposed to be fixed in FW-002 for all 22 exit-2 paths; the CI green gate path still stdout-echoes.
-- **Desired end state:** All hook rejection paths use stderr so operators see the required action. Pattern: `>&2 echo "BLOCKED: <reason>. Run <fix>."; exit 2`. Audit the whole hook for stdout→stderr migration; bundle with FW-018 pre-tool-use Section 3 changes.
-- **Also:** Consider a `.claude/hook-help.txt` pointer the engine surfaces automatically on exit 2 instead of shell-level echoes.
-- **Effort:** ~1 hr audit + diff.
+- **Status:** DONE 2026-04-21 — 23 exit-2 echo paths migrated to stderr.
+- **Problem:** `cabinet/scripts/hooks/pre-tool-use.sh` had 22 `exit 2` block paths; only 3 redirected to stderr (spending caps from FW-002). The remaining 19 echoed to stdout. Claude Code's hook engine suppresses stdout on exit 2 and only shows stderr, so blocks manifested as "No stderr output" silent rejections with zero diagnostic surface. Re-validated today: I hit this on the PR-4 self-merge against BOTH Section 6 (Layer 1 reviewed gate) and Section 7 (CI green gate), and had to read the hook source to discover what the gate wanted.
+- **Desired end state:** Every exit-2 echo path uses stderr so operators see the required action immediately.
+- **Fix shipped:**
+  - 23 echo lines migrated: KILL SWITCH, 5 prohibited-actions blocks, 3 codebase-ownership blocks, 4 constitution-protection blocks, LAYER 1 GATE, CI GREEN GATE, 2 context_slug blocks (including the two-line `Known slugs:` continuation), capacity_check, MCP scope, and 4 Cabinet-MCP peer-trust blocks.
+  - Updated file-header comment (lines 2-7): made "stderr, not stdout" load-bearing with a one-line why + explicit instruction for future contributors adding new exit-2 paths.
+  - `bash -n` passes; final counts: 29 `>&2` redirects (6 pre-existing + 23 new), 25 real `exit 2` statements all preceded by stderr echoes.
+  - Sonnet adversary review: LGTM with 1 optional LOW (inline `# TEMPLATE:` near each gate section — deferred as ergonomic nice-to-have; header comment is sufficient).
+- **Follow-up parked:** `.claude/hook-help.txt` auto-surfacing pointer — engine-level capability, not required for this fix.
 - **Owner:** CTO.
-- **Source:** PR-3 merge attempt 2026-04-21; same-day re-encounter of the hook-silence pattern.
+- **Source:** PR-3 merge attempt 2026-04-21; PR-4 merge re-hit same day. Closed during 5m-loop quiet period 2026-04-21 per captain's standing "never report idle" directive.
 
 ---
 

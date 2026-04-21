@@ -1,6 +1,10 @@
 #!/bin/bash
 # pre-tool-use.sh — Runs before every tool invocation
-# Exit 0 = allow, Exit 2 = block (with reason on stdout)
+# Exit 0 = allow, Exit 2 = block (with reason on stderr).
+# Stderr (not stdout) is the operator-visible channel on block; Claude Code's
+# hook engine treats stdout as tool-stdout and suppresses it on exit 2, which
+# manifests as silent "No stderr output" rejection. FW-022 migrated every
+# exit-2 echo path here to `>&2` for this reason — keep new paths the same way.
 # Claude Code passes JSON on stdin: { tool_name, tool_input }
 
 # Read JSON from stdin
@@ -26,7 +30,7 @@ if [ "$KILLSWITCH" = "active" ]; then
         ;;
     esac
   fi
-  echo "KILL SWITCH ACTIVE — all operations halted by Captain. Send /resume to deactivate."
+  echo "KILL SWITCH ACTIVE — all operations halted by Captain. Send /resume to deactivate." >&2
   exit 2
 fi
 
@@ -265,23 +269,23 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
   case "$CMD" in
     *"rm -rf /"*|*"rm -rf /*"*)
-      echo "BLOCKED: Destructive filesystem operation"
+      echo "BLOCKED: Destructive filesystem operation" >&2
       exit 2
       ;;
     *"docker"*|*"systemctl"*|*"sudo"*)
-      echo "BLOCKED: System-level command not permitted"
+      echo "BLOCKED: System-level command not permitted" >&2
       exit 2
       ;;
     *"shutdown"*|*"reboot"*|*"halt"*)
-      echo "BLOCKED: System control command not permitted"
+      echo "BLOCKED: System control command not permitted" >&2
       exit 2
       ;;
     *"vercel deploy"*|*"vercel --prod"*)
-      echo "BLOCKED: Production deployment requires Captain approval"
+      echo "BLOCKED: Production deployment requires Captain approval" >&2
       exit 2
       ;;
     *"DROP TABLE"*|*"DROP DATABASE"*|*"TRUNCATE"*|*"DELETE FROM"*)
-      echo "BLOCKED: Destructive database operation requires Captain approval"
+      echo "BLOCKED: Destructive database operation requires Captain approval" >&2
       exit 2
       ;;
   esac
@@ -295,7 +299,7 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
     case "$FILE_PATH" in
       /workspace/product/*)
-        echo "BLOCKED: Only CTO can modify the product codebase. Write a spec to shared/interfaces/product-specs/ and notify CTO."
+        echo "BLOCKED: Only CTO can modify the product codebase. Write a spec to shared/interfaces/product-specs/ and notify CTO." >&2
         exit 2
         ;;
     esac
@@ -306,7 +310,7 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
       *"git commit"*|*"git push"*|*"git add"*)
         case "$CMD" in
           *"/workspace/product"*|*"cd /workspace/product"*)
-            echo "BLOCKED: Only CTO can commit/push to the product codebase. Write a spec and notify CTO."
+            echo "BLOCKED: Only CTO can commit/push to the product codebase. Write a spec and notify CTO." >&2
             exit 2
             ;;
         esac
@@ -315,7 +319,7 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # Block common Bash write patterns to product codebase (defense in depth)
     # Two-condition check: command mentions product path AND contains a write operation
     if echo "$CMD" | grep -q '/workspace/product/' && echo "$CMD" | grep -qE '(>\s|sed -i |tee |cp .+ |mv .+ )'; then
-      echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO."
+      echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi
   fi
@@ -328,21 +332,21 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
   FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
   case "$FILE_PATH" in
     *"constitution/"*)
-      echo "BLOCKED: Constitution files are read-only. Propose amendments through the self-improvement loop."
+      echo "BLOCKED: Constitution files are read-only. Propose amendments through the self-improvement loop." >&2
       exit 2
       ;;
     *".env"*)
-      echo "BLOCKED: Environment files cannot be modified by Officers"
+      echo "BLOCKED: Environment files cannot be modified by Officers" >&2
       exit 2
       ;;
     *"cabinet/docker-compose"*|*"Dockerfile"*)
-      echo "BLOCKED: Infrastructure files cannot be modified by Officers"
+      echo "BLOCKED: Infrastructure files cannot be modified by Officers" >&2
       exit 2
       ;;
     *"instance/memory/tier2/"*)
       # Officers can only write to their OWN tier2 directory
       if ! echo "$FILE_PATH" | grep -q "instance/memory/tier2/${OFFICER}/"; then
-        echo "BLOCKED: Officers can only write to their own tier2 directory (instance/memory/tier2/${OFFICER}/)"
+        echo "BLOCKED: Officers can only write to their own tier2 directory (instance/memory/tier2/${OFFICER}/)" >&2
         exit 2
       fi
       ;;
@@ -358,7 +362,7 @@ if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   if echo "$CMD" | grep -qE 'git push.*main|git push.*origin main|gh pr merge'; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
-      echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300"
+      echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
       exit 2
     fi
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:layer1:cto:reviewed" > /dev/null 2>&1
@@ -373,7 +377,7 @@ if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   if echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then
-      echo "CI GREEN GATE: Run 'bash /opt/founders-cabinet/cabinet/scripts/verify-deploy.sh ci <commit-sha>' and confirm CI is green before merging. After CI passes, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:ci-green 1 EX 300"
+      echo "CI GREEN GATE: Run 'bash /opt/founders-cabinet/cabinet/scripts/verify-deploy.sh ci <commit-sha>' and confirm CI is green before merging. After CI passes, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:ci-green 1 EX 300" >&2
       exit 2
     fi
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:layer1:cto:ci-green" > /dev/null 2>&1
@@ -425,8 +429,8 @@ if [ -d "$CONTEXTS_DIR" ]; then
     # Validate slug exists in cache
     CTX_CAPACITY=$(awk -F'\t' -v s="$SLUG_IN_CALL" '$1==s{print $2; exit}' "$SLUG_CACHE")
     if [ -z "$CTX_CAPACITY" ]; then
-      echo "BLOCKED: unknown context_slug '$SLUG_IN_CALL' — add to instance/config/contexts/<slug>.yml first."
-      echo "Known slugs: $(cut -f1 "$SLUG_CACHE" | tr '\n' ' ')"
+      echo "BLOCKED: unknown context_slug '$SLUG_IN_CALL' — add to instance/config/contexts/<slug>.yml first." >&2
+      echo "Known slugs: $(cut -f1 "$SLUG_CACHE" | tr '\n' ' ')" >&2
       exit 2
     fi
 
@@ -435,7 +439,7 @@ if [ -d "$CONTEXTS_DIR" ]; then
     # from preset.yml or per-officer config, not hardcoded default.
     OFFICER_CAPACITY="${OFFICER_CAPACITY:-work}"
     if [ "$OFFICER_CAPACITY" != "$CTX_CAPACITY" ]; then
-      echo "BLOCKED: capacity_check failed — officer '$OFFICER' has capacity '$OFFICER_CAPACITY' but context_slug '$SLUG_IN_CALL' has capacity '$CTX_CAPACITY'. Cross-capacity writes are forbidden."
+      echo "BLOCKED: capacity_check failed — officer '$OFFICER' has capacity '$OFFICER_CAPACITY' but context_slug '$SLUG_IN_CALL' has capacity '$CTX_CAPACITY'. Cross-capacity writes are forbidden." >&2
       exit 2
     fi
   fi
@@ -531,7 +535,7 @@ PY
   else
     # Check membership
     if ! echo ",$ALLOWED," | grep -qi ",${MCP_SERVER}," ; then
-      echo "BLOCKED: MCP scope check — officer '$OFFICER' is not scoped for MCP server '$MCP_SERVER'. Allowed: $ALLOWED. Edit cabinet/mcp-scope.yml to grant access."
+      echo "BLOCKED: MCP scope check — officer '$OFFICER' is not scoped for MCP server '$MCP_SERVER'. Allowed: $ALLOWED. Edit cabinet/mcp-scope.yml to grant access." >&2
       exit 2
     fi
   fi
@@ -609,22 +613,22 @@ PY
     send_message|request_handoff)
       TARGET_PEER=$(echo "$TOOL_INPUT" | jq -r '.to_cabinet // empty' 2>/dev/null)
       if [ -z "$TARGET_PEER" ]; then
-        echo "BLOCKED: Cabinet MCP $CABINET_TOOL call missing to_cabinet parameter."
+        echo "BLOCKED: Cabinet MCP $CABINET_TOOL call missing to_cabinet parameter." >&2
         exit 2
       fi
       PEER_LINE=$(awk -F'\t' -v p="$TARGET_PEER" '$1==p{print; exit}' "$PEERS_CACHE" 2>/dev/null)
       if [ -z "$PEER_LINE" ]; then
-        echo "BLOCKED: peer '$TARGET_PEER' not declared in instance/config/peers.yml."
+        echo "BLOCKED: peer '$TARGET_PEER' not declared in instance/config/peers.yml." >&2
         exit 2
       fi
       CONSENTED=$(echo "$PEER_LINE" | cut -f2)
       ALLOWED=$(echo "$PEER_LINE" | cut -f3)
       if [ "$CONSENTED" != "true" ]; then
-        echo "BLOCKED: peer '$TARGET_PEER' has consented_by_captain=false. Flip to true in peers.yml after Captain provisions the peer."
+        echo "BLOCKED: peer '$TARGET_PEER' has consented_by_captain=false. Flip to true in peers.yml after Captain provisions the peer." >&2
         exit 2
       fi
       if ! echo ",$ALLOWED," | grep -q ",$CABINET_TOOL," ; then
-        echo "BLOCKED: peer '$TARGET_PEER' allowed_tools does not include '$CABINET_TOOL'. Allowed: $ALLOWED."
+        echo "BLOCKED: peer '$TARGET_PEER' allowed_tools does not include '$CABINET_TOOL'. Allowed: $ALLOWED." >&2
         exit 2
       fi
       ;;
