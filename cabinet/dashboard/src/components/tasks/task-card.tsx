@@ -1,11 +1,11 @@
 /**
  * TaskCard — renders a single officer_tasks row.
  *
- * Spec 038 §4.2:
+ * Spec 038 v1.1 §4.2:
  * - Title truncated at 80 chars
  * - Linked badge (Linear / GH / Library / Spec)
- * - WIP: "started Xh ago"
- * - Blocked: blocked_reason as subtitle
+ * - WIP: "started Xh ago"; chain icon overlay if blocked=true
+ * - Blocked overlay: chain icon + blocked_reason as subtitle (still status='wip')
  * - Done: "done Apr 16"
  * - Queue: no timestamp
  */
@@ -76,16 +76,33 @@ interface TaskCardProps {
 export function TaskCard({ task }: TaskCardProps) {
   const titleDisplay = truncate(task.title)
   const hasTooltip = task.title.length > 80
+  const isBlockedOverlay = task.status === 'wip' && task.blocked === true
+
+  // Amber left-border when blocked overlay is on; subtle default otherwise
+  const borderClass = isBlockedOverlay
+    ? 'border border-zinc-800 border-l-2 border-l-amber-500/70'
+    : 'border border-zinc-800'
 
   const cardContent = (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-850 p-3 transition-colors hover:border-zinc-700">
-      {/* Title */}
-      <p
-        className="text-sm font-medium text-zinc-200 leading-snug"
-        title={hasTooltip ? task.title : undefined}
-      >
-        {titleDisplay}
-      </p>
+    <div className={`rounded-lg ${borderClass} bg-zinc-850 p-3 transition-colors hover:border-zinc-700`}>
+      {/* Header row: chain icon (if blocked) + title */}
+      <div className="flex items-start gap-1.5">
+        {isBlockedOverlay && (
+          <span
+            aria-label="blocked"
+            title="Blocked"
+            className="mt-0.5 text-amber-400 text-xs shrink-0"
+          >
+            ⛓
+          </span>
+        )}
+        <p
+          className="text-sm font-medium text-zinc-200 leading-snug flex-1"
+          title={hasTooltip ? task.title : undefined}
+        >
+          {titleDisplay}
+        </p>
+      </div>
 
       {/* Linked badge */}
       {(task.linked_id || task.linked_kind) && (
@@ -94,8 +111,8 @@ export function TaskCard({ task }: TaskCardProps) {
         </div>
       )}
 
-      {/* Blocked reason */}
-      {task.status === 'blocked' && task.blocked_reason && (
+      {/* Blocked reason (shown whenever blocked=true, regardless of status) */}
+      {isBlockedOverlay && task.blocked_reason && (
         <p className="mt-1.5 text-xs text-amber-400 leading-snug">{task.blocked_reason}</p>
       )}
 
@@ -107,12 +124,12 @@ export function TaskCard({ task }: TaskCardProps) {
         {task.status === 'done' && task.completed_at && (
           <span className="text-xs text-zinc-500">done {formatDate(task.completed_at)}</span>
         )}
-        {(task.status === 'queue' || task.status === 'blocked') && <span />}
+        {task.status === 'queue' && <span />}
       </div>
     </div>
   )
 
-  // If there's a linked URL, wrap the whole card (but not the badge itself, to avoid double-link)
+  // If there's a linked URL but no badge surface, make the whole card clickable
   if (task.linked_url && !task.linked_id && !task.linked_kind) {
     return (
       <a href={task.linked_url} target="_blank" rel="noopener noreferrer" className="block">
