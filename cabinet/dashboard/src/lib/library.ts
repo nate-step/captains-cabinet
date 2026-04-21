@@ -2,9 +2,17 @@
  * library.ts — Server-side library data access.
  * Mirrors the query shapes in library.sh but uses pg directly.
  * Semantic search calls Voyage AI REST API (same key as library.sh uses).
+ *
+ * Spec 037 Phase A additions:
+ *   - status field on LibraryRecord + LibraryRecordSummary
+ *   - listRecordsForSidebar() — capped 20 per space for sidebar tree
+ *   - updateRecord() now calls indexLinks() + indexSections() after save
+ *   - createRecord() same
+ *   - updateRecordStatus() — status state machine PATCH
  */
 
 import { query } from './db'
+import { indexLinks, indexSections } from './wikilinks'
 
 // ============================================================
 // Types
@@ -27,6 +35,18 @@ export interface LibrarySpace {
   latest_update: string | null
 }
 
+// A5: Status enum values
+export type RecordStatus = 'draft' | 'in_review' | 'approved' | 'implemented' | 'superseded'
+
+// A5: Valid state transitions
+export const STATUS_TRANSITIONS: Record<RecordStatus, RecordStatus[]> = {
+  draft: ['in_review', 'superseded'],
+  in_review: ['approved', 'superseded'],
+  approved: ['implemented', 'superseded'],
+  implemented: ['superseded'],
+  superseded: [],
+}
+
 export interface LibraryRecord {
   [key: string]: unknown
   id: string
@@ -37,6 +57,9 @@ export interface LibraryRecord {
   labels: string[]
   version: number
   superseded_by: string | null
+  // A5 additions
+  status: RecordStatus
+  superseded_by_record_id: string | null
   created_by_officer: string | null
   created_at: string
   updated_at: string
@@ -49,8 +72,19 @@ export interface LibraryRecordSummary {
   labels: string[]
   preview: string
   version: number
+  // A5
+  status: RecordStatus
   created_by_officer: string | null
   created_at: string
+  updated_at: string
+}
+
+// A4: Sidebar record type — lighter weight
+export interface SidebarRecord {
+  [key: string]: unknown
+  id: string
+  title: string
+  status: RecordStatus
   updated_at: string
 }
 
@@ -261,6 +295,7 @@ export async function listRecords(
         labels,
         left(regexp_replace(content_markdown, E'[\\t\\n\\r]+', ' ', 'g'), 120) AS preview,
         version,
+        COALESCE(status, 'draft') AS status,
         created_by_officer,
         created_at::text,
         updated_at::text
@@ -283,6 +318,7 @@ export async function listRecords(
       labels,
       left(regexp_replace(content_markdown, E'[\\t\\n\\r]+', ' ', 'g'), 120) AS preview,
       version,
+      COALESCE(status, 'draft') AS status,
       created_by_officer,
       created_at::text,
       updated_at::text
@@ -308,6 +344,8 @@ export async function getRecord(id: string): Promise<LibraryRecord | null> {
       labels,
       version,
       superseded_by::text,
+      COALESCE(status, 'draft') AS status,
+      superseded_by_record_id::text,
       created_by_officer,
       created_at::text,
       updated_at::text
@@ -317,6 +355,76 @@ export async function getRecord(id: string): Promise<LibraryRecord | null> {
     [id]
   )
   return rows[0] ?? null
+}
+
+// A4: Sidebar — top 20 records per space ordered by updated_at
+export async function listRecordsForSidebar(
+  spaceId: string,
+  opts?: { limit?: number; statusFilter?: RecordStatus[] }
+): Promise<SidebarRecord[]> {
+  const limit = opts?.limit ?? 20
+  const statusFilter = opts?.statusFilter ?? ['draft', 'in_review', 'approved', 'implemented']
+
+  return query<SidebarRecord>(
+    `
+    SELECT
+      id::text,
+      title,
+      COALESCE(status, 'draft') AS status,
+      updated_at::text
+    FROM library_records
+    WHERE space_id = $1::bigint
+      AND superseded_by IS NULL
+      AND COALESCE(status, 'draft') = ANY($2::text[])
+    ORDER BY updated_at DESC
+    LIMIT $3
+    `,
+    [spaceId, statusFilter, limit]
+  )
+}
+
+// A5: Status state-machine PATCH — atomic compare-and-swap to prevent lost-update
+// races. Two concurrent PATCHes reading the same current status would both pass
+// the pre-check; the WHERE status IN (...allowed reverses) clause in the UPDATE
+// serializes them: only the first succeeds, the second finds 0 rows and 409s.
+export async function updateRecordStatus(
+  id: string,
+  newStatus: RecordStatus,
+  supersededByRecordId?: string
+): Promise<{ ok: boolean; error?: string; allowed_transitions?: RecordStatus[]; current_status?: RecordStatus }> {
+  // Find every status from which `newStatus` is reachable — used as the CAS guard.
+  const reachableFrom = (Object.keys(STATUS_TRANSITIONS) as RecordStatus[]).filter((from) =>
+    STATUS_TRANSITIONS[from].includes(newStatus)
+  )
+  if (reachableFrom.length === 0) {
+    return { ok: false, error: `No valid transition to ${newStatus}` }
+  }
+
+  const updated = await query<{ status: RecordStatus; [key: string]: unknown }>(
+    `UPDATE library_records
+     SET status = $2,
+         superseded_by_record_id = $3::bigint
+     WHERE id = $1::bigint
+       AND superseded_by IS NULL
+       AND COALESCE(status, 'draft') = ANY($4::text[])
+     RETURNING COALESCE(status, 'draft') AS status`,
+    [id, newStatus, supersededByRecordId ?? null, reachableFrom]
+  )
+  if (updated[0]) return { ok: true }
+
+  // CAS failed — either record is gone/superseded or current status can't reach newStatus.
+  const current = await query<{ status: RecordStatus; [key: string]: unknown }>(
+    `SELECT COALESCE(status, 'draft') AS status FROM library_records WHERE id = $1::bigint AND superseded_by IS NULL`,
+    [id]
+  )
+  if (!current[0]) return { ok: false, error: 'Record not found or already superseded' }
+  const cs = current[0].status as RecordStatus
+  return {
+    ok: false,
+    error: 'Invalid status transition',
+    allowed_transitions: STATUS_TRANSITIONS[cs],
+    current_status: cs,
+  }
 }
 
 export async function createRecord(params: {
@@ -348,7 +456,10 @@ export async function createRecord(params: {
       ($1::bigint, $2, $3, $4::jsonb, $5::text[], $6, $7, COALESCE($8::timestamptz, NOW()))
     RETURNING
       id::text, space_id::text, title, content_markdown, schema_data, labels,
-      version, superseded_by::text, created_by_officer, created_at::text, updated_at::text
+      version, superseded_by::text,
+      COALESCE(status, 'draft') AS status,
+      superseded_by_record_id::text,
+      created_by_officer, created_at::text, updated_at::text
   `,
     [
       params.space_id,
@@ -363,9 +474,21 @@ export async function createRecord(params: {
   )
   const record = rows[0]
 
-  // Queue in cabinet_memory for cross-system search (async, non-blocking)
   if (record) {
-    // Fetch space name for metadata — best-effort, don't await in hot path
+    // A1/A6: Index wikilinks + section anchors BEFORE returning so backlinks land
+    // same-turn (AC-12). Failures are swallowed individually to keep record save
+    // durable — a stale link index is recoverable, a lost save is not.
+    const content = params.content_markdown ?? ''
+    await Promise.all([
+      indexLinks(record.id, content, params.space_id).catch((err) => {
+        console.warn('[library] indexLinks failed for record', record.id, err)
+      }),
+      indexSections(record.id, content).catch((err) => {
+        console.warn('[library] indexSections failed for record', record.id, err)
+      }),
+    ])
+
+    // Queue in cabinet_memory for cross-system search (async, non-blocking)
     getSpace(params.space_id)
       .then((space) => {
         queueLibraryRecordInMemory({
@@ -407,21 +530,23 @@ export async function updateRecord(
   const rows = await query<LibraryRecord>(
     `
     WITH locked AS (
-      SELECT id, space_id, version
+      SELECT id, space_id, version, COALESCE(status, 'draft') AS status
       FROM library_records
       WHERE id = $1::bigint AND superseded_by IS NULL
       FOR UPDATE
     ),
     inserted AS (
       INSERT INTO library_records
-        (space_id, title, content_markdown, schema_data, labels, embedding, version, created_by_officer)
+        (space_id, title, content_markdown, schema_data, labels, embedding, version, created_by_officer, status)
       SELECT
         locked.space_id,
-        $2, $3, $4::jsonb, $5::text[], $6, locked.version + 1, NULLIF($7, '')
+        $2, $3, $4::jsonb, $5::text[], $6, locked.version + 1, NULLIF($7, ''),
+        locked.status
       FROM locked
       RETURNING
         id, space_id, title, content_markdown, schema_data, labels,
-        version, superseded_by, created_by_officer, created_at, updated_at
+        version, superseded_by, status, superseded_by_record_id,
+        created_by_officer, created_at, updated_at
     ),
     update_old AS (
       UPDATE library_records
@@ -430,7 +555,10 @@ export async function updateRecord(
     )
     SELECT
       id::text, space_id::text, title, content_markdown, schema_data, labels,
-      version, superseded_by::text, created_by_officer, created_at::text, updated_at::text
+      version, superseded_by::text,
+      COALESCE(status, 'draft') AS status,
+      superseded_by_record_id::text,
+      created_by_officer, created_at::text, updated_at::text
     FROM inserted
   `,
     [
@@ -447,6 +575,17 @@ export async function updateRecord(
     throw new Error(`Record ${id} not found or already superseded`)
   }
   const updated = rows[0]
+
+  // A1/A6: Index wikilinks + section anchors for new version — awaited so
+  // backlinks land same-turn (AC-12). Failures logged, not thrown.
+  await Promise.all([
+    indexLinks(updated.id, params.content_markdown, updated.space_id).catch((err) => {
+      console.warn('[library] indexLinks failed for record', updated.id, err)
+    }),
+    indexSections(updated.id, params.content_markdown).catch((err) => {
+      console.warn('[library] indexSections failed for record', updated.id, err)
+    }),
+  ])
 
   // Queue in cabinet_memory for cross-system search (async, non-blocking)
   getSpace(updated.space_id)
