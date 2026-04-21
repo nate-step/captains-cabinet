@@ -50,6 +50,21 @@ def _fetch_row_hashes(conn: Any) -> Dict[str, str]:
     Hash body mirrors Postgres `concat_ws('|', ...)` semantics — NULL values
     are skipped (not stringified to empty), so two rows whose NULL positions
     differ produce distinct strings even when non-NULL values agree.
+
+    CAUTION — Python ↔ Postgres type-coercion parity is NOT guaranteed:
+      * Booleans: Python `str(True)` → `"True"`; Postgres `concat_ws` on a
+        `bool` column → `"t"`/`"f"` (text cast) or `"true"`/`"false"` depending
+        on cast path. If this hash body ever needs to be cross-computed in SQL
+        (e.g. a Postgres-side integrity gate), the bool cols
+        (`blocked`, `founder_action`, `captain_decision`) need explicit
+        `CASE WHEN ... THEN 'True' ELSE 'False' END` shims — or the Python
+        side needs switching to `'true'`/`'false'`.
+      * Dates / timestamps: psycopg2 returns `datetime.date` objects, so
+        `str(due_date)` → `"2026-04-30"` (ISO) which matches Postgres
+        default text cast. Fine as long as psycopg2 is the adapter.
+      * Integers: `str(2)` == `"2"` in both languages. Safe.
+    FW-021's test_gate_3_hash.py pins the Python output only. Do not add
+    Postgres-side hashing without extending that test first.
     """
     cols_sql = ", ".join(_HASH_COLS)
     sql = f"""

@@ -147,13 +147,16 @@ _(none)_
 ---
 
 ### FW-021 — Gate-3 idempotency hash-basis drift fixture test
-- **Status:** Proposed (2026-04-21 PR-3 lesson-learned).
-- **Problem:** `cabinet/scripts/gates/gate-3-idempotency.py` hand-codes the 15-col hash basis per Spec 039 §5.9 M-5. Adversary review caught initial divergence (missing cols, wrong algorithm) that would have silently passed idempotency on mutated rows. No test fixture asserts Python hash output equals Postgres `md5(concat_ws('|', …))` on a known row.
-- **Desired end state:** `cabinet/scripts/gates/tests/test_gate_3_hash.py` — pytest-style: insert a canned officer_tasks row, compute Python hash + Postgres hash, assert equal. Run in CI (when CI lands) or as pre-PR check.
-- **Guard scope:** Any future addition to `_HASH_COLS` requires spec amendment (already in module docstring) AND test-fixture update. The two in lockstep catches drift.
-- **Effort:** ~2 hr (fixture row + pytest scaffold).
+- **Status:** DONE 2026-04-21 — Python-side fixture shipped. 6 tests, all pass under `python3 test_gate_3_hash.py` (and `python3 -m pytest` when FW-024 lands).
+- **Problem:** `cabinet/scripts/gates/gate-3-idempotency.py` hand-codes the 15-col hash basis per Spec 039 §5.9 M-5. Adversary review caught initial divergence (missing cols, wrong algorithm) that would have silently passed idempotency on mutated rows. No test fixture asserts Python hash output equals the spec-mandated md5.
+- **Fix shipped:**
+  - `cabinet/scripts/gates/tests/test_gate_3_hash.py` (180+ LOC, 6 tests): (1) `_HASH_COLS == SPEC_HASH_COLS` verbatim, order-sensitive; (2) sentinel — exactly 15 entries; (3) golden-hex `4131f221173010942e19edebc63a7e9e` for canned row with 2 NULL cols (blocked_reason, decision_ref); (4) golden-hex `e4e3de02987a900484c3e58a4df55404` for all-populated variant; (5) None-skip parity — flipping a NULL col to a value MUST change the hash (catches accidental `str(None)` → `"None"` stringification); (6) order-sensitivity — swapping two adjacent col positions MUST change the hash. Stubs psycopg2 via `sys.modules.setdefault` (stub leak warning documented inline). Loads hyphenated `gate-3-idempotency.py` via `importlib.util.spec_from_file_location`.
+  - `cabinet/scripts/gates/tests/__init__.py` (empty, pytest package marker).
+  - `gate-3-idempotency.py:_fetch_row_hashes` docstring expanded with Python↔Postgres type-coercion parity caveat: booleans (`str(True)`=`"True"` vs concat_ws → `"t"`/`"true"`), dates (safe with psycopg2), integers (safe). If a future Postgres-side hash gate lands, parity requires explicit coercion shims AND a cross-language fixture — current test guards Python side only.
+- **Sonnet adversary review:** SAFE TO MERGE. 1 H (Python↔Postgres bool divergence not tested) + 1 M (sys.modules stub-leak warning) — both addressed via doc-only changes before commit.
+- **Coupled to:** FW-023 (pytest harness pattern — same sys.modules stub approach), FW-024 (once psycopg2-binary ships, delete the stub and let real import win).
 - **Owner:** CTO.
-- **Source:** Spec 039 PR-3 adversary B-1 finding; folded into FW backlog for post-wet-run work.
+- **Source:** Spec 039 PR-3 adversary B-1 finding; closed during 5m-loop quiet period 2026-04-21 per captain's standing "never report idle" directive.
 
 ---
 
