@@ -1,0 +1,153 @@
+#!/bin/bash
+# pre-push — Force-push refusal on master (FW-007)
+#
+# Stops accidental destruction of master history in the shared working
+# tree. On 2026-04-17 an officer ran `git reset --hard origin/master`
+# in the shared tree and wiped 4 other officers' unpushed commits;
+# FW-007 closes the push half of that hazard by refusing any push
+# that would discard remote commits on master.
+#
+# What's blocked:
+#   - `git push --force[-with-lease] origin master` (classic overwrite)
+#   - `git push` after a local rebase/reset that rewrites published history
+#   - `git push origin :master` (ref deletion — also destructive)
+#
+# What passes through untouched:
+#   - Fast-forward pushes to master (normal merge pipeline).
+#   - Pushes to any branch other than master.
+#   - First-time ref creation (remote_sha all zeros).
+#
+# Announcement protocol (for genuine rebase pushes):
+#   1. TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+#   2. Append one line to shared/force-push-log.md:
+#        "$TS  <your-role>  <why the rewrite is necessary>"
+#   3. Push within 5 minutes:
+#        FORCE_PUSH_ANNOUNCED=$TS git push --force-with-lease origin master
+#   Hook checks: env var present, timestamp well-formed, age <= 5 min,
+#   exact timestamp string appears somewhere in the log file.
+#
+# Why belt-and-suspenders (both env var AND log line):
+#   - The log line is the durable paper trail (committed artifact).
+#   - The env var is the "intent signal" that proves this specific
+#     invocation is the announced one, not a stale log line from last week.
+#
+# Portability: uses GNU `date -u -d` (Ubuntu/Debian/coreutils). macOS
+# `date` does not accept `-d` with an ISO string. Officer containers
+# are Ubuntu 24.04, so this is fine for the Cabinet; forkers running
+# the hook from a macOS host will get a parse error and fail closed.
+#
+# Exit 0 = allow, Exit 1 = block. Stderr gets the reason on block —
+# silent exits are banned (FW-022 lesson).
+
+set -u
+
+ANNOUNCE_MAX_AGE_SEC=300
+PROTECTED_REF="refs/heads/master"
+LOG_REL="shared/force-push-log.md"
+ZERO_SHA="0000000000000000000000000000000000000000"
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$REPO_ROOT" ]; then
+  echo "pre-push: not in a git repo — skipping" >&2
+  exit 0
+fi
+
+LOG_PATH="$REPO_ROOT/$LOG_REL"
+
+is_announced() {
+  local env_ts="${FORCE_PUSH_ANNOUNCED:-}"
+  if [ -z "$env_ts" ]; then
+    return 1
+  fi
+  if ! echo "$env_ts" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
+    echo "pre-push: FORCE_PUSH_ANNOUNCED=$env_ts is malformed (want YYYY-MM-DDThh:mm:ssZ)" >&2
+    return 1
+  fi
+  local now_epoch env_epoch age
+  now_epoch=$(date -u +%s)
+  env_epoch=$(date -u -d "$env_ts" +%s 2>/dev/null || echo 0)
+  if [ "$env_epoch" = "0" ]; then
+    echo "pre-push: FORCE_PUSH_ANNOUNCED=$env_ts could not be parsed as a date" >&2
+    return 1
+  fi
+  age=$((now_epoch - env_epoch))
+  if [ "$age" -lt 0 ]; then
+    echo "pre-push: FORCE_PUSH_ANNOUNCED=$env_ts is in the future (host clock skew?)" >&2
+    return 1
+  fi
+  if [ "$age" -gt "$ANNOUNCE_MAX_AGE_SEC" ]; then
+    echo "pre-push: FORCE_PUSH_ANNOUNCED=$env_ts is ${age}s old (must be within ${ANNOUNCE_MAX_AGE_SEC}s)" >&2
+    return 1
+  fi
+  # Reject symlinks — a hostile swap could point LOG_PATH at a world-writable
+  # scratch file crafted to contain any timestamp (L4).
+  if [ -L "$LOG_PATH" ]; then
+    echo "pre-push: $LOG_REL is a symlink — log must be a regular tracked file" >&2
+    return 1
+  fi
+  if [ ! -f "$LOG_PATH" ]; then
+    echo "pre-push: $LOG_REL missing — announcement log is required" >&2
+    return 1
+  fi
+  if ! grep -qF "$env_ts" "$LOG_PATH"; then
+    echo "pre-push: no line in $LOG_REL matching timestamp $env_ts" >&2
+    return 1
+  fi
+  return 0
+}
+
+BLOCK_REASON=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ -z "${remote_ref:-}" ]; then
+    continue
+  fi
+  if [ "$remote_ref" != "$PROTECTED_REF" ]; then
+    continue
+  fi
+  # Deleting master is destructive — require announcement.
+  if [ "$local_sha" = "$ZERO_SHA" ]; then
+    BLOCK_REASON="delete of $PROTECTED_REF"
+    continue
+  fi
+  # First-time creation (remote all zeros) is not an overwrite.
+  if [ "$remote_sha" = "$ZERO_SHA" ]; then
+    continue
+  fi
+  # Fast-forward: remote_sha is an ancestor of local_sha. Allow.
+  if git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+    continue
+  fi
+  BLOCK_REASON="force overwrite of $PROTECTED_REF (remote $remote_sha is not an ancestor of local $local_sha — commits would be lost)"
+done
+
+if [ -z "$BLOCK_REASON" ]; then
+  exit 0
+fi
+
+if is_announced; then
+  echo "pre-push: $BLOCK_REASON allowed — announcement $FORCE_PUSH_ANNOUNCED present in $LOG_REL" >&2
+  exit 0
+fi
+
+cat >&2 <<EOF
+pre-push: BLOCKED — $BLOCK_REASON.
+
+Master is the shared-tree ship point (FW-007). Force-push or ref
+deletion destroys other officers' work. On 2026-04-17 this cost 4
+unpushed commits.
+
+To proceed with a legitimate rebase/overwrite push:
+  1. TS=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  2. echo "\$TS  <your-role>  <why the rewrite is necessary>" >> $LOG_REL
+  3. FORCE_PUSH_ANNOUNCED=\$TS git push --force-with-lease origin master
+
+Hook requires the env var, a well-formed ISO UTC timestamp, a log
+line containing that timestamp, and age <= ${ANNOUNCE_MAX_AGE_SEC}s.
+
+Never use plain --force against master — always --force-with-lease,
+and only after confirming no officer has unpushed commits on their
+tree (git fetch && git log origin/master..HEAD on every officer's
+working tree).
+EOF
+
+exit 1

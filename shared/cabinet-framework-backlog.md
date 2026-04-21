@@ -118,14 +118,19 @@ _(none)_
 ---
 
 ### FW-007 — Force-push refusal pre-push hook on master (shared-tree safety)
-- **Status:** Proposed (retro 2026-04-19 P-008).
+- **Status:** DONE 2026-04-21 — push-side gate shipped. Reset-hard wrapper parked as follow-up.
 - **Problem:** On 2026-04-17, CTO ran `git reset --hard origin/master` in the shared working tree, wiping 4 unpushed CoS commits (FW-002, FW-002.1, FW-004, FW-005, constitution rules). CoS re-applied, but the structural hazard remains: any officer in the shared tree can destroy another officer's unpushed work with one command. Also captured in `feedback_git_staging_shared_tree.md` but that's vigilance, not a gate.
-- **Desired end state:** `.git/hooks/pre-push` refuses `git push --force` (and `--force-with-lease`) to `master` unless an env var + announcement exists. Something like: require `FORCE_PUSH_ANNOUNCED=<ISO-timestamp-within-5min>` AND a matching line in a shared log `shared/interfaces/force-push-log.md`. Without both, hook exits non-zero with clear stderr.
-- **Also cover:** `git reset --hard` in the working tree — harder to gate (no pre-reset hook), but we can:
-  - Add a wrapper `git-reset-hard` in PATH that verifies no uncommitted work across any officer's uncommitted-changes marker (Redis key `cabinet:uncommitted:<officer>`), refusing if any marker present
-  - Each officer's pre-tool-use hook writes `cabinet:uncommitted:<officer>` marker when it detects `git add` or `git commit` to local-only ref; clears on push
-- **Owner:** CTO implement, CoS golden-eval.
-- **Risk:** false-positive refusing legitimate `--force-with-lease` after a rebase. Mitigation: `--force-with-lease` still refuses, but the announcement requirement is one-command (`echo "rebase push $(date -u +%FT%TZ) <reason>" >> shared/interfaces/force-push-log.md && FORCE_PUSH_ANNOUNCED=$(date -u +%FT%TZ) git push --force-with-lease`).
+- **Fix shipped (push half):**
+  - `cabinet/scripts/git-hooks/pre-push` (new, ~135 LOC). Blocks any push to `refs/heads/master` where `remote_sha` is non-zero AND `git merge-base --is-ancestor $remote_sha $local_sha` fails (would discard remote commits). Also blocks master ref deletion (local_sha all zeros). Fast-forward pushes to master and all non-master pushes pass untouched.
+  - Announcement protocol: `TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)` + append line to `shared/force-push-log.md` + `FORCE_PUSH_ANNOUNCED=$TS git push --force-with-lease`. Hook requires env var + well-formed ISO + age ≤ 300s + exact timestamp string in log + log path is not a symlink.
+  - `shared/force-push-log.md` seeded with protocol doc and entry format.
+  - `install-git-hooks.sh` header comment updated to list both hooks; no activation logic change required (FW-019 `core.hooksPath` mechanism auto-picks up new files).
+  - Tested: 7 manual cases all pass (non-master push, fast-forward, force-push no-announce, force-push with-announce, master delete, stale announce, malformed TS, future TS, symlink log). `bash -n` clean.
+  - Sonnet adversary review: H1 (multi-ref clearing) confirmed false positive on re-read — BLOCK_REASON is only set, never cleared. H2 (--mirror) handles correctly. M2 (negative age) + L4 (symlink) fixed pre-commit. M3 (GNU date-d portability) documented in header.
+- **Follow-ups parked:**
+  - **FW-007.1 — `git-reset-hard` wrapper:** per original scope, reset-hard in the working tree has no pre-reset hook. Plan: wrapper in PATH that reads Redis `cabinet:uncommitted:<officer>` markers (written by post-tool-use on `git add`/`git commit` without push, cleared on push) and refuses if any markers present. Not urgent — push-side is the higher-traffic risk.
+  - **FW-007.2 — Timestamp-reuse hardening:** Sonnet M1 — the belt-and-suspenders check (env var + log line) doesn't prevent Officer B from copy-pasting Officer A's valid timestamp within the 300s window without writing a new log entry. Threat model requires hostile bots; low severity. Possible hardener: require log line tail-1 freshness, or require `FORCE_PUSH_ANNOUNCED` to include officer-role hash. Deferred.
+- **Owner:** CTO. Closed during 5m-loop quiet period 2026-04-21 per captain's standing "never report idle" directive.
 - **Source:** CTO session 2026-04-17; CoS retro 2026-04-19 P-008.
 
 ---
