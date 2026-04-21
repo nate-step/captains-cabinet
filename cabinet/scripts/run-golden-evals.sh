@@ -323,34 +323,61 @@ fi
 log "EVAL-008: stop-hook cost-write integrity (FW-016 regression catcher)"
 STOP_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/stop-hook.sh"
 if [ -f "$STOP_HOOK" ]; then
-  EVAL_DATE=$(date -u +%Y-%m-%d)
-  EVAL_KEY="cabinet:cost:tokens:daily:$EVAL_DATE"
-  # Pre-clean — HINCRBY accumulates, so prior residue would skew the test.
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "$EVAL_KEY" \
-    evaltest_input evaltest_output evaltest_cache_write evaltest_cache_read evaltest_cost_micro \
-    > /dev/null 2>&1
+  # Pre-clean: HINCRBY accumulates, so prior residue would skew the test.
+  # HDEL both today + yesterday to stay symmetric with the EXIT trap and
+  # defend against a midnight-boundary flip between our pre-clean and
+  # stop-hook's internal TODAY compute.
+  EVAL_PRE_TODAY=$(date -u +%Y-%m-%d)
+  EVAL_PRE_YDAY=$(date -u -d 'yesterday' +%Y-%m-%d 2>/dev/null)
+  for _EV_DT in "$EVAL_PRE_TODAY" "$EVAL_PRE_YDAY"; do
+    [ -z "$_EV_DT" ] && continue
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "cabinet:cost:tokens:daily:$_EV_DT" \
+      evaltest_input evaltest_output evaltest_cache_write evaltest_cache_read evaltest_cost_micro \
+      > /dev/null 2>&1
+  done
   EVAL_TX="/tmp/eval-transcript-$$.jsonl"
   cat > "$EVAL_TX" <<'EOT'
 {"type":"assistant","message":{"model":"claude-opus-4-7","usage":{"input_tokens":1000,"output_tokens":500,"cache_creation_input_tokens":200,"cache_read_input_tokens":3000}}}
 EOT
   echo "{\"session_id\":\"eval-session\",\"transcript_path\":\"$EVAL_TX\"}" \
     | OFFICER_NAME=evaltest bash "$STOP_HOOK" > /dev/null 2>&1
-  ACTUAL_INPUT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_input 2>/dev/null)
-  ACTUAL_OUTPUT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_output 2>/dev/null)
-  ACTUAL_CW=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cache_write 2>/dev/null)
-  ACTUAL_CR=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cache_read 2>/dev/null)
-  ACTUAL_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cost_micro 2>/dev/null)
-  if [ "$ACTUAL_INPUT" = "1000" ] && [ "$ACTUAL_OUTPUT" = "500" ] && \
-     [ "$ACTUAL_CW" = "200" ] && [ "$ACTUAL_CR" = "3000" ] && \
-     [ "$ACTUAL_COST" = "54150" ]; then
-    pass "stop-hook writes cost HSET correctly (all 5 fields, cost_micro=54150)"
+  # Post-read: stop-hook.sh line 82 computes TODAY=$(date -u +%Y-%m-%d) at
+  # HINCRBY time — if the eval straddles 00:00 UTC between our pre-clean
+  # and stop-hook's write, the target key shifts by one day. Probe today
+  # AND the pre-clean date and take whichever HSET has our write; pick a
+  # loud fail if neither does (real stop-hook breakage). Symmetric with
+  # the trap-cleanup fix from the initial Sonnet review.
+  EVAL_POST_TODAY=$(date -u +%Y-%m-%d)
+  EVAL_KEY=""
+  for _EV_DT in "$EVAL_POST_TODAY" "$EVAL_PRE_TODAY"; do
+    _CAND_KEY="cabinet:cost:tokens:daily:$_EV_DT"
+    _PROBE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$_CAND_KEY" evaltest_cost_micro 2>/dev/null)
+    if [ -n "$_PROBE" ] && [ "$_PROBE" != "(nil)" ]; then
+      EVAL_KEY="$_CAND_KEY"
+      break
+    fi
+  done
+  if [ -z "$EVAL_KEY" ]; then
+    fail "stop-hook did not write evaltest_cost_micro to any expected date key (probed today=$EVAL_POST_TODAY, start=$EVAL_PRE_TODAY)"
   else
-    fail "stop-hook cost-write drift (input=$ACTUAL_INPUT/1000 output=$ACTUAL_OUTPUT/500 cache_write=$ACTUAL_CW/200 cache_read=$ACTUAL_CR/3000 cost_micro=$ACTUAL_COST/54150)"
+    ACTUAL_INPUT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_input 2>/dev/null)
+    ACTUAL_OUTPUT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_output 2>/dev/null)
+    ACTUAL_CW=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cache_write 2>/dev/null)
+    ACTUAL_CR=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cache_read 2>/dev/null)
+    ACTUAL_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cost_micro 2>/dev/null)
+    if [ "$ACTUAL_INPUT" = "1000" ] && [ "$ACTUAL_OUTPUT" = "500" ] && \
+       [ "$ACTUAL_CW" = "200" ] && [ "$ACTUAL_CR" = "3000" ] && \
+       [ "$ACTUAL_COST" = "54150" ]; then
+      pass "stop-hook writes cost HSET correctly (all 5 fields, cost_micro=54150)"
+    else
+      fail "stop-hook cost-write drift (input=$ACTUAL_INPUT/1000 output=$ACTUAL_OUTPUT/500 cache_write=$ACTUAL_CW/200 cache_read=$ACTUAL_CR/3000 cost_micro=$ACTUAL_COST/54150)"
+    fi
+    # Inline cleanup — HDEL the key we actually wrote to. Trap still sweeps
+    # both dates on interrupt.
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "$EVAL_KEY" \
+      evaltest_input evaltest_output evaltest_cache_write evaltest_cache_read evaltest_cost_micro \
+      > /dev/null 2>&1
   fi
-  # Inline cleanup (trap also handles on interrupt)
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "$EVAL_KEY" \
-    evaltest_input evaltest_output evaltest_cache_write evaltest_cache_read evaltest_cost_micro \
-    > /dev/null 2>&1
   redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:cost:tokens:evaltest" > /dev/null 2>&1
   rm -f "$EVAL_TX"
 else
