@@ -593,44 +593,71 @@ else
 fi
 
 # ------------------------------------------------------------------
-# Eval 012: post-tool-use.sh L-6 + L-7 silent-fail guards (FW-027 Phase B)
+# Eval 012: post-tool-use.sh L-6 + L-7 silent-fail guards (FW-027 Phase B+C)
 # ------------------------------------------------------------------
-# Two audit Low-severity findings closed in Phase B:
-#   L-6: `date -d "$LAST_CALL"` + `|| echo "0"` made a corrupted Redis
-#        value flood permanent idle warnings (IDLE_SECONDS = NOW_EPOCH,
-#        which is always > 1800). Fix: ISO-8601 shape-check guard
-#        before calling `date -d`, with stderr WARN on malformed input.
-#   L-7: `CAPTAIN_CHAT_ID` silently resolving to empty (env var unset
-#        AND platform.yml key drifted/missing) made the `[ -n ... ]`
-#        guard suppress the decision-check prompt with zero diagnostic.
-#        Officers with logs_captain_decisions capability would reply to
-#        the Captain and never see the reminder → captain-decisions.md
-#        drifts from truth undetected. Fix: stderr WARN in the empty
-#        branch so the config error is visible.
+# Three audit findings closed:
+#   L-6 (Phase B): `date -d "$LAST_CALL"` + `|| echo "0"` made a
+#        corrupted Redis value flood permanent idle warnings
+#        (IDLE_SECONDS = NOW_EPOCH, always > 1800). Fix: ISO-8601
+#        shape-check guard with fractional-second support before
+#        `date -d`, plus stderr WARN on malformed input.
+#   L-7 (Phase B): `CAPTAIN_CHAT_ID` silently resolving to empty
+#        (env var unset AND platform.yml key drifted/missing) made
+#        the `[ -n ... ]` guard suppress the decision-check prompt
+#        with zero diagnostic → captain-decisions.md drifted from
+#        truth undetected. Fix: stderr WARN on empty branch.
+#   LAST_EXPERIENCE (Phase C, Sonnet adversary Finding #1 on 7f719b5):
+#        Symmetric L-6 class bug on `cabinet:last-experience:$OFFICER`.
+#        Same flood mode, same fix pattern.
 #
-# Both fixes are static — a full dynamic test would require invoking
+# All fixes are static — a full dynamic test would require invoking
 # post-tool-use.sh with a mocked CAPTAIN_TELEGRAM_CHAT_ID env + Redis
 # state, which is invasive in the shared-tree Cabinet. Grep for the
 # distinctive WARN phrases + regex fragment instead; presence of each
 # proves the guard is still in place.
-log "EVAL-012: post-tool-use.sh L-6 + L-7 silent-fail guards (FW-027 Phase B)"
+#
+# Pin strategy (per COO review on 7f719b5 observations #1 + #2):
+#   - Fractional-second fragment `(\\.[0-9]+)?Z` pinned separately so
+#     a revert of Sonnet #5's widening is caught (the bare-T prefix
+#     alone wouldn't catch a revert to `...\\d{2}Z$`).
+#   - Distinctive L-6 phrase `Idle-warning skipped` (unique to the
+#     L-6 WARN) replaces the pre-existing Redis key name, which was
+#     tautological (the key name exists regardless of the guard).
+#   - LAST_EXPERIENCE symmetric port pinned via its own distinctive
+#     phrase `Proactive-work check skipped`.
+log "EVAL-012: post-tool-use.sh L-6 + L-7 + LAST_EXPERIENCE guards (FW-027 Phase B+C)"
 EV12_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
 EV12_FAILURE=""
 
 if [ ! -f "$EV12_HOOK" ]; then
   EV12_FAILURE="post-tool-use.sh not found at $EV12_HOOK"
-elif ! grep -qF '[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$EV12_HOOK"; then
-  EV12_FAILURE="L-6 regression: ISO-8601 LAST_CALL validation regex missing (malformed Redis value will flood permanent idle-warnings — IDLE_SECONDS becomes NOW_EPOCH)"
-elif ! grep -qF 'cabinet:last-toolcall' "$EV12_HOOK" || ! grep -qF 'malformed value' "$EV12_HOOK"; then
-  EV12_FAILURE="L-6 regression: malformed-LAST_CALL WARN diagnostic missing from else-branch of validation guard"
-elif ! grep -qF 'captain_telegram_chat_id not resolved' "$EV12_HOOK"; then
-  EV12_FAILURE="L-7 regression: captain_telegram_chat_id-empty WARN missing (config drift silently disables decision-logging enforcement)"
+else
+  # Count-based pins catch per-site reverts. The ISO-8601 shape guard
+  # exists at TWO sites (L-6 LAST_CALL + LAST_EXPERIENCE symmetric port)
+  # — a single-occurrence `grep -qF` would pass on a partial revert that
+  # removes widening from one site only (Sonnet adversary Finding #1 on
+  # this commit). Assert count=2 on both the T-prefix and the fractional
+  # widening fragment.
+  EV12_TPREFIX_COUNT=$(grep -cF '[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$EV12_HOOK")
+  EV12_FRAC_COUNT=$(grep -cF '(\.[0-9]+)?Z' "$EV12_HOOK")
+
+  if [ "$EV12_TPREFIX_COUNT" -lt 2 ]; then
+    EV12_FAILURE="L-6 regression: ISO-8601 shape-check regex count=$EV12_TPREFIX_COUNT (expected 2 sites — LAST_CALL + LAST_EXPERIENCE symmetric port). Malformed Redis value will flood permanent warnings at whichever site was reverted."
+  elif [ "$EV12_FRAC_COUNT" -lt 2 ]; then
+    EV12_FAILURE="L-6 regression: fractional-second widening count=$EV12_FRAC_COUNT (expected 2 sites). Per-site revert would trigger 24h false-WARN flood against future Python writer using datetime.utcnow().isoformat()+'Z'."
+  elif ! grep -qF 'Idle-warning skipped' "$EV12_HOOK"; then
+    EV12_FAILURE="L-6 regression: 'Idle-warning skipped' WARN diagnostic missing (malformed LAST_CALL would degrade silently)"
+  elif ! grep -qF 'captain_telegram_chat_id not resolved' "$EV12_HOOK"; then
+    EV12_FAILURE="L-7 regression: captain_telegram_chat_id-empty WARN missing (config drift silently disables decision-logging enforcement)"
+  elif ! grep -qF 'Proactive-work check skipped' "$EV12_HOOK"; then
+    EV12_FAILURE="LAST_EXPERIENCE regression: symmetric L-6 guard missing from cabinet:last-experience branch (flood mode reopens on this parallel site)"
+  fi
 fi
 
 if [ -n "$EV12_FAILURE" ]; then
   fail "$EV12_FAILURE"
 else
-  pass "post-tool-use.sh has L-6 + L-7 guards (ISO-8601 LAST_CALL validation + malformed WARN + CAPTAIN_CHAT_ID-empty WARN)"
+  pass "post-tool-use.sh has L-6 + L-7 + LAST_EXPERIENCE guards (ISO-8601 shape + fractional widening pin + all three WARN phrases)"
 fi
 
 # ------------------------------------------------------------------

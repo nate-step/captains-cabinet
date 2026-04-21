@@ -411,16 +411,27 @@ fi
 if [ "$((CALL_COUNT % 50))" -eq "0" ] 2>/dev/null; then
   LAST_EXPERIENCE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:last-experience:$OFFICER" 2>/dev/null)
   if [ -n "$LAST_EXPERIENCE" ] && [ "$LAST_EXPERIENCE" != "(nil)" ]; then
-    EXP_EPOCH=$(date -d "$LAST_EXPERIENCE" +%s 2>/dev/null || echo "0")
-    NOW_EPOCH=$(date -u +%s)
-    SINCE_LAST_RECORD=$((NOW_EPOCH - EXP_EPOCH))
-    # If no experience record in 2+ hours, officer is likely just polling
-    if [ "$SINCE_LAST_RECORD" -gt 7200 ] 2>/dev/null; then
-      echo ""
-      echo "⚠️ PROACTIVE WORK CHECK: Your last experience record was $((SINCE_LAST_RECORD / 3600))h ago. You may be polling without doing real work."
-      echo "  Re-read your role definition (.claude/agents/${OFFICER}.md) and execute your proactive responsibilities NOW."
-      echo "  If you have completed work, write an experience record immediately."
-      echo ""
+    # FW-027 Phase C: symmetric L-6 port. A corrupted cabinet:last-experience
+    # value had the same failure mode as LAST_CALL — `date -d` errored, the
+    # `|| echo "0"` fallback set EXP_EPOCH=0, SINCE_LAST_RECORD became
+    # NOW_EPOCH (billions), the `> 7200` check fired, and the officer was
+    # flooded with "PROACTIVE WORK CHECK: last record 999999h ago" on every
+    # 50th tool call until the key was overwritten. Sonnet adversary
+    # identified the symmetric site on commit 7f719b5.
+    if echo "$LAST_EXPERIENCE" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$'; then
+      EXP_EPOCH=$(date -d "$LAST_EXPERIENCE" +%s 2>/dev/null || echo "0")
+      NOW_EPOCH=$(date -u +%s)
+      SINCE_LAST_RECORD=$((NOW_EPOCH - EXP_EPOCH))
+      # If no experience record in 2+ hours, officer is likely just polling
+      if [ "$SINCE_LAST_RECORD" -gt 7200 ] 2>/dev/null; then
+        echo ""
+        echo "⚠️ PROACTIVE WORK CHECK: Your last experience record was $((SINCE_LAST_RECORD / 3600))h ago. You may be polling without doing real work."
+        echo "  Re-read your role definition (.claude/agents/${OFFICER}.md) and execute your proactive responsibilities NOW."
+        echo "  If you have completed work, write an experience record immediately."
+        echo ""
+      fi
+    else
+      echo "post-tool-use: WARN — cabinet:last-experience:$OFFICER had malformed value '$LAST_EXPERIENCE' (expected ISO-8601 UTC Z). Proactive-work check skipped." >&2
     fi
   fi
 fi
