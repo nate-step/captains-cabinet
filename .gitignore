@@ -48,6 +48,9 @@ instance/config/product.yml
 instance/memory/tier2/**/*.md
 !instance/memory/tier2/**/.gitkeep
 
+# Runtime archives (migration snapshots, etc.)
+instance/archive/
+
 # Experience records, decision log, research archive
 memory/tier3/
 

@@ -262,7 +262,6 @@ def run_github_etl(
             skipped += 1
             continue
         archive_record = {**issue, "external_ref": row["external_ref"]}
-        common.archive_to_library(conn, archive_record)
         if dry_run:
             logger.info("[dry-run] would upsert GH issue: %s", row["external_ref"])
             continue
@@ -272,6 +271,7 @@ def run_github_etl(
                 inserted += 1
             else:
                 updated += 1
+            common.archive_to_library(conn, archive_record)
             logger.debug("GH issue %s → %s (id=%d)", row["external_ref"], op, task_id)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to upsert GH issue %s: %s", row["external_ref"], exc)

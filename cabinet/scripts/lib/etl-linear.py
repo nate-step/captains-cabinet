@@ -399,7 +399,6 @@ def run_linear_etl(
     for proj in projects:
         row = _transform_project(proj)
         archive_record = {**proj, "external_ref": row["external_ref"]}
-        common.archive_to_library(conn, archive_record)
         if dry_run:
             logger.info("[dry-run] would upsert epic: %s", row["external_ref"])
             project_rows_processed += 1
@@ -412,6 +411,7 @@ def run_linear_etl(
             else:
                 updated += 1
             project_rows_processed += 1
+            common.archive_to_library(conn, archive_record)
             logger.debug("Epic %s → %s (id=%d)", row["external_ref"], op, task_id)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to upsert epic %s: %s", row["external_ref"], exc)
@@ -436,7 +436,6 @@ def run_linear_etl(
             skipped += 1
             continue
         archive_record = {**issue, "external_ref": row["external_ref"]}
-        common.archive_to_library(conn, archive_record)
         if dry_run:
             logger.info("[dry-run] would upsert issue: %s", row["external_ref"])
             continue
@@ -446,6 +445,7 @@ def run_linear_etl(
                 inserted += 1
             else:
                 updated += 1
+            common.archive_to_library(conn, archive_record)
             logger.debug("Issue %s → %s (id=%d)", row["external_ref"], op, task_id)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to upsert issue %s: %s", row["external_ref"], exc)
