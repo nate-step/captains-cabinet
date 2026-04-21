@@ -76,8 +76,23 @@ case "$TOOL_NAME" in
     ;;
   Bash)
     _CMD_CHECK=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-    # Tight word-boundary match so `my-send-to-group.shrug` can't false-positive
-    echo "$_CMD_CHECK" | grep -qE '(^|[[:space:]/])send-to-group\.sh([[:space:]]|$)' && IS_TELEGRAM_COMMS=1
+    # FW-032: command-start anchor — CMD must START with a recognized
+    # invocation form of send-to-group.sh (bash/sh invocation, or direct
+    # path exec), optionally prefixed by priv-esc/env VAR=X/timeout.
+    # Prior word-boundary match `(^|[[:space:]/])send-to-group\.sh([[:space:]]|$)`
+    # allowed `cat /path/send-to-group.sh | head` / `grep send-to-group.sh log`
+    # to spuriously set IS_TELEGRAM_COMMS=1, which cascades to _SKIP_MAIN_CAP=1
+    # (line 220) — bypassing the per-officer daily spending cap for that call.
+    # head -n1 restricts to first line so heredoc bodies cannot trip either.
+    # Adversary Finding #1 (Sonnet 2026-04-21 post-EVAL-015): `"?`
+    # before/after filename covers double-quoted invocations
+    # (`bash "send-to-group.sh"`). Single-quote support skipped because
+    # (a) bash single-quoted args don't permit embedded quote escapes and
+    # (b) the EVAL-015 extractor parses the anchor out of a single-quoted
+    # grep payload and can't tolerate embedded single quotes. Officers
+    # using single-quoted paths should switch to double-quoted — documented
+    # as FW-036 scope gap.
+    echo "$_CMD_CHECK" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(bash[[:space:]]+(-[A-Za-z]+[[:space:]]+)*|sh[[:space:]]+(-[A-Za-z]+[[:space:]]+)*)?([^[:space:]]*/)?"?send-to-group\.sh"?([[:space:]]|$)' && IS_TELEGRAM_COMMS=1
     ;;
 esac
 

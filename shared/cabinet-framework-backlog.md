@@ -343,6 +343,76 @@ _(none)_
 - **Effort:** XS (~10min, single regex edit + one eval case).
 - **Owner:** CTO when first officer script adopts `git -C` push.
 
+### FW-032 — pre-tool-use.sh:80 whitelist filename substring amplification (spending-cap bypass)
+- **Status:** Proposed 2026-04-21 (Crew sweep Finding #9 post-FW-029 ship).
+- **Symptom:** The Telegram whitelist detector at `pre-tool-use.sh:80` matches substring `send-to-group.sh` in `$CMD` via `grep -qE '(^|[[:space:]/])send-to-group\.sh([[:space:]]|$)'`. The left anchor `(^|[[:space:]/])` accepts START-OF-LINE, whitespace, OR `/` before the filename — so any command that READS the file path (not invokes) spuriously sets `IS_TELEGRAM_COMMS=1`. This cascades to `_SKIP_MAIN_CAP=1` (line 220), bypassing the per-officer daily spending cap for that one call.
+- **Amplification vectors:**
+  - `cat /opt/founders-cabinet/cabinet/scripts/send-to-group.sh | head` — `/` before filename matches left anchor, space after matches right anchor. Bypass fires.
+  - `ls -la cabinet/scripts/ | grep send-to-group.sh` — space before filename, EOL after. Bypass fires.
+  - `wc -l /path/send-to-group.sh` — same structure. Bypass fires.
+- **Root cause:** Same bug class as FW-028 / FW-029 — regex on `$CMD` payload with state side effect (control-bypass of spending cap), no command-start anchor. The existing word-boundary anchors prevent `my-send-to-group.shrug` false-positives but NOT `cat /path/send-to-group.sh` read-with-filename.
+- **Blast radius:** Per-officer daily spending cap bypassed for ONE Bash call that happens to read the filename. Still bounded by the telegram_whitelist_hourly_cap sub-limit (line 213 — INCR + cap check fires even on spurious matches), so attack depth is capped. But weakens a defense-in-depth control, and officers do legitimately read script files during debugging.
+- **Proposed fix (Phase A):**
+  1. Narrow the detector to require CMD START with a recognized invocation form: `bash send-to-group.sh`, `sh send-to-group.sh`, `/path/send-to-group.sh` (direct exec), or `./send-to-group.sh` (relative). Mirror the FW-028/029 priv-esc/env/timeout prefix stack for consistency.
+  2. **EVAL-015** — pin positive matrix (all legitimate invocation forms fire whitelist) + negative matrix (cat/grep/echo/wc of filename do NOT fire).
+- **Effort:** S (~30min — mirrors FW-028 Phase A architecture).
+- **Owner:** CTO.
+- **Source:** CTO Crew sweep 2026-04-21 22:40 UTC (post-FW-029 ship audit of remaining regex+state amplification patterns in hooks).
+
+### FW-033 — post-tool-use.sh experience-nudge substring amplification
+- **Status:** Proposed 2026-04-21 (Crew sweep Finding #3).
+- **Symptom:** `post-tool-use.sh:185` sets `cabinet:nudge:experience-record:$OFFICER` (EX 3600) when CMD payload substring-matches `git push|gh pr create|gh pr merge`. `git commit -m "fix: pre-validate before gh pr merge"` spuriously sets the nudge key, triggering a false experience-record prompt 1h later.
+- **Blast radius:** MEDIUM — nudge key (not a gate, not a trigger). Officer gets a false-positive "write experience record" prompt; operationally annoying but not a control-bypass or critical side effect.
+- **Proposed fix:** Apply FW-028-style command-start anchor; pin in EVAL-016.
+- **Effort:** XS (~15min).
+- **Owner:** CTO.
+
+### FW-034 — pre-tool-use.sh:321 workspace-write guard false-block on read-with-redirect
+- **Status:** Proposed 2026-04-21 (Crew sweep Finding #10).
+- **Symptom:** `pre-tool-use.sh:321` blocks (`exit 2`) when CMD contains BOTH `/workspace/product/` AND write pattern (`>\s`, `sed -i `, `tee`, `cp .+ `, `mv .+ `). False-positive blocks `cat /workspace/product/README.md | tee /tmp/out.txt` — a read followed by tee-to-tmp is NOT a write to `/workspace/product/`, but substring match trips both patterns.
+- **Blast radius:** MEDIUM (accuracy gap, fail-safe direction — over-blocks legitimate reads rather than under-blocking writes). Officer workflow friction; no control-bypass.
+- **Proposed fix:** Narrow write-pattern regex to require the write TARGET be `/workspace/product/`. Currently the two substring checks are independent; need to correlate write-operator destination with the product path. More complex than FW-028-class fix — requires parsing write-operator targets.
+- **Effort:** M (~2h — correlated pattern, not simple anchor).
+- **Owner:** CTO.
+
+### FW-035 — cosmetic amplifications (activity display + git-add gate stdout)
+- **Status:** Proposed 2026-04-21 (Crew sweep Findings #2 + #4, bundled LOW-priority).
+- **Symptom #1 (Finding #2):** `post-tool-use.sh:124-128` activity display string amplifies on `pulls/N/merge` and `gh pr create` substring — wrong dashboard label for 5 min.
+- **Symptom #2 (Finding #4):** `post-tool-use.sh:462` infrastructure-review gate echoes stdout warning on `git add` substring match — spurious warning inside officer session for commit bodies mentioning `git add`.
+- **Blast radius:** LOW — cosmetic/ephemeral. No gate consumed, no trigger fired.
+- **Proposed fix:** Apply command-start anchor; pin as EVAL-017 + EVAL-018 if promoted.
+- **Effort:** XS each.
+- **Owner:** CTO (low-priority, batch with other hook work).
+
+### FW-036 — FW-032 Phase B: whitelist anchor scope gaps (under-match on legitimate forms)
+- **Status:** Proposed 2026-04-21 (Sonnet adversary on FW-032 Phase A ship — Findings #2/#3/#5/#8/#9).
+- **Context:** FW-032 Phase A (commit pending) narrowed the telegram whitelist anchor to require a recognized invocation form, closing the read-form cap-bypass (Findings #1/#4 ship in Phase A). Adversary review surfaced additional legitimate invocation forms that the Phase A anchor does NOT match — these result in telegram sends getting main-cap-enforced instead of sub-capped (blocks Captain DMs at end-of-day instead of sub-cap).
+- **Sub-findings (bundled because each is XS and touches the same regex):**
+  - **#2 `bash -c '...send-to-group.sh...'` (launcher arg form).** `bash -c 'cmd'` puts the invocation inside a quoted `-c` argument; Phase A anchor doesn't match `-c` followed by string literal. Officers use `bash -c` occasionally for one-shot commands.
+  - **#3 `bash -o pipefail send-to-group.sh` (long-option flag).** Phase A flag pattern `(-[A-Za-z]+[[:space:]]+)*` consumes `-o ` but leaves `pipefail` unmatched before filename. Rare — `set -o pipefail` is typically inside-script — but real under-match.
+  - **#5 `env -i ... send-to-group.sh` / `env -u OLD NAME=val ... send-to-group.sh`.** Phase A env branch requires `env[[:space:]]+NAME=val`; doesn't permit `-i`/`-u` flags before the first `NAME=val`.
+  - **#8 Command chaining after invocation.** `bash send-to-group.sh "msg" && second_cmd` fires whitelist (anchor checks the START of the line only), gets sub-cap for the whole chained command. Bounded by telegram_whitelist_hourly_cap INCR firing regardless, so attack depth = 1 extra call. Operational concern, not a security bypass.
+  - **#9 `cd /tmp && bash send-to-group.sh "msg"` (cd-and-invoke).** `cd` isn't in the priv-esc stack, so this legitimate pattern fails the whitelist → main-cap enforced. Officers can split into two Bash calls as workaround.
+- **Blast radius:** Operational friction — legitimate Captain DMs may hit main-cap instead of sub-cap on certain invocation forms. No security bypass, no state corruption, no protected-branch issue.
+- **Proposed fix:** Extend Phase A anchor to cover each form; pin each with a positive EVAL-015 test case. Scope:
+  1. Widen flag pattern to `((-[A-Za-z]+|-o[[:space:]]+[A-Za-z0-9]+)[[:space:]]+)*` for `-o pipefail`.
+  2. Extend env branch to permit `-[A-Za-z]+[[:space:]]*` flags before first NAME=val.
+  3. Add single-quote support (`'?`) around filename once extractor is refactored (see FW-037 below).
+  4. Document chaining as single-command discipline; optionally tighten by requiring invocation be followed only by non-control chars to end of line.
+  5. Accept `cd ... &&` as operational workaround (split into two Bash calls); do NOT add `cd` to priv-esc stack (shell-builtin scope creep).
+- **Effort:** M (~1h, bundled regex widen + 5 eval cases + docs).
+- **Owner:** CTO when Phase A ships and operational data confirms any under-match hurts.
+
+### FW-037 — EVAL-015 extractor fragility (single-quoted grep regex limitation)
+- **Status:** Proposed 2026-04-21 (Sonnet adversary Finding #10 on FW-032 Phase A).
+- **Symptom:** `run-golden-evals.sh:1006` extracts the FW-032 anchor regex via `sed -E "s/.*grep -qE '([^']+)'.*/\1/"` — this matches the shortest text between single quotes, so if the live anchor ever contains a literal `'` (via bash `'"'"'` embedding trick) the extractor truncates at the first inner quote and returns a partial regex. Phase A Finding #1 fix initially tried to add `['"'"']?` to match single-quoted filenames and broke the extractor; worked around by dropping single-quote support.
+- **Blast radius:** Test infrastructure only. No production impact. Future maintainers adding `'` to the anchor will silently break EVAL-015 until they realize.
+- **Proposed fix:** Two options:
+  1. Switch anchor to a double-quoted `grep -qE "..."` with escape for `$` → then `'` needs no escape in the anchor text; simplify extractor to `sed -E 's/.*grep -qE "([^"]+)".*/\1/'`.
+  2. Extract the anchor via a different channel — e.g., a comment-delimited block `# FW-032-ANCHOR-START...# FW-032-ANCHOR-END` with the pattern on its own line.
+- **Effort:** XS (~15min, one of the two options).
+- **Owner:** CTO when extending the anchor.
+
 ### FW-031 — Layer 1 gate: mirror / HEAD / tag pushes silently bypass
 - **Status:** Proposed 2026-04-21 (Sonnet adversary Finding #3 on FW-029).
 - **Symptom:** Layer 1 action regex `git push.*(main|master)([[:space:];]|$)|gh pr merge` requires literal `main`/`master` in the refspec. These legitimate deploy forms fail Phase 2 and bypass Crew-review:

@@ -850,8 +850,11 @@ EV14_FAILURE=""
 if [ ! -f "$EV14_HOOK" ]; then
   EV14_FAILURE="pre-tool-use.sh not found at $EV14_HOOK"
 else
-  # Static pins — both gates received the FW-029 anchor.
-  EV14_ANCHOR_COUNT=$(grep -c "head -n1 | grep -qE '\^\[\[:space:\]\]" "$EV14_HOOK")
+  # Static pins — both FW-029 gates received the anchor. Filter on
+  # `git[[:space:]]+push` (FW-029-specific subcommand alternation) so
+  # FW-032's whitelist anchor (same `head -n1 | grep -qE '` preamble
+  # but different alternation) doesn't inflate the count.
+  EV14_ANCHOR_COUNT=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -cF 'git[[:space:]]+push')
   EV14_FW029_MARKER_COUNT=$(grep -cF 'FW-029' "$EV14_HOOK")
 
   if [ "$EV14_ANCHOR_COUNT" -lt 2 ]; then
@@ -859,8 +862,11 @@ else
   elif [ "$EV14_FW029_MARKER_COUNT" -lt 2 ]; then
     EV14_FAILURE="FW-029 marker count=$EV14_FW029_MARKER_COUNT (expected >=2 — comment marker removed, regression risk)."
   else
-    # Extract the anchor regex. Both gates use the same — head -1 safe.
-    EV14_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '\^\[\[:space:\]\]" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    # Extract FW-029 anchor. Filter by distinctive `git[[:space:]]+push`
+    # alternation to avoid picking FW-032's whitelist anchor (which
+    # shares the `head -n1 | grep -qE '` prefix but has
+    # `send-to-group\.sh` tail).
+    EV14_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -F 'git[[:space:]]+push' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
     # Extract the Layer 1 action regex and the CI Green action regex.
     # Match on distinctive `gh pr merge` tail so EVAL survives future
     # action-regex widening (main|master) without another extractor edit.
@@ -956,6 +962,111 @@ if [ -n "$EV14_FAILURE" ]; then
   fail "$EV14_FAILURE"
 else
   pass "FW-029 gate anchors classify Layer 1 + CI Green amplification cases correctly (real push/merge trips gate, intermediate echoes/commits/harnesses do not)"
+fi
+
+# ------------------------------------------------------------------
+# Eval 015: pre-tool-use.sh FW-032 whitelist invocation anchor
+# ------------------------------------------------------------------
+# FW-032 (2026-04-21): the Telegram whitelist detector at
+# pre-tool-use.sh:80 used word-boundary substring match over CMD
+# payload. Any read-only command that HAPPENED to contain the
+# filename (cat /path/send-to-group.sh, grep send-to-group.sh log,
+# wc -l .../send-to-group.sh) spuriously set IS_TELEGRAM_COMMS=1,
+# which cascades to _SKIP_MAIN_CAP=1 — bypassing the per-officer
+# daily spending cap for that one Bash call.
+#
+# Fix: command-start anchor requiring CMD to START with a recognized
+# invocation form (bash/sh script.sh, or direct path exec), optionally
+# prefixed by FW-028/029 priv-esc/env VAR=X/timeout stack. Mirrors the
+# anchor architecture from EVAL-013 / EVAL-014 but specialized to
+# script-invocation shape (bash/sh flag support + path traversal).
+#
+# This eval pins:
+#   (a) FW-032 marker present in pre-tool-use.sh (regression catcher
+#       for partial revert).
+#   (b) Positive matrix: all legitimate invocation forms fire
+#       whitelist (bash / sh / direct path / relative path / with
+#       flags / priv-esc-prefixed).
+#   (c) Negative matrix: read-only CMDs that merely contain the
+#       filename do NOT fire (cat/grep/echo/wc/ls/git commit bodies).
+log "EVAL-015: pre-tool-use.sh FW-032 whitelist invocation anchor (spending-cap bypass)"
+EV15_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh"
+EV15_FAILURE=""
+
+if [ ! -f "$EV15_HOOK" ]; then
+  EV15_FAILURE="pre-tool-use.sh not found at $EV15_HOOK"
+else
+  # Static pin — FW-032 marker present (partial-revert catcher).
+  EV15_FW032_MARKER=$(grep -cF 'FW-032' "$EV15_HOOK")
+
+  if [ "$EV15_FW032_MARKER" -lt 1 ]; then
+    EV15_FAILURE="FW-032 marker absent from pre-tool-use.sh — revert suspected, whitelist anchor may have regressed to substring form."
+  else
+    # Extract the FW-032 anchor regex. Distinctive token: `send-to-group` inside grep -qE '...'.
+    EV15_ANCHOR_RE=$(grep -E "grep -qE '[^']*send-to-group" "$EV15_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    if [ -z "$EV15_ANCHOR_RE" ]; then
+      EV15_FAILURE="FW-032 anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-015 extractor)"
+    fi
+  fi
+
+  if [ -z "$EV15_FAILURE" ]; then
+    # Positive matrix — legitimate invocations MUST fire whitelist.
+    # Missing any of these = telegram comms gets main-cap enforced when
+    # it shouldn't (Captain-facing DM blocked by daily cap).
+    for cmd in \
+      'bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh "msg"' \
+      '/opt/founders-cabinet/cabinet/scripts/send-to-group.sh "msg"' \
+      './send-to-group.sh "msg"' \
+      'send-to-group.sh "msg"' \
+      'bash -x /path/send-to-group.sh "msg"' \
+      'sh /path/send-to-group.sh "msg"' \
+      'env FOO=bar bash /path/send-to-group.sh msg' \
+      '  bash /path/send-to-group.sh "msg"' \
+      'bash "send-to-group.sh" msg' \
+      'bash "/opt/founders-cabinet/cabinet/scripts/send-to-group.sh" "msg"'; do
+      if ! echo "$cmd" | head -n1 | grep -qE "$EV15_ANCHOR_RE"; then
+        EV15_FAILURE="FW-032 anchor FAILED expected-positive: $cmd (legitimate whitelist invocation would be main-cap-enforced, blocking Captain DMs under daily cap)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV15_FAILURE" ]; then
+    # Negative matrix — read-only/inspection CMDs containing the
+    # filename substring MUST NOT trip the whitelist. Pre-fix, each of
+    # these set IS_TELEGRAM_COMMS=1 -> _SKIP_MAIN_CAP=1 -> spending cap
+    # bypassed for that call.
+    for cmd in \
+      'cat /opt/founders-cabinet/cabinet/scripts/send-to-group.sh | head' \
+      'grep send-to-group.sh /var/log/audit.log' \
+      'ls -la cabinet/scripts/ | grep send-to-group.sh' \
+      'echo "use send-to-group.sh for broadcasts"' \
+      'wc -l /opt/founders-cabinet/cabinet/scripts/send-to-group.sh' \
+      'git commit -m "docs: describe send-to-group.sh usage"' \
+      'vim /opt/founders-cabinet/cabinet/scripts/send-to-group.sh' \
+      'diff old/send-to-group.sh new/send-to-group.sh'; do
+      if echo "$cmd" | head -n1 | grep -qE "$EV15_ANCHOR_RE"; then
+        EV15_FAILURE="FW-032 anchor WRONGLY matched expected-negative: $cmd (spending-cap bypass fires on read-only CMD containing filename)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV15_FAILURE" ]; then
+    # Heredoc negative: multi-line CMD with line 1 non-invocation must
+    # not trip even if line 2+ has a legitimate-looking invocation.
+    # head -n1 in the hook restricts to line 1.
+    EV15_HEREDOC=$'cat <<EOF\nbash /path/send-to-group.sh "msg"\nEOF'
+    if echo "$EV15_HEREDOC" | head -n1 | grep -qE "$EV15_ANCHOR_RE"; then
+      EV15_FAILURE="FW-032 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken"
+    fi
+  fi
+fi
+
+if [ -n "$EV15_FAILURE" ]; then
+  fail "$EV15_FAILURE"
+else
+  pass "FW-032 whitelist anchor classifies invocation vs inspection correctly (legitimate bash/sh/path invocations fire, cat/grep/echo/wc of filename do not)"
 fi
 
 # ------------------------------------------------------------------
