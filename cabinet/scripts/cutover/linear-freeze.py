@@ -365,7 +365,12 @@ def phase_2b_revoke_keys(operator_key_env_name: str) -> None:
     for env_name in keys_env_sorted:
         val = os.environ.get(env_name, "")
         if not val:
-            log.warning("[2b] %s not set in env — cannot verify", env_name)
+            # COO LOW polish: fail-closed. A typo'd env name in LINEAR_API_KEYS_TO_REVOKE
+            # would otherwise silently skip revocation — named key stays LIVE post-freeze
+            # while cutover reports clean. Treat unset env as a verification failure so
+            # the operator must fix the config before proceeding.
+            log.error("[2b] ✗ %s not set in env — cannot verify; treating as unrevoked (fail-closed)", env_name)
+            failures.append(env_name)
             continue
         if _verify_key_revoked(val):
             log.info("[2b] ✓ %s revoked (confirmed 401/403)", env_name)
