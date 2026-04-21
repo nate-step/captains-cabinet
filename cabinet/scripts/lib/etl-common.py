@@ -15,9 +15,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import psycopg2
-import psycopg2.extras
 import yaml
+
+# psycopg2 imported lazily inside get_db_connection so callers that only need
+# load_officer_emails() / resolve_assignee() (e.g. cutover service_accounts.py)
+# don't require the driver to be installed. See Spec 039 FW-024 — officer
+# containers currently lack psycopg2 until Captain rebuilds from Dockerfile.
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,8 @@ _lock_conn: Optional[Any] = None
 
 def get_db_connection(conn_str: str) -> Any:
     """Return a psycopg2 connection from conn_str; raises on failure."""
+    import psycopg2  # lazy: keeps load_officer_emails usable without driver
+    import psycopg2.extras  # noqa: F401 — ensure extras loadable for callers
     conn = psycopg2.connect(conn_str)
     conn.autocommit = False
     return conn
