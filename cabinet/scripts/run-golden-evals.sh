@@ -394,6 +394,94 @@ else
 fi
 
 # ------------------------------------------------------------------
+# Eval 009: trigger_send stderr-on-Redis-down invariant (FW-027 H-1)
+# ------------------------------------------------------------------
+# FW-027 Phase A fixed `trigger_send` to emit a stderr WARN when XADD
+# fails (previously 2>&1 > /dev/null silently dropped the trigger). This
+# eval pins that invariant: stub redis-cli to exit 1 with a connection
+# error, invoke trigger_send, assert stderr carries the WARN line.
+#
+# Without this regression catcher, a future refactor that re-suppresses
+# XADD output (e.g. "noise cleanup" pass) would silently re-introduce the
+# FW-027 H-1 bug — validators would stop receiving deploy-notify triggers
+# on any Redis hiccup, and no one would know until the next audit.
+#
+# Mechanism: PATH-prefix stub. Write a fake `redis-cli` script to a temp
+# dir that exits 1 + emits a stderr connection-refused message, prepend
+# that dir to PATH inside a subshell, source triggers.sh, call trigger_send,
+# capture subshell stderr via `(...) 2>tmpfile`.
+#
+# Why not function-override: works but more fragile across nested $()
+# subshells inside trigger_send; PATH-stub is portable.
+#
+# Test identity: "ev9target" — if a real officer is ever named ev9target
+# this test would attempt to send to their (non-existent due to stub) stream.
+# Since redis-cli is stubbed, no real Redis write happens regardless.
+log "EVAL-009: trigger_send stderr-on-Redis-down invariant (FW-027 H-1 regression catcher)"
+EV9_STUB_DIR=$(mktemp -d /tmp/ev9-stub.XXXXXX)
+cat > "$EV9_STUB_DIR/redis-cli" <<'EOT'
+#!/bin/bash
+echo "Could not connect to Redis at 127.0.0.1:6379: Connection refused" >&2
+exit 1
+EOT
+chmod +x "$EV9_STUB_DIR/redis-cli"
+EV9_STDERR_FILE="$EV9_STUB_DIR/stderr.log"
+(
+  export PATH="$EV9_STUB_DIR:$PATH"
+  export OFFICER_NAME=evaltest
+  source "$CABINET_ROOT/cabinet/scripts/lib/triggers.sh"
+  trigger_send ev9target "EVAL-009 probe — should warn to stderr" > /dev/null
+  # Best-effort: the memory-queue backgrounded subshell may still be running.
+  # wait to reap it before subshell exits; PATH stub persists for it too.
+  wait 2>/dev/null
+) 2>"$EV9_STDERR_FILE"
+# Grep: semantic invariant is "stderr mentions XADD failure," not the
+# precise current wording. Match either the current WARN form or any
+# reasonable future rewording that still surfaces XADD + failure. A
+# refactor that drops the stderr entirely would fail both branches.
+# (Risk acknowledged: the backgrounded memory-queue subshell inside
+# trigger_send could theoretically emit stderr containing "XADD" or
+# "WARN" and cause a false-pass; memory.sh does not today, and the
+# test stubs redis-cli so no real write path reaches Postgres.)
+if grep -qE "(trigger_send WARN|XADD.*fail|WARN.*XADD|cabinet:triggers:.*fail)" "$EV9_STDERR_FILE"; then
+  pass "trigger_send emits stderr warn when XADD fails (FW-027 H-1 invariant holds)"
+else
+  fail "trigger_send did NOT emit stderr warn on Redis-down (first 3 lines: $(head -3 "$EV9_STDERR_FILE" | tr '\n' '|'))"
+fi
+rm -rf "$EV9_STUB_DIR"
+
+# ------------------------------------------------------------------
+# Eval 010: post-tool-use.sh does NOT silence triggers.sh source (FW-027 H-2)
+# ------------------------------------------------------------------
+# FW-027 Phase A fixed the hook to surface source failures via a CRITICAL
+# stderr line. A dynamic test would need to remove triggers.sh from disk,
+# which is unsafe in a shared-tree Cabinet (would brick every officer's
+# next hook invocation for the duration of the test). Instead, this is a
+# STATIC invariant check: grep the hook source for the anti-pattern.
+#
+# Anti-pattern: `. …triggers.sh 2>/dev/null` at the top-level source line
+# — silences ENOENT/syntax errors, leaving trigger_read undefined.
+#
+# Positive invariant: the CRITICAL stderr diagnostic string must appear
+# in the hook source. Its presence + absence of the anti-pattern together
+# prove the FW-027 H-2 fix is still in effect.
+#
+# Scope: post-tool-use.sh only. Other scripts that source triggers.sh
+# (e.g. notify-officer.sh, run-golden-evals.sh itself) are out of scope —
+# they are not the central tool-call-driven delivery path.
+log "EVAL-010: post-tool-use.sh surfaces triggers.sh load failures (FW-027 H-2 static invariant)"
+EV10_POST_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+if [ ! -f "$EV10_POST_HOOK" ]; then
+  fail "post-tool-use.sh not found at $EV10_POST_HOOK"
+elif grep -qE '^[[:space:]]*(\.|source)[[:space:]]+[^[:space:]]*triggers\.sh[[:space:]]+2>/dev/null' "$EV10_POST_HOOK"; then
+  fail "post-tool-use.sh STILL silences triggers.sh source errors (FW-027 H-2 regression — anti-pattern re-introduced)"
+elif ! grep -q "CRITICAL.*triggers\.sh failed to load" "$EV10_POST_HOOK"; then
+  fail "post-tool-use.sh is missing the CRITICAL triggers.sh load-failure diagnostic (FW-027 H-2 regression)"
+else
+  pass "post-tool-use.sh surfaces triggers.sh load failures (FW-027 H-2 invariant holds)"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""
