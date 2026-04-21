@@ -266,24 +266,73 @@ def write_unresolved_log(entries: List[Dict[str, Any]], path: Optional[Path] = N
 
 
 # ---------------------------------------------------------------------------
-# Library archive stub (PR-3 completion — MCP adapter wiring out of scope)
+# Library archive — JSONL-per-issue snapshot to disk
 # ---------------------------------------------------------------------------
+# Spec §5.8 (Q_archive=KEEP): raw Linear/GH API response per issue archived
+# as a migration snapshot. Full MCP ingestion is deferred — we write one JSON
+# file per external_ref under instance/archive/039-migration-snapshots/.
+# CoS/CPO ingest these into Library MCP post-ETL via the dashboard once the
+# Python-side MCP adapter lands (tracked as FW-* framework item).
 
-def archive_to_library(conn: Any, source_record: Dict[str, Any]) -> None:
-    """Stub: log what would be archived via Library MCP.
+def archive_to_library(
+    conn: Any,
+    source_record: Dict[str, Any],
+    dry_run: bool = False,
+) -> None:
+    """Write one JSON file per source row under instance/archive/039-migration-snapshots/.
 
-    Full implementation deferred to PR-3.  When ARCHIVE_TO_LIBRARY='true'
-    (env default per Q_archive=KEEP, §5.8), each source row should be
-    written as a Library record with:
-        space='038-migration-archive'
-        type='migration-snapshot'
-        body=raw_json (the full Linear/GH API response for that issue)
+    Filename: `<external_source>-<external_ref>.json`. File contains the raw
+    source API response as-is. Gated by `ARCHIVE_TO_LIBRARY` env (default
+    'true' per spec §5.8 Q_archive=KEEP). Idempotent — overwrites existing
+    file so ETL re-runs land the latest snapshot.
 
-    TODO (PR-3): replace print with actual mcp__library__library_create_record
-    call via a Python adapter that calls the Library MCP tool.  The adapter
-    needs a connection/transport layer (stdio wrapper or HTTP) — tracked as
-    PR-3 scope item.
+    Call AFTER a successful upsert so dry-runs + upsert failures don't leak
+    ghost snapshots (PR-3 H-1 review finding).
+
+    conn is currently unused but kept in the signature so a future MCP
+    adapter (tracked as FW-* framework item) can swap in without touching
+    every caller.
     """
-    if os.environ.get("ARCHIVE_TO_LIBRARY", "true").lower() == "true":
-        ext_ref = source_record.get("external_ref") or source_record.get("id", "<unknown>")
-        print(f"[archive_to_library stub] would archive {ext_ref}", file=sys.stderr)
+    if dry_run:
+        return
+    if os.environ.get("ARCHIVE_TO_LIBRARY", "true").lower() != "true":
+        return
+
+    ext_ref = source_record.get("external_ref") or source_record.get("id")
+    if not ext_ref:
+        logger.warning("archive_to_library: source_record has no external_ref or id; skipping")
+        return
+
+    ext_source = source_record.get("external_source") or _infer_source(source_record)
+    base = Path(__file__).resolve().parents[3]
+    archive_dir = base / "instance" / "archive" / "039-migration-snapshots"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    # Defensive sanitization — ext_ref values come from trusted APIs (Linear
+    # IDs like 'SEN-247', GH refs like 'FW-024') but defense-in-depth blocks
+    # path-escape chars + leading dash (flag-injection fence).
+    safe_ref = (
+        str(ext_ref)
+        .replace("/", "_")
+        .replace("\\", "_")
+        .replace("..", "_")
+        .replace("\x00", "_")
+        .lstrip("-")
+    ) or "unknown"
+    out = archive_dir / f"{ext_source}-{safe_ref}.json"
+    with out.open("w", encoding="utf-8") as fh:
+        json.dump(source_record, fh, default=str, indent=2, sort_keys=True)
+
+
+def _infer_source(record: Dict[str, Any]) -> str:
+    """Best-effort source inference when external_source isn't on the record.
+
+    Linear rows have `identifier` (e.g. 'SEN-42'); GH rows have `html_url`
+    containing `github.com`. Defaults to 'unknown' if neither matches.
+    """
+    if "identifier" in record:
+        return "linear"
+    url = record.get("html_url") or record.get("url") or ""
+    if "github.com" in url:
+        return "github-issues"
+    return "unknown"
