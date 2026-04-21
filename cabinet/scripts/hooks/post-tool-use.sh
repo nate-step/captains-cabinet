@@ -345,7 +345,16 @@ CAPTAIN_NAME=$(grep '^captain_name:' /opt/founders-cabinet/instance/config/platf
 
 if has_capability "logs_captain_decisions" && [ "$TOOL_NAME" = "mcp__plugin_telegram_telegram__reply" ]; then
   REPLY_CHAT=$(echo "$TOOL_INPUT" | jq -r '.chat_id // empty' 2>/dev/null)
-  if [ -n "$CAPTAIN_CHAT_ID" ] && [ "$REPLY_CHAT" = "$CAPTAIN_CHAT_ID" ]; then
+  if [ -z "$CAPTAIN_CHAT_ID" ]; then
+    # FW-027 L-7: if CAPTAIN_CHAT_ID silently resolves to empty (env var
+    # unset AND platform.yml key missing/drifted), the old `[ -n ... ]`
+    # guard suppressed the decision-check prompt with zero diagnostic —
+    # an officer with logs_captain_decisions capability would reply to
+    # the Captain and never see the reminder, so captain-decisions.md
+    # drifted from truth undetected. Emit stderr WARN on every reply
+    # (bounded by config-error frequency; steady-state emits nothing).
+    echo "post-tool-use: WARN — captain_telegram_chat_id not resolved (env CAPTAIN_TELEGRAM_CHAT_ID unset, platform.yml key missing/drifted). Decision-logging enforcement disabled for $OFFICER." >&2
+  elif [ "$REPLY_CHAT" = "$CAPTAIN_CHAT_ID" ]; then
     echo "⚠️ CAPTAIN DECISION CHECK: Did $CAPTAIN_NAME make a decision in this exchange (kill a feature, change direction, approve/reject)? If YES: (1) Add 'captain-decision' label to the Linear issue, (2) Comment with decision + WHY, (3) Update shared/interfaces/captain-decisions.md. If no decision was made, carry on."
   fi
 fi
@@ -359,19 +368,38 @@ LAST_CALL=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:last-toolca
 redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "cabinet:last-toolcall:$OFFICER" "$TIMESTAMP" EX 86400 > /dev/null 2>&1
 
 if [ -n "$LAST_CALL" ] && [ "$LAST_CALL" != "(nil)" ]; then
-  LAST_EPOCH=$(date -d "$LAST_CALL" +%s 2>/dev/null || echo "0")
-  NOW_EPOCH=$(date -u +%s)
-  IDLE_SECONDS=$((NOW_EPOCH - LAST_EPOCH))
+  # FW-027 L-6: validate ISO-8601 UTC Z format before `date -d`. A
+  # corrupted Redis value (partial write, old format, garbage) makes
+  # `date -d` fail, `|| echo "0"` returns 0, and IDLE_SECONDS becomes
+  # NOW_EPOCH (billions) — firing the "idle 999999 minutes" warning on
+  # every subsequent tool call until the key is overwritten. Guard with
+  # an exact-shape check so the idle path only runs on well-formed data.
+  # Accept whole-second OR fractional-second ISO-8601 UTC Z. Today's
+  # writer (line 19: `date -u +%Y-%m-%dT%H:%M:%SZ`) emits whole seconds,
+  # but a future writer using Python `datetime.utcnow().isoformat()+'Z'`
+  # or `date ... %N` would emit fractional form — and it's still valid
+  # ISO-8601, so the guard should accept it rather than trigger a
+  # 24h flood of false WARNs (Sonnet adversary #5 on L-6, 2026-04-21).
+  if echo "$LAST_CALL" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$'; then
+    LAST_EPOCH=$(date -d "$LAST_CALL" +%s 2>/dev/null || echo "0")
+    NOW_EPOCH=$(date -u +%s)
+    IDLE_SECONDS=$((NOW_EPOCH - LAST_EPOCH))
 
-  if [ "$IDLE_SECONDS" -gt 1800 ] 2>/dev/null; then
-    echo ""
-    echo "⚠️ You were idle for $((IDLE_SECONDS / 60)) minutes. Check for pending work NOW:"
-    echo "  - Check shared/interfaces/product-specs/ for ready specs"
-    echo "  - Check Linear backlog for bugs and issues"
-    echo "  - Check shared/backlog.md for priorities"
-    echo "  - If truly nothing to do, run proactive work from your role definition"
-    echo "  - Officers must NEVER idle when work is available"
-    echo ""
+    if [ "$IDLE_SECONDS" -gt 1800 ] 2>/dev/null; then
+      echo ""
+      echo "⚠️ You were idle for $((IDLE_SECONDS / 60)) minutes. Check for pending work NOW:"
+      echo "  - Check shared/interfaces/product-specs/ for ready specs"
+      echo "  - Check Linear backlog for bugs and issues"
+      echo "  - Check shared/backlog.md for priorities"
+      echo "  - If truly nothing to do, run proactive work from your role definition"
+      echo "  - Officers must NEVER idle when work is available"
+      echo ""
+    fi
+  else
+    # The SET a few lines above already overwrote the key with a fresh
+    # $TIMESTAMP, so the corruption is transient. One stderr line is
+    # enough diagnostic.
+    echo "post-tool-use: WARN — cabinet:last-toolcall:$OFFICER had malformed value '$LAST_CALL' (expected ISO-8601 UTC Z). Idle-warning skipped; key refreshed." >&2
   fi
 fi
 

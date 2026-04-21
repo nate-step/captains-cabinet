@@ -593,6 +593,47 @@ else
 fi
 
 # ------------------------------------------------------------------
+# Eval 012: post-tool-use.sh L-6 + L-7 silent-fail guards (FW-027 Phase B)
+# ------------------------------------------------------------------
+# Two audit Low-severity findings closed in Phase B:
+#   L-6: `date -d "$LAST_CALL"` + `|| echo "0"` made a corrupted Redis
+#        value flood permanent idle warnings (IDLE_SECONDS = NOW_EPOCH,
+#        which is always > 1800). Fix: ISO-8601 shape-check guard
+#        before calling `date -d`, with stderr WARN on malformed input.
+#   L-7: `CAPTAIN_CHAT_ID` silently resolving to empty (env var unset
+#        AND platform.yml key drifted/missing) made the `[ -n ... ]`
+#        guard suppress the decision-check prompt with zero diagnostic.
+#        Officers with logs_captain_decisions capability would reply to
+#        the Captain and never see the reminder → captain-decisions.md
+#        drifts from truth undetected. Fix: stderr WARN in the empty
+#        branch so the config error is visible.
+#
+# Both fixes are static — a full dynamic test would require invoking
+# post-tool-use.sh with a mocked CAPTAIN_TELEGRAM_CHAT_ID env + Redis
+# state, which is invasive in the shared-tree Cabinet. Grep for the
+# distinctive WARN phrases + regex fragment instead; presence of each
+# proves the guard is still in place.
+log "EVAL-012: post-tool-use.sh L-6 + L-7 silent-fail guards (FW-027 Phase B)"
+EV12_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+EV12_FAILURE=""
+
+if [ ! -f "$EV12_HOOK" ]; then
+  EV12_FAILURE="post-tool-use.sh not found at $EV12_HOOK"
+elif ! grep -qF '[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$EV12_HOOK"; then
+  EV12_FAILURE="L-6 regression: ISO-8601 LAST_CALL validation regex missing (malformed Redis value will flood permanent idle-warnings — IDLE_SECONDS becomes NOW_EPOCH)"
+elif ! grep -qF 'cabinet:last-toolcall' "$EV12_HOOK" || ! grep -qF 'malformed value' "$EV12_HOOK"; then
+  EV12_FAILURE="L-6 regression: malformed-LAST_CALL WARN diagnostic missing from else-branch of validation guard"
+elif ! grep -qF 'captain_telegram_chat_id not resolved' "$EV12_HOOK"; then
+  EV12_FAILURE="L-7 regression: captain_telegram_chat_id-empty WARN missing (config drift silently disables decision-logging enforcement)"
+fi
+
+if [ -n "$EV12_FAILURE" ]; then
+  fail "$EV12_FAILURE"
+else
+  pass "post-tool-use.sh has L-6 + L-7 guards (ISO-8601 LAST_CALL validation + malformed WARN + CAPTAIN_CHAT_ID-empty WARN)"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""
