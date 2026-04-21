@@ -130,6 +130,50 @@ _(none)_
 
 ---
 
+### FW-020 — Library MCP Python adapter (replace Spec 039 JSONL-on-disk archive)
+- **Status:** Proposed (deferred from Spec 039 PR-3 scope, 2026-04-21).
+- **Problem:** Spec 039 archive strategy (§7.4) originally targeted Library MCP for Linear + GH snapshots. PR-3 shipped a JSONL-on-disk fallback at `instance/archive/039-migration-snapshots/` because the Library MCP is TypeScript-only; Python ETL can't call it. On-disk JSONL works but: (a) fragmented from other archives (briefs, specs) that DO live in Library, (b) no full-text search, (c) manual cleanup when wet-run superseded by Gate 4 prod cutover.
+- **Desired end state:** Python shim (`cabinet/scripts/lib/library-mcp-client.py`) that speaks the same MCP stdio protocol as the TS client. ETL `archive_to_library` calls `library.create_record(space='etl-snapshots', body=...)` instead of writing JSONL. Existing on-disk snapshots migrate via one-time backfill script.
+- **Out of scope:** Replacing the Library MCP entirely. Keep TS server; add Python client.
+- **Effort:** ~1 day CTO. Small surface (stdio JSON-RPC, 3-4 methods needed).
+- **Owner:** CTO.
+- **Source:** Spec 039 PR-3 ship debrief 2026-04-21 — L-1 carve-out in runbook §1.2 flagged JSONL as interim.
+
+---
+
+### FW-021 — Gate-3 idempotency hash-basis drift fixture test
+- **Status:** Proposed (2026-04-21 PR-3 lesson-learned).
+- **Problem:** `cabinet/scripts/gates/gate-3-idempotency.py` hand-codes the 15-col hash basis per Spec 039 §5.9 M-5. Adversary review caught initial divergence (missing cols, wrong algorithm) that would have silently passed idempotency on mutated rows. No test fixture asserts Python hash output equals Postgres `md5(concat_ws('|', …))` on a known row.
+- **Desired end state:** `cabinet/scripts/gates/tests/test_gate_3_hash.py` — pytest-style: insert a canned officer_tasks row, compute Python hash + Postgres hash, assert equal. Run in CI (when CI lands) or as pre-PR check.
+- **Guard scope:** Any future addition to `_HASH_COLS` requires spec amendment (already in module docstring) AND test-fixture update. The two in lockstep catches drift.
+- **Effort:** ~2 hr (fixture row + pytest scaffold).
+- **Owner:** CTO.
+- **Source:** Spec 039 PR-3 adversary B-1 finding; folded into FW backlog for post-wet-run work.
+
+---
+
+### FW-022 — Pre-tool-use hook CI green gate stderr routing
+- **Status:** Proposed (2026-04-21 re-validated during PR-3 self-merge).
+- **Problem:** `cabinet/scripts/hooks/pre-tool-use.sh` lines 369-381 block `curl .../pulls/[0-9]+/merge` until `cabinet:layer1:cto:ci-green` Redis key is set. The hook echoes instructions to stdout, not stderr. Claude Code's hook engine treats stdout as tool-stdout (not operator-visible on block) — manifests as silent "No stderr output" rejection. Per memory `feedback_silent_hook_exits.md`, this was supposed to be fixed in FW-002 for all 22 exit-2 paths; the CI green gate path still stdout-echoes.
+- **Desired end state:** All hook rejection paths use stderr so operators see the required action. Pattern: `>&2 echo "BLOCKED: <reason>. Run <fix>."; exit 2`. Audit the whole hook for stdout→stderr migration; bundle with FW-018 pre-tool-use Section 3 changes.
+- **Also:** Consider a `.claude/hook-help.txt` pointer the engine surfaces automatically on exit 2 instead of shell-level echoes.
+- **Effort:** ~1 hr audit + diff.
+- **Owner:** CTO.
+- **Source:** PR-3 merge attempt 2026-04-21; same-day re-encounter of the hook-silence pattern.
+
+---
+
+### FW-023 — Spec 039 test-fixture coverage expansion
+- **Status:** Proposed (deferred from PR-3, 2026-04-21 per COO observation).
+- **Problem:** `cabinet/scripts/lib/test_etl_fixtures.py` shipped 8 fixtures covering representative paths (LINEAR queue/wip/done/cancelled, epic synthesis, GH FW-marked + closed + no-marker). Non-blocking gaps flagged by COO: (a) no GH fixture with `state_reason='not_planned'` to validate AC #52 (closed-not-planned → cancelled) end-to-end, (b) no `captain_decision=TRUE` fixture (Linear label-based flag).
+- **Desired end state:** 2 additional fixtures added + corresponding asserts in test_etl.py (once test harness lands — currently no pytest setup exists in repo; fixture file is type-only for now).
+- **Coupled to:** Standing up pytest in cabinet/scripts/lib/tests/ — larger hygiene work. FW-021 overlaps.
+- **Effort:** 30 min for fixtures; ~half day for pytest harness.
+- **Owner:** CTO.
+- **Source:** COO PR-3 code-review 2026-04-21 15:26 UTC — flagged non-blocking, cleared for self-merge with deferral understood.
+
+---
+
 ### FW-016 — Delete byte-count cost-write path in post-tool-use.sh (partially-applied fix)
 - **Status:** Proposed (discovered 2026-04-17 23:00 UTC by CTO).
 - **Problem:** A prior session's summary claimed the byte-count cost-tracking path was removed from `post-tool-use.sh`, but git log shows no such commit. Lines 66-88 still write `COST_CENTS = wc -c-derived garbage` to three legacy keys:
