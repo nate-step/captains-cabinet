@@ -182,12 +182,22 @@ SIGNIFICANT_ACTION=false
 
 case "$TOOL_NAME" in
   Bash)
-    if echo "$TOOL_INPUT" | grep -qiE '(git push|gh pr create|gh pr merge)'; then
+    # FW-033: command-start anchor on `.command` payload (not JSON blob)
+    # so intermediate CMDs mentioning the deploy/PR verbs (commit bodies,
+    # echo'd strings, grep'd log lines) don't spuriously arm the nudge
+    # key. Mirrors FW-028/029/032 architecture. Matches ONLY first line
+    # via `head -n1` to skip heredoc bodies.
+    _NUDGE_CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+    if echo "$_NUDGE_CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+(create|merge))([[:space:];]|$)'; then
       SIGNIFICANT_ACTION=true
     fi
     ;;
   Write)
-    if echo "$TOOL_INPUT" | grep -qiE '(product-specs/|research-briefs/|deployment-status)'; then
+    # FW-033: check .file_path (or .path) directly, not full JSON blob.
+    # Prior form matched `product-specs/` anywhere in TOOL_INPUT including
+    # Write content, so a doc referencing the path amplified the nudge.
+    _NUDGE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
+    if echo "$_NUDGE_PATH" | grep -qE '(product-specs/|research-briefs/|deployment-status([./]|$))'; then
       SIGNIFICANT_ACTION=true
     fi
     ;;

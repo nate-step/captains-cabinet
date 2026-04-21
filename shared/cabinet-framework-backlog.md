@@ -360,12 +360,19 @@ _(none)_
 - **Source:** CTO Crew sweep 2026-04-21 22:40 UTC (post-FW-029 ship audit of remaining regex+state amplification patterns in hooks).
 
 ### FW-033 — post-tool-use.sh experience-nudge substring amplification
-- **Status:** Proposed 2026-04-21 (Crew sweep Finding #3).
+- **Status:** SHIPPED 2026-04-21 — Phase A pending commit at FW-033 Phase A push.
 - **Symptom:** `post-tool-use.sh:185` sets `cabinet:nudge:experience-record:$OFFICER` (EX 3600) when CMD payload substring-matches `git push|gh pr create|gh pr merge`. `git commit -m "fix: pre-validate before gh pr merge"` spuriously sets the nudge key, triggering a false experience-record prompt 1h later.
-- **Blast radius:** MEDIUM — nudge key (not a gate, not a trigger). Officer gets a false-positive "write experience record" prompt; operationally annoying but not a control-bypass or critical side effect.
-- **Proposed fix:** Apply FW-028-style command-start anchor; pin in EVAL-016.
-- **Effort:** XS (~15min).
-- **Owner:** CTO.
+- **Shipped fix (Phase A):**
+  1. Bash branch: extract `.command` from TOOL_INPUT via jq (`_NUDGE_CMD`), apply command-start anchor `^[[:space:]]*<priv-esc>*(git[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+(create|merge))([[:space:];]|$)` with `head -n1` heredoc guard. Mirrors FW-028/029/032 architecture.
+  2. Write branch: extract `.file_path` via jq (`_NUDGE_PATH`), match against `(product-specs/|research-briefs/|deployment-status([./]|$))`. Prior form matched the JSON blob (so Write content mentioning these paths amplified); `([./]|$)` trailing anchor on `deployment-status` prevents over-match on `deployment-status-history.log` / `-formatter.ts` (Sonnet adversary Finding #6).
+  3. EVAL-016 pins positive matrix (8 Bash + 4 Write paths), negative matrix (8 Bash non-invocation CMDs + 3 Write over-match paths), heredoc negative. EVAL-013 extractor updated to filter by FW-028's distinctive `(git|gh|curl)[[:space:]]` token (needed after EVAL-016 added a 3rd command-start anchor to post-tool-use.sh).
+- **Adversary (Sonnet) findings triaged:**
+  - Finding #5 (extractor `head -1` fragility): fixed inline via `grep -F '_NUDGE_CMD'` secondary filter.
+  - Finding #6 (`deployment-status` substring over-match): fixed inline via `([./]|$)` trailing anchor.
+  - Findings #1/#2/#4 (`npm run build && git push`, `for do git push done`, `GIT_SSH_COMMAND=... git push`): architectural scope-gaps consistent with FW-028 — documented as addendum to FW-036.
+  - Finding #3 (`git -C <dir> push`): already filed as FW-030.
+  - Finding #7 (jq silent failure fail-safe): rejected as FP — control-flow trace confirms empty-string → no match → no state change, which is the correct fail-safe direction.
+- **Effort (realized):** S (~45min including adversary review + Write branch fix + EVAL-013 extractor update).
 
 ### FW-034 — pre-tool-use.sh:321 workspace-write guard false-block on read-with-redirect
 - **Status:** Proposed 2026-04-21 (Crew sweep Finding #10).
@@ -393,6 +400,10 @@ _(none)_
   - **#5 `env -i ... send-to-group.sh` / `env -u OLD NAME=val ... send-to-group.sh`.** Phase A env branch requires `env[[:space:]]+NAME=val`; doesn't permit `-i`/`-u` flags before the first `NAME=val`.
   - **#8 Command chaining after invocation.** `bash send-to-group.sh "msg" && second_cmd` fires whitelist (anchor checks the START of the line only), gets sub-cap for the whole chained command. Bounded by telegram_whitelist_hourly_cap INCR firing regardless, so attack depth = 1 extra call. Operational concern, not a security bypass.
   - **#9 `cd /tmp && bash send-to-group.sh "msg"` (cd-and-invoke).** `cd` isn't in the priv-esc stack, so this legitimate pattern fails the whitelist → main-cap enforced. Officers can split into two Bash calls as workaround.
+  - **#10 `npm run build && git push origin master` (chained deploy).** FW-033 Sonnet adversary. Anchor requires deploy verb at START; `npm run build &&` precedes. Generic pattern across FW-028/029/032/033 (all share the anchor architecture). Operational impact: nudge missed on chained deploys; gate skipped on Layer 1 (real push still goes through).
+  - **#11 `for i in 1 2 3; do git push; done` (loop-wrapped).** Same class as #10.
+  - **#12 `GIT_SSH_COMMAND="ssh -i key" git push` (inline env assignment).** Inline `VAR=value cmd` form is NOT the `env VAR=value cmd` builtin form. Priv-esc stack covers the latter, not the former. Officers using inline env prefix (e.g., SSH key override) lose anchor match. Consistent gap across FW-028/029/032/033.
+- **Decision on #10/#11/#12:** Accept as documented scope-gaps. Extending the anchor to cover chaining / loops / inline env would complicate the regex beyond maintainability benefit. Mitigation: officers split chained deploys into two Bash calls, or use the env builtin (`env VAR=value git push` matches).
 - **Blast radius:** Operational friction — legitimate Captain DMs may hit main-cap instead of sub-cap on certain invocation forms. No security bypass, no state corruption, no protected-branch issue.
 - **Proposed fix:** Extend Phase A anchor to cover each form; pin each with a positive EVAL-015 test case. Scope:
   1. Widen flag pattern to `((-[A-Za-z]+|-o[[:space:]]+[A-Za-z0-9]+)[[:space:]]+)*` for `-o pipefail`.

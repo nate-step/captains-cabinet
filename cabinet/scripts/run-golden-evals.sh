@@ -733,8 +733,11 @@ EV13_FAILURE=""
 if [ ! -f "$EV13_HOOK" ]; then
   EV13_FAILURE="post-tool-use.sh not found at $EV13_HOOK"
 else
-  # Static pins — both blocks received the anchor.
-  EV13_ANCHOR_COUNT=$(grep -c "head -n1 | grep -qE '\^\[\[:space:\]\]" "$EV13_HOOK")
+  # Static pins — both FW-028 blocks received the anchor.
+  # Filter by FW-028's distinctive broad-stem `(git|gh|curl)[[:space:]]`
+  # to exclude FW-033's narrower `(git[[:space:]]+push|gh[[:space:]]+pr...)`
+  # anchor at post-tool-use.sh:191 (added 2026-04-21).
+  EV13_ANCHOR_COUNT=$(grep -E "head -n1 \| grep -qE '\^\[\[:space:\]\]" "$EV13_HOOK" | grep -cF '(git|gh|curl)[[:space:]]')
   EV13_NOOP_COMMENT_COUNT=$(grep -cF 'CMD does not start with a deploy-style executable' "$EV13_HOOK")
   EV13_FW028_MARKER_COUNT=$(grep -cF 'FW-028: command-start anchor' "$EV13_HOOK")
 
@@ -745,9 +748,9 @@ else
   elif [ "$EV13_FW028_MARKER_COUNT" -lt 2 ]; then
     EV13_FAILURE="FW-028 marker count=$EV13_FW028_MARKER_COUNT (expected >=2 — 'FW-028: command-start anchor' comment). Intent marker removed, regression risk."
   else
-    # Extract the anchor regex to exercise it. Both blocks have the
-    # same regex — head -1 is safe.
-    EV13_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '\^\[\[:space:\]\]" "$EV13_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    # Extract FW-028's anchor — filter by `(git|gh|curl)[[:space:]]` token
+    # to avoid grabbing FW-033's narrower-stem anchor at line 191.
+    EV13_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '\^\[\[:space:\]\]" "$EV13_HOOK" | grep -F '(git|gh|curl)[[:space:]]' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
     if [ -z "$EV13_ANCHOR_RE" ]; then
       EV13_FAILURE="anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-013 extractor)"
     fi
@@ -1067,6 +1070,139 @@ if [ -n "$EV15_FAILURE" ]; then
   fail "$EV15_FAILURE"
 else
   pass "FW-032 whitelist anchor classifies invocation vs inspection correctly (legitimate bash/sh/path invocations fire, cat/grep/echo/wc of filename do not)"
+fi
+
+# ------------------------------------------------------------------
+# EVAL-016 — post-tool-use.sh FW-033 experience-nudge anchor
+# ------------------------------------------------------------------
+# FW-033 regression catcher: the experience-nudge detector at
+# post-tool-use.sh:185-197 sets `cabinet:nudge:experience-record:$OFFICER`
+# (EX 3600) when Bash CMD matches deploy/PR verbs. Prior form used
+# `grep -qiE '(git push|gh pr create|gh pr merge)'` on the JSON blob,
+# so commit bodies / echoed strings / grep'd logs mentioning the verbs
+# spuriously armed the nudge — officer gets a false-positive prompt
+# to write an experience record 1h later.
+#
+# Phase A: extract `.command` from TOOL_INPUT first, apply command-start
+# anchor on the payload, mirroring FW-028/029/032. Also fix the Write
+# branch to check `.file_path` (not JSON blob) for the spec-path prefix.
+# Pin both invariants.
+log "EVAL-016: post-tool-use.sh FW-033 experience-nudge anchor invariants"
+EV16_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+EV16_FAILURE=""
+
+if [ ! -f "$EV16_HOOK" ]; then
+  EV16_FAILURE="post-tool-use.sh not found at $EV16_HOOK"
+else
+  EV16_FW033_MARKER=$(grep -cF 'FW-033' "$EV16_HOOK")
+  EV16_JQ_COMMAND_EXTRACT=$(grep -cE '_NUDGE_CMD=\$\(echo "\$TOOL_INPUT" \| jq -r' "$EV16_HOOK")
+  EV16_JQ_PATH_EXTRACT=$(grep -cE '_NUDGE_PATH=\$\(echo "\$TOOL_INPUT" \| jq -r' "$EV16_HOOK")
+
+  if [ "$EV16_FW033_MARKER" -lt 1 ]; then
+    EV16_FAILURE="FW-033 marker absent from post-tool-use.sh — revert suspected."
+  elif [ "$EV16_JQ_COMMAND_EXTRACT" -lt 1 ]; then
+    EV16_FAILURE="FW-033 Bash branch did NOT extract .command from TOOL_INPUT before matching — substring amplification re-opened."
+  elif [ "$EV16_JQ_PATH_EXTRACT" -lt 1 ]; then
+    EV16_FAILURE="FW-033 Write branch did NOT extract .file_path from TOOL_INPUT before matching — content-substring amplification re-opened."
+  else
+    # Extract the FW-033 anchor regex. Secondary `_NUDGE_CMD` filter
+    # (Sonnet adversary Finding #5) pins to the nudge-block context so
+    # a future FW-03X adding another `git[[:space:]]+push` anchor can't
+    # silently capture the wrong line via `head -1`.
+    EV16_ANCHOR_RE=$(grep -E "grep -qE '[^']*git\\[\\[:space:\\]\\]\\+push" "$EV16_HOOK" | grep -F '_NUDGE_CMD' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    if [ -z "$EV16_ANCHOR_RE" ]; then
+      EV16_FAILURE="FW-033 anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-016 extractor)"
+    fi
+  fi
+
+  if [ -z "$EV16_FAILURE" ]; then
+    # Positive matrix — real deploy/PR invocations MUST fire nudge.
+    for cmd in \
+      'git push origin master' \
+      'git push https://x-access-token:TOKEN@github.com/org/repo.git master' \
+      'gh pr create --title "fix"' \
+      'gh pr merge 123 --squash' \
+      'sudo git push origin master' \
+      'env FOO=1 git push origin master' \
+      'timeout 60s git push origin master' \
+      '  git push origin master'; do
+      if ! echo "$cmd" | head -n1 | grep -qE "$EV16_ANCHOR_RE"; then
+        EV16_FAILURE="FW-033 anchor FAILED expected-positive: $cmd (real deploy/PR action would NOT arm experience-nudge)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV16_FAILURE" ]; then
+    # Negative matrix — intermediate CMDs mentioning the verbs MUST NOT
+    # arm the nudge. Pre-fix, each of these set the nudge key spuriously.
+    for cmd in \
+      'git commit -m "fix: pre-validate before gh pr merge"' \
+      'echo "to push, use: git push origin master"' \
+      'cat log | grep "git push"' \
+      'grep "gh pr create" /var/log/audit.log' \
+      'git diff HEAD~1 | grep "gh pr merge"' \
+      'git log --grep="git push"' \
+      'vim /path/to/release-notes.md' \
+      'git status'; do
+      if echo "$cmd" | head -n1 | grep -qE "$EV16_ANCHOR_RE"; then
+        EV16_FAILURE="FW-033 anchor WRONGLY matched expected-negative: $cmd (experience-nudge armed spuriously on non-deploy CMD)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV16_FAILURE" ]; then
+    # Heredoc negative.
+    EV16_HEREDOC=$'cat <<EOF\ngit push origin master\nEOF'
+    if echo "$EV16_HEREDOC" | head -n1 | grep -qE "$EV16_ANCHOR_RE"; then
+      EV16_FAILURE="FW-033 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken"
+    fi
+  fi
+
+  if [ -z "$EV16_FAILURE" ]; then
+    # Write-branch negative matrix (Sonnet adversary Finding #6):
+    # `deployment-status` substring must NOT match mid-path forms like
+    # `deployment-status-history.log` or `deployment-status-formatter.ts`.
+    # The anchor `deployment-status([./-]|$)` requires `.`, `/`, `-` (as
+    # in `deployment-status-foo`) OR end-of-string — wait, that's broken
+    # for the `-` case. Re-read: The pattern is
+    # `(product-specs/|research-briefs/|deployment-status([./-]|$))` —
+    # including `-` means `deployment-status-history.log` DOES match,
+    # since the char after `deployment-status` is `-`. That's over-match.
+    # Fix in place uses `([./]|$)` instead (no dash) — test that.
+    EV16_WRITE_RE='(product-specs/|research-briefs/|deployment-status([./]|$))'
+    for path in \
+      '/tmp/deployment-status-history.log' \
+      '/workspace/product/src/utils/deployment-status-formatter.ts' \
+      '/opt/founders-cabinet/tests/product-specs-fixture.js'; do
+      if echo "$path" | grep -qE "$EV16_WRITE_RE"; then
+        EV16_FAILURE="FW-033 Write-branch WRONGLY matched expected-negative path: $path (nudge armed on non-significant write)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV16_FAILURE" ]; then
+    # Write-branch positive matrix: real artifact paths MUST match.
+    EV16_WRITE_RE='(product-specs/|research-briefs/|deployment-status([./]|$))'
+    for path in \
+      '/opt/founders-cabinet/shared/interfaces/product-specs/042-foo.md' \
+      '/opt/founders-cabinet/shared/interfaces/research-briefs/2026-04-21.md' \
+      '/opt/founders-cabinet/shared/interfaces/deployment-status.md' \
+      '/opt/founders-cabinet/shared/interfaces/deployment-status/latest.yml'; do
+      if ! echo "$path" | grep -qE "$EV16_WRITE_RE"; then
+        EV16_FAILURE="FW-033 Write-branch FAILED expected-positive path: $path (significant artifact write NOT armed — experience-nudge skipped)"
+        break
+      fi
+    done
+  fi
+fi
+
+if [ -n "$EV16_FAILURE" ]; then
+  fail "$EV16_FAILURE"
+else
+  pass "FW-033 experience-nudge anchor classifies deploy/PR invocations vs commit-body/echo/grep amplification correctly (Bash + Write branches)"
 fi
 
 # ------------------------------------------------------------------
