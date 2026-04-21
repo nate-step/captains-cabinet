@@ -1,15 +1,17 @@
 /**
- * Card 3: YOUR TASKS — Spec 032 Consumer Mode.
+ * Card 3: YOUR TASKS — Spec 038 Phase A (folds in Spec 032 + Spec 039).
  *
- * Shows in-progress / next-up / blocked counts + last 3 recent state changes.
- * Uses LINEAR_API_KEY from env. Gracefully renders "No task backlog configured"
- * when LINEAR_API_KEY is absent (spec §7 AC #16).
+ * Shows Captain's founder-action items grouped by state (in flight / blocked /
+ * queued) with preview of most recent items. Pulls from the same Linear query
+ * as the /tasks Captain column (`getLinearFounderActions`), so frontpage card
+ * and /tasks view stay in sync.
  *
- * Server component.
+ * Server component. Gracefully renders an empty state when LINEAR_API_KEY is
+ * absent or no founder-action issues exist.
  */
 
 import Link from 'next/link'
-import { getLinearTasks } from '@/lib/linear'
+import { getLinearFounderActions } from '@/lib/linear-tasks'
 
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime()
@@ -21,7 +23,17 @@ function relativeTime(iso: string): string {
 }
 
 export default async function CardTasks() {
-  const tasks = await getLinearTasks()
+  const board = await getLinearFounderActions()
+
+  const wipCount = board.wip.length
+  const blockedCount = board.blocked.length
+  const queueCount = board.queue.length
+  const total = wipCount + blockedCount + queueCount
+
+  // Most recent across all active buckets — up to 3
+  const recent = [...board.wip, ...board.blocked, ...board.queue]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 3)
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
@@ -29,12 +41,9 @@ export default async function CardTasks() {
         <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
           Your Tasks
         </h2>
-        {tasks.configured && (
-          <span className="text-xs text-zinc-600">Linear</span>
-        )}
       </div>
 
-      {!tasks.configured ? (
+      {!board.configured ? (
         /* No backlog provider configured (spec §7) */
         <div className="py-2">
           <p className="text-sm text-amber-400">
@@ -47,46 +56,36 @@ export default async function CardTasks() {
             Configure backlog &rarr;
           </a>
         </div>
-      ) : tasks.inProgress === 0 && tasks.todo === 0 && tasks.blocked === 0 ? (
-        /* Configured but empty (spec §7 "No tasks + backlog.provider configured") */
-        <p className="py-2 text-sm text-zinc-400">No tasks right now.</p>
+      ) : total === 0 ? (
+        <p className="py-2 text-sm text-zinc-400">Nothing on your plate.</p>
       ) : (
         <>
-          {/* Count rows */}
-          <div className="mb-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm text-zinc-300">
-                <span className="text-blue-400">🔵</span>
-                <span className="font-medium uppercase tracking-wide text-xs">In Progress</span>
-              </span>
-              <span className="text-lg font-bold text-white">{tasks.inProgress}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm text-zinc-300">
-                <span className="text-zinc-400">⚪</span>
-                <span className="font-medium uppercase tracking-wide text-xs">Next Up</span>
-              </span>
-              <span className="text-lg font-bold text-white">{tasks.todo}</span>
-            </div>
-            {tasks.blocked > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-sm text-zinc-300">
-                  <span className="text-red-400">🔴</span>
-                  <span className="font-medium uppercase tracking-wide text-xs">Blocked</span>
-                </span>
-                <span className="text-lg font-bold text-red-400">{tasks.blocked}</span>
-              </div>
-            )}
+          {/* Count summary line per Spec 038 §4.5 */}
+          <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+            <span className="text-zinc-300">
+              <span className="font-bold text-white">{wipCount}</span>
+              <span className="ml-1 text-zinc-500">in flight</span>
+            </span>
+            <span className="text-zinc-600">·</span>
+            <span className={blockedCount > 0 ? 'text-red-400' : 'text-zinc-300'}>
+              <span className="font-bold">{blockedCount}</span>
+              <span className="ml-1 text-zinc-500">blocked</span>
+            </span>
+            <span className="text-zinc-600">·</span>
+            <span className="text-zinc-300">
+              <span className="font-bold text-white">{queueCount}</span>
+              <span className="ml-1 text-zinc-500">queued</span>
+            </span>
           </div>
 
           {/* Recent items */}
-          {tasks.recent.length > 0 && (
+          {recent.length > 0 && (
             <div className="border-t border-zinc-800 pt-4">
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-600">
                 Recent
               </p>
               <ul className="space-y-1.5">
-                {tasks.recent.map((item) => (
+                {recent.map((item) => (
                   <li key={item.id}>
                     <a
                       href={item.url}
@@ -105,17 +104,19 @@ export default async function CardTasks() {
               </ul>
             </div>
           )}
-
-          {/* See all link */}
-          <div className="mt-3 border-t border-zinc-800 pt-3">
-            <Link
-              href="/library"
-              className="inline-flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-            >
-              See all tasks &rarr;
-            </Link>
-          </div>
         </>
+      )}
+
+      {/* Spec 038 §4.5 CTA — always shown if configured */}
+      {board.configured && (
+        <div className="mt-3 border-t border-zinc-800 pt-3">
+          <Link
+            href="/tasks"
+            className="inline-flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+          >
+            See tasks &rarr;
+          </Link>
+        </div>
       )}
     </div>
   )

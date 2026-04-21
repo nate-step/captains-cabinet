@@ -30,6 +30,7 @@ export const ADVANCED_NAV: NavLink[] = [
   { href: '/project', label: 'Project' },
   { href: '/cabinets', label: 'Cabinets' },
   { href: '/officers', label: 'Officers' },
+  { href: '/tasks', label: 'Tasks' },
   { href: '/health', label: 'Health' },
   { href: '/settings', label: 'Settings' },
   { href: '/governance', label: 'Governance' },

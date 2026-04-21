@@ -208,7 +208,7 @@ export default async function CardCabinet() {
                       href={`/officers/${row.role}`}
                       className="mt-0.5 inline-flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
                     >
-                      Investigate in Advanced
+                      See details
                       <span aria-hidden="true">&rarr;</span>
                     </Link>
                   )}
