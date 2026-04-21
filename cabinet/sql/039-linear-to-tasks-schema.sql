@@ -53,6 +53,13 @@ ALTER TABLE officer_tasks ADD COLUMN IF NOT EXISTS external_source TEXT;
 ALTER TABLE officer_tasks ADD COLUMN IF NOT EXISTS pr_url TEXT;
 ALTER TABLE officer_tasks ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
 
+-- Relax officer_slug NOT NULL. Spec 039 §5.A1 mandates officer_slug=NULL for
+-- synthesized epic rows (`type='epic'`) and unassigned issues from Linear/GH.
+-- 038 baseline declared the column NOT NULL when /tasks was native-only; the
+-- migration surface requires a NULL state for un-attributed rows. Idempotent —
+-- ALTER … DROP NOT NULL succeeds whether or not the column was NOT NULL.
+ALTER TABLE officer_tasks ALTER COLUMN officer_slug DROP NOT NULL;
+
 -- =============================================================
 -- 2. Column-level CHECK constraints (enum guards)
 -- =============================================================
@@ -220,6 +227,45 @@ BEGIN
     RETURN NEW;
   END IF;
   NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================
+-- 6b. Extend Spec 038's enforce_officer_wip_limit with ETL bypass
+-- =============================================================
+-- Historical Linear issues in "In Progress" state for an officer already at
+-- WIP=3 cap must still land — the cap is a forward-going governance lever,
+-- not a historical constraint. Adds honored bypass via
+-- `SET LOCAL app.etl.suspend_wip_limit = 'true'`.
+--
+-- CREATE OR REPLACE preserves the existing trigger binding (trg_enforce_officer_wip
+-- created in 038); we only replace the underlying function body. Registry extended
+-- in spec §4.2.1 (session-var bypass table).
+
+CREATE OR REPLACE FUNCTION enforce_officer_wip_limit() RETURNS TRIGGER AS $$
+BEGIN
+  IF current_setting('app.etl.suspend_wip_limit', true) = 'true' THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.status = 'wip' THEN
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended(NEW.context_slug || '/' || NEW.officer_slug, 42)
+    );
+
+    IF (
+      SELECT COUNT(*) FROM officer_tasks
+       WHERE context_slug = NEW.context_slug
+         AND officer_slug = NEW.officer_slug
+         AND status = 'wip'
+         AND (TG_OP = 'INSERT' OR id <> NEW.id)
+    ) >= 3 THEN
+      RAISE EXCEPTION 'WIP limit (3) exceeded for officer % in context %',
+                      NEW.officer_slug, NEW.context_slug
+        USING ERRCODE = '23514';
+    END IF;
+  END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

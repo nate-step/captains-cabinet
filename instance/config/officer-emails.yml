@@ -1,0 +1,21 @@
+# instance/config/officer-emails.yml
+# Spec 039 §5.4 — assignee resolution for Linear email + GH login → officer slug.
+# Two top-level keys: `emails` (Linear assignee.email) and `github_logins`
+# (GH Issues assignee.login). Map source identifier → Cabinet officer slug
+# (or 'captain' — ETL sets founder_action=TRUE when slug='captain').
+emails:
+  cos@sensed.internal: cos
+  cpo@sensed.internal: cpo
+  cto@sensed.internal: cto
+  coo@sensed.internal: coo
+  cro@sensed.internal: cro
+  # Captain uses personal email for Linear
+  stephie.stepnetwork@gmail.com: captain
+  nate@sensed.io: captain
+github_logins:
+  sensed-cos: cos
+  sensed-cpo: cpo
+  sensed-cto: cto
+  sensed-coo: coo
+  sensed-cro: cro
+  nate-step: captain
