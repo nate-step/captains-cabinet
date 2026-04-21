@@ -19,12 +19,19 @@ trigger_send() {
   redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" \
     XGROUP CREATE "cabinet:triggers:$target" "officer-$target" 0 MKSTREAM > /dev/null 2>&1
 
-  # Add message to stream
-  redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" \
+  # Add message to stream. Fail LOUD on XADD error — silent drop of a
+  # deploy-notify or Captain-relay trigger is how the validators miss a
+  # production push entirely (audit Finding #1, 2026-04-21). stderr only,
+  # so normal success remains silent.
+  local _xadd_err
+  _xadd_err=$(redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" \
     XADD "cabinet:triggers:$target" '*' \
     sender "$sender" \
     message "[$timestamp] From $sender: $message" \
-    > /dev/null 2>&1
+    2>&1 > /dev/null)
+  if [ $? -ne 0 ] || [ -n "$_xadd_err" ]; then
+    echo "trigger_send WARN: XADD to cabinet:triggers:$target failed (${_xadd_err:-redis unreachable?}) — trigger NOT queued, sender=$sender" >&2
+  fi
 
   # Cabinet Memory: queue trigger for semantic indexing (fire-and-forget)
   if [ -f /opt/founders-cabinet/cabinet/scripts/lib/memory.sh ]; then

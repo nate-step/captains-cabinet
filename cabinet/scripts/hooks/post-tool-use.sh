@@ -59,8 +59,11 @@ if ! [[ "$CABINET_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   CABINET_ID="main"
 fi
 
-# Write JSON log line
-echo "{\"ts\":\"$TIMESTAMP\",\"cabinet_id\":\"$CABINET_ID\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE"
+# Write JSON log line. Fail LOUD on append error — silent log drops create
+# invisible gaps that poison retro activity math (audit Finding #3,
+# 2026-04-21). Disk-full, RO mount, perm error — all would have been
+# invisible prior to this guard.
+echo "{\"ts\":\"$TIMESTAMP\",\"cabinet_id\":\"$CABINET_ID\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE" || echo "post-tool-use: LOG WRITE FAILED for $LOG_FILE (disk full? RO mount?) — log entry dropped for $OFFICER at $TIMESTAMP" >&2
 
 # NOTE: Accurate per-tool cost tracking is handled by the cost-aware
 # Anthropic wrapper which writes microdollar-accurate values to the
@@ -199,8 +202,15 @@ fi
 # ============================================================
 # Reads NEW messages from the officer's stream. Messages stay "pending"
 # until the officer ACKs them — crash recovery built in.
-. /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh 2>/dev/null
-TRIG_MESSAGES=$(trigger_read "$OFFICER")
+# Do NOT silence source errors — if triggers.sh is missing or has a syntax
+# error, the officer must see it (audit Finding #2, 2026-04-21). A silent
+# source failure means trigger_read is undefined and the officer stops
+# receiving Captain DMs and cross-officer notifications without any
+# diagnostic surface.
+if ! . /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh; then
+  echo "post-tool-use: CRITICAL — triggers.sh failed to load; trigger delivery is broken for $OFFICER" >&2
+fi
+TRIG_MESSAGES=$(trigger_read "$OFFICER" 2>/dev/null)
 TRIG_IDS=$(cat /tmp/.trigger_ids_${OFFICER} 2>/dev/null)
 if [ -n "$TRIG_MESSAGES" ]; then
   TRIG_COUNT=$(echo "$TRIG_MESSAGES" | wc -l)
@@ -224,6 +234,14 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # release-please--branches--main — do NOT match), gh pr merge, and
   # curl-based GitHub API merges (pulls/N/merge). Non-main/master branches
   # never trigger the auto-notify: staged/preview deploys are noise.
+  #
+  # Tokenized-URL form: officers push with the full URL in place of "origin"
+  # (see memory/reference_github_push_invocation.md + feedback_git_push_u_tokenized_url.md):
+  #   git push https://x-access-token:$PAT@github.com/STEP-Network/Sensed main
+  # The regex therefore accepts `.*` between `git push` and the refspec
+  # (instead of requiring a literal `origin`), gated by the earlier
+  # framework-URL filter so cabinet master pushes still skip. Audit
+  # Finding #4, 2026-04-21.
   # Skip: if the command is clearly targeting the Cabinet framework repo
   # (cd /opt/founders-cabinet, git -C /opt/founders-cabinet, captains-cabinet
   # URL), this isn't a product deploy — it's a framework push that produces
@@ -232,7 +250,7 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # flagged 2026-04-17 after the initial release-please filter landed).
   if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
-  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
+  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+.*[[:space:]](main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     for target in $(officers_with "validates_deployments"); do
       trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
     done
@@ -255,7 +273,7 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # flagged 2026-04-17 after the initial release-please filter landed).
   if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
-  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
+  elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+.*[[:space:]](main|master)([[:space:]]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
     echo "REMINDER: Poll Vercel deployment status before announcing. Run deploy-and-verify skill."
     echo "REMINDER: Update shared/interfaces/deployment-status.md with current deploy state."
   fi
