@@ -48,7 +48,21 @@
 # shared/force-push-log.md anyway so the team knows why the normal
 # safeties were bypassed. `--no-verify` is a bigger hammer than
 # FORCE_PUSH_ANNOUNCED (which only bypasses force-push refusal) — reach
-# for it last.
+# for it last. FW-026 tracks a finer-grained escape (SKIP_GOLDEN_EVALS
+# or SKIP_EVAL_ANNOUNCED) that preserves FW-007 while bypassing FW-025.
+#
+# FW-025 scope limit (tracked as FW-026):
+# The golden-eval gate evaluates the WORKING TREE state of
+# cabinet/scripts/*, NOT the commit SHAs being pushed. Edge cases where
+# broken commits can land despite a green gate:
+#   * amend-off: WT has the fix, committed version is stale.
+#   * selective-file commit: fix lives in un-staged WT, bad code in commit.
+#   * parent-push (e.g. `git push origin HEAD^:master`): pushing an
+#     ancestor commit while WT holds later fixes.
+# Full mitigation requires `git stash && git checkout <local_sha> &&
+# run evals && git restore` which is invasive and unsafe in a shared
+# tree. Accepted for Phase A — officers should always `git status` clean
+# before pushing. FW-026 will design a safer checkout-and-test flow.
 
 set -u
 
@@ -57,7 +71,7 @@ PROTECTED_REF="refs/heads/master"
 LOG_REL="shared/force-push-log.md"
 ZERO_SHA="0000000000000000000000000000000000000000"
 EVAL_LOCK_TIMEOUT_SEC=30
-EVAL_LOCK_FILE="/tmp/cabinet-golden-evals.lock"
+EVAL_RUN_TIMEOUT_SEC=60
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
@@ -66,6 +80,13 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 
 LOG_PATH="$REPO_ROOT/$LOG_REL"
+
+# Lock file inside .git/ rather than /tmp — /tmp is swept by tmpwatch
+# and world-writable; a mid-run `rm /tmp/cabinet-golden-evals.lock`
+# would create a new inode on next touch, breaking flock coordination
+# across concurrent pushes. .git/ is per-repo, private, and stable.
+# (COO adversary L-1 on 549062a.)
+EVAL_LOCK_FILE="$REPO_ROOT/.git/cabinet-golden-evals.lock"
 
 # Capture pushed refs once — stdin is single-use. Both the force-push
 # loop (FW-007) and the golden-evals gate (FW-025) need to scan it.
@@ -175,9 +196,14 @@ run_golden_evals_gate() {
   (
     flock -w "$EVAL_LOCK_TIMEOUT_SEC" 200 || {
       echo "pre-push: golden-evals lock timeout after ${EVAL_LOCK_TIMEOUT_SEC}s — concurrent eval run?" >&2
+      echo "  Inspect holder: fuser '$EVAL_LOCK_FILE' 2>/dev/null" >&2
+      echo "  If stale, kill the holder PID (process died mid-run?) or remove the lock file." >&2
       exit 1
     }
-    bash "$eval_script"
+    # timeout guards against a runaway run-golden-evals.sh hang —
+    # otherwise every subsequent push would pay the 30s flock timeout
+    # before blocking. 60s is ~30x the observed 1-2s suite runtime.
+    timeout "$EVAL_RUN_TIMEOUT_SEC" bash "$eval_script"
   ) 200>"$EVAL_LOCK_FILE"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
