@@ -170,6 +170,7 @@ _(none)_
   - `bash -n` passes; final counts: 29 `>&2` redirects (6 pre-existing + 23 new), 25 real `exit 2` statements all preceded by stderr echoes.
   - Sonnet adversary review: LGTM with 1 optional LOW (inline `# TEMPLATE:` near each gate section — deferred as ergonomic nice-to-have; header comment is sufficient).
 - **Follow-up parked:** `.claude/hook-help.txt` auto-surfacing pointer — engine-level capability, not required for this fix.
+- **Regression catcher shipped 2026-04-21:** `run-golden-evals.sh` EVAL-007 pins the invariant — every `exit 2` (non-comment) in `pre-tool-use.sh` must have `>&2` on the nearest preceding non-blank, non-comment line. Awk-based, POSIX-portable. 10/10 → 11/11 evals. Self-test verified on a crafted violation; Sonnet adversary review caught one false finding (`>&2 echo msg` claim — verified bash routes it to stderr correctly) and three doc-only improvements (EVAL-004 stderr note, scope comment for other hook types, count-drift caveat), all applied pre-commit. Also caught and fixed a FW-022 cascade failure: EVAL-001 and EVAL-002 had silently broken when block messages moved to stderr — both now use `2>&1 >/dev/null` for stderr capture.
 - **Owner:** CTO.
 - **Source:** PR-3 merge attempt 2026-04-21; PR-4 merge re-hit same day. Closed during 5m-loop quiet period 2026-04-21 per captain's standing "never report idle" directive.
 
