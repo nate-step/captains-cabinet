@@ -213,3 +213,24 @@ _(none)_
   - `cabinet/scripts/run-golden-evals.sh` EVAL-003 — was silently broken on two counts (wrote legacy key that pre-tool-use no longer reads; greppped stdout for a stderr message). Now: HSET writes `cos_cost_micro=999999999`, captures stderr via `2>&1 >/dev/null`, greps `BLOCKED.*officer=cos`. Skips gracefully when platform.yml cap=0.
 - **Why this mattered:** byte-count INCRBY under-reported by ~100× (byte length ≠ tokens) AND double-counted alongside the cost-aware Anthropic wrapper. Dashboard showed inflated-but-wrong numbers. More dangerous: EVAL-003 was quietly passing as a no-op for an unknown stretch — golden evals must not silently rot.
 - **Source:** CTO session 2026-04-17 23:00 UTC discovered drift; CTO session 2026-04-21 19:00 UTC shipped the fix during /loop proactive work.
+
+---
+
+### FW-025 — Golden-evals pre-push gate (catch silent eval rot at commit boundary)
+- **Status:** Proposed.
+- **Problem:** FW-022 (`d45c8f2`, 2026-04-21 19:04Z) silently broke EVAL-001 and EVAL-002 for ~34 minutes before `8577433` (19:38Z, FW-022 regression catcher) caught it. The root cause was FW-022 migrating block messages from stdout → stderr; the two evals captured `2>/dev/null` and so saw empty output. No merge/push gate runs `run-golden-evals.sh`, so golden-evals can rot between runs with zero visibility until the next manual invocation. FW-007's pre-push hook catches force-overwrites on master but does not run the eval suite.
+- **Desired end state:** Every `git push origin master` that touches hook files or eval plumbing runs `bash cabinet/scripts/run-golden-evals.sh` locally before the push completes; non-zero exit blocks the push with stderr explaining which eval failed (FW-022 lesson). Optionally gate all pushes regardless of changed paths — evals are <2s, cost negligible.
+- **Options:**
+  1. **Extend `cabinet/scripts/git-hooks/pre-push`** — cheapest, local-only, shared-tree aware, no CI infra. Calls `run-golden-evals.sh`; non-zero exit aborts push. Respects captain's rapid-iteration-feedback preference.
+  2. **GitHub Actions CI workflow** — catches pushes that bypass the local hook (e.g. `git push` from host shell where hook isn't installed), but requires `.github/workflows/` setup (Captain approval for directional change) and per-push latency. Deferred candidate.
+  3. **Both** — belt-and-suspenders, defer #2 until #1 proves insufficient.
+- **Recommended:** Option 1 first. Propose #2 as a separate FW item if #1 shows false-negatives in practice.
+- **Scope hazards:**
+  - EVAL-003 needs Redis — today it skips gracefully when `platform.yml` cap=0 (already shipped FW-016 skip path). Pre-push path must not require Docker compose up.
+  - EVAL-007 (awk-based exit-2 scan) and EVAL-001/002 (hook smoke) are pure bash, fast (<200ms), no deps.
+  - Full 11-eval suite runs in ~1-2s locally per empirical measurement — acceptable for pre-push latency.
+  - EVAL awk trigger (`/exit 2/`) is a loose regex — future string literals like `echo "exit 2"` would false-positive. Already documented inline in EVAL-007; harmless today.
+- **Effort:** S (~2-3h including adversary review).
+- **Owner:** CTO.
+- **Depends on:** FW-007 pre-push hook scaffold (shipped) — FW-025 extends it.
+- **Source:** COO adversary review of commit `8577433` (2026-04-21 20:15 UTC) — flagged as tangential FW opportunity, not blocking. Cascade gap empirically validated: FW-022 broke EVAL-001/002 for 34 min with no merge gate to catch.
