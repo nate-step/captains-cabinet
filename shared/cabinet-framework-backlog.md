@@ -164,14 +164,13 @@ _(none)_
 ---
 
 ### FW-023 — Spec 039 test-fixture coverage expansion
-- **Status:** Fixture-half DONE 2026-04-21 (commit `e793059`); pytest harness-half still open.
+- **Status:** DONE 2026-04-21 — both halves landed (fixtures `e793059`, pytest harness this commit).
 - **Problem:** `cabinet/scripts/lib/test_etl_fixtures.py` shipped 8 fixtures covering representative paths (LINEAR queue/wip/done/cancelled, epic synthesis, GH FW-marked + closed + no-marker). Non-blocking gaps flagged by COO: (a) no GH fixture with `state_reason='not_planned'` to validate AC #52 (closed-not-planned → cancelled) end-to-end, (b) no `captain_decision=TRUE` fixture (Linear label-based flag).
-- **Progress 2026-04-21:** Fixture-half landed (commit `e793059`): `LINEAR_ISSUE_CAPTAIN_DECISION` (SEN-251 pricing-pivot, label-based flag on Linear side), `GH_ISSUE_CLOSED_NOT_PLANNED` (FW-013 shape, exercises AC #52 mapping), `GH_ISSUE_CAPTAIN_DECISION` (FW-010 shape, GH parity of captain-decision label). `ALL_LINEAR_ISSUES` / `ALL_GH_ISSUES` bundles updated. Pytest harness to exercise these against `_map_state` / `_captain_decision` transforms still deferred.
-- **Desired end state:** pytest harness under `cabinet/scripts/lib/tests/` that imports these fixtures and asserts transform invariants (AC #52 mapping, captain_decision flag propagation, cancelled_at=closed_at, etc.).
-- **Coupled to:** Standing up pytest in cabinet/scripts/lib/tests/ — larger hygiene work. FW-021 overlaps.
-- **Effort remaining:** ~half day for pytest harness + 3-5 initial asserts.
+- **Progress 2026-04-21 — fixtures (commit `e793059`):** `LINEAR_ISSUE_CAPTAIN_DECISION` (SEN-251 pricing-pivot), `GH_ISSUE_CLOSED_NOT_PLANNED` (FW-013, AC #52), `GH_ISSUE_CAPTAIN_DECISION` (FW-010, GH parity). `ALL_LINEAR_ISSUES` / `ALL_GH_ISSUES` bundles updated.
+- **Progress 2026-04-21 — pytest harness:** `cabinet/scripts/lib/tests/{__init__.py, conftest.py, test_etl_transforms.py}`. 24 pure-function tests covering `_map_state` (5 Linear fixtures + 2 edge cases for Spec 038 §4.5 started→queue + On Hold), `_map_status` (AC #52 grid: open / closed+completed / closed+not_planned / closed+None), `_extract_fw_marker` (positive, trailing-content H1-regression guard, absent, empty/None, mid-line-rejected `^`-anchor guard, closed-not-planned fixture), `_extract_priority` (positive, absent, case-insensitive), and captain-decision label parity (Linear + GH, positive + negative). `conftest.py` stubs `requests`/`yaml` in sys.modules so the harness runs under plain `python3` today without FW-024; stubs become dead weight once FW-024 lands real deps (noted in comment). Runnable two ways: `python3 cabinet/scripts/lib/tests/test_etl_transforms.py` (today, 24 pass) and `python3 -m pytest cabinet/scripts/lib/tests/` (when FW-024 + python3-pytest ships). Sonnet adversary review passed (1 MEDIUM + 1 LOW both resolved pre-commit).
+- **Coupled to:** FW-021 (Gate 3 hash parity test) — now has scaffolding to plug into. FW-024 will migrate the sys.modules stubs to real deps.
 - **Owner:** CTO.
-- **Source:** COO PR-3 code-review 2026-04-21 15:26 UTC — flagged non-blocking, cleared for self-merge with deferral understood. Fixture-half completed during 5m-loop quiet period 2026-04-21 per captain's standing "never report idle" directive.
+- **Source:** COO PR-3 code-review 2026-04-21 15:26 UTC — flagged non-blocking, cleared for self-merge. Both halves completed during 5m-loop quiet period 2026-04-21 per captain's standing "never report idle" directive.
 
 ---
 
