@@ -88,6 +88,26 @@ LINEAR_ISSUE_CANCELLED = {
     "project": None,
 }
 
+# FW-023 fixture-gap (b): captain-decision label on Linear — etl-linear.py L278
+# sets captain_decision=True when the label appears in labels.nodes[].name.
+LINEAR_ISSUE_CAPTAIN_DECISION = {
+    "id": "3ab91f00-aaaa-bbbb-cccc-000000000005",
+    "identifier": "SEN-251",
+    "title": "Pivot pricing model: flat-tier → usage-based",
+    "description": "Captain directive 2026-04-18 — switch to usage-based before launch.",
+    "state": {"id": "s2", "name": "In Progress", "type": "started"},
+    "priority": 1,
+    "assignee": {"email": "cpo@cabinet.local"},
+    "labels": {"nodes": [{"name": "captain-decision"}, {"name": "pricing"}]},
+    "dueDate": None,
+    "createdAt": "2026-04-18T15:00:00Z",
+    "completedAt": None,
+    "canceledAt": None,
+    "url": "https://linear.app/sensed/issue/SEN-251",
+    "parent": None,
+    "project": None,
+}
+
 LINEAR_PROJECT_SYNTHESIZED_EPIC = {
     "id": "p1",
     "name": "Spec 039 — Migration",
@@ -140,6 +160,40 @@ GH_ISSUE_NO_FW_MARKER = {
     "html_url": "https://github.com/nate-step/captains-cabinet/issues/40",
 }
 
+# FW-023 fixture-gap (a): AC #52 — closed + state_reason='not_planned' must
+# map to status='cancelled' with cancelled_at=closed_at. etl-github.py L125-126
+# is the transform under test.
+GH_ISSUE_CLOSED_NOT_PLANNED = {
+    "number": 39,
+    "title": "FW-013: Deprecated bootstrap path",
+    "body": "FW-013\n\nSuperseded by unified bootstrap-host.sh; won't pursue.",
+    "state": "closed",
+    "state_reason": "not_planned",
+    "assignees": [{"login": "cto-cabinet"}],
+    "labels": [{"name": "framework"}, {"name": "wontfix"}],
+    "created_at": "2026-02-20T09:00:00Z",
+    "closed_at": "2026-04-08T16:45:00Z",
+    "html_url": "https://github.com/nate-step/captains-cabinet/issues/39",
+}
+
+# FW-023 fixture-gap (b), GH parity: captain-decision label on GH issue.
+# etl-github.py L179 sets captain_decision=True when the label appears.
+GH_ISSUE_CAPTAIN_DECISION = {
+    "number": 38,
+    "title": "FW-010: Use Library MCP for all archival",
+    "body": "FW-010\n\nCaptain ruled 2026-04-12: all archival writes go through Library MCP; no direct Notion API from officers.",
+    "state": "open",
+    "assignees": [{"login": "nate-step"}],
+    "labels": [
+        {"name": "framework"},
+        {"name": "captain-decision"},
+        {"name": "architecture"},
+    ],
+    "created_at": "2026-04-12T18:00:00Z",
+    "closed_at": None,
+    "html_url": "https://github.com/nate-step/captains-cabinet/issues/38",
+}
+
 # ---------------------------------------------------------------------------
 # Convenience bundles
 # ---------------------------------------------------------------------------
@@ -149,6 +203,13 @@ ALL_LINEAR_ISSUES = [
     LINEAR_ISSUE_WIP_BLOCKED,
     LINEAR_ISSUE_DONE,
     LINEAR_ISSUE_CANCELLED,
+    LINEAR_ISSUE_CAPTAIN_DECISION,
 ]
 
-ALL_GH_ISSUES = [GH_ISSUE_FW_MARKED, GH_ISSUE_CLOSED_FIXED, GH_ISSUE_NO_FW_MARKER]
+ALL_GH_ISSUES = [
+    GH_ISSUE_FW_MARKED,
+    GH_ISSUE_CLOSED_FIXED,
+    GH_ISSUE_NO_FW_MARKER,
+    GH_ISSUE_CLOSED_NOT_PLANNED,
+    GH_ISSUE_CAPTAIN_DECISION,
+]
