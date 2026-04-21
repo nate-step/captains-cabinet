@@ -15,7 +15,11 @@ REDIS_PORT="${REDIS_PORT:-6379}"
 # Safety: always clean up test artifacts on exit (prevents blocking all officers)
 cleanup() {
   redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL cabinet:killswitch > /dev/null 2>&1
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:cost:daily:$(date -u +%Y-%m-%d)" > /dev/null 2>&1
+  # FW-016 follow-up (COO post-ship review): the legacy cabinet:cost:daily:$TODAY
+  # DEL is gone — that key has no writer. EVAL-003's own save/restore handles
+  # normal exit of cos_cost_micro. For interrupt-mid-test, the cost-aware wrapper
+  # overwrites cos_cost_micro on the very next tool call, so a poisoned value
+  # self-heals within seconds. HDEL here would risk clobbering real wrapper data.
   redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL cabinet:triggers:evaltest > /dev/null 2>&1
 }
 trap cleanup EXIT
