@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { ProvisioningState } from './provisioning-flow'
+import type { ProvisioningState } from './flow'
 
 // ---------------------------------------------------------------------------
 // Mocks — these will be wired up when vitest is integrated
@@ -28,7 +28,7 @@ import type { ProvisioningState } from './provisioning-flow'
 // Mock Redis: in-memory store for test isolation
 const mockStore: Record<string, string> = {}
 
-vi.mock('../dashboard/src/lib/redis', () => ({
+vi.mock('@/lib/redis', () => ({
   default: {
     get: async (key: string) => mockStore[key] ?? null,
     set: async (key: string, value: string) => {
@@ -80,7 +80,7 @@ describe('Provisioning flow state transitions', () => {
   })
 
   it('starts with intent step on trigger phrase', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
     mockFetch.mockResolvedValue(mockApiResponse({ ok: true, cabinets: [] }))
 
     const replies = await handleMessage('chat1', 'I want a Cabinet')
@@ -89,7 +89,7 @@ describe('Provisioning flow state transitions', () => {
   })
 
   it('transitions intent → awaiting_name when Captain chooses preset', async () => {
-    const { handleMessage, loadState } = await import('./provisioning-flow')
+    const { handleMessage, loadState } = await import('./flow')
     mockFetch.mockResolvedValue(mockApiResponse({ ok: true, cabinets: [] }))
 
     await handleMessage('chat1', 'I want a Cabinet')
@@ -101,7 +101,7 @@ describe('Provisioning flow state transitions', () => {
   })
 
   it('transitions awaiting_name → awaiting_capacity_confirm on valid slug', async () => {
-    const { handleMessage, loadState } = await import('./provisioning-flow')
+    const { handleMessage, loadState } = await import('./flow')
     mockFetch.mockResolvedValue(mockApiResponse({ ok: true, cabinets: [] }))
 
     await handleMessage('chat1', 'I want a Cabinet')
@@ -115,7 +115,7 @@ describe('Provisioning flow state transitions', () => {
   })
 
   it('transitions capacity_confirm → adopting_bot on yes + successful create', async () => {
-    const { handleMessage, loadState } = await import('./provisioning-flow')
+    const { handleMessage, loadState } = await import('./flow')
 
     mockFetch
       .mockResolvedValueOnce(mockApiResponse({ ok: true, cabinets: [] })) // listCabinets
@@ -132,7 +132,7 @@ describe('Provisioning flow state transitions', () => {
   })
 
   it('transitions adopting_bot → confirming_token when token received', async () => {
-    const { handleMessage, loadState } = await import('./provisioning-flow')
+    const { handleMessage, loadState } = await import('./flow')
     const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvw123'
 
     // Pre-populate state at adopting_bot step
@@ -162,7 +162,7 @@ describe('Provisioning flow state transitions', () => {
   })
 
   it('transitions confirming_token → adopting_bot (next officer) on yes', async () => {
-    const { handleMessage, loadState } = await import('./provisioning-flow')
+    const { handleMessage, loadState } = await import('./flow')
     const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvw123'
 
     const state: ProvisioningState = {
@@ -192,7 +192,7 @@ describe('Provisioning flow state transitions', () => {
   })
 
   it('transitions to polling_status when all bots adopted', async () => {
-    const { handleMessage, loadState } = await import('./provisioning-flow')
+    const { handleMessage, loadState } = await import('./flow')
     const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvw123'
 
     const state: ProvisioningState = {
@@ -233,7 +233,7 @@ describe('Input validation errors', () => {
   beforeEach(() => clearStore())
 
   it('rejects invalid slug at awaiting_name step', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
     mockFetch.mockResolvedValue(mockApiResponse({ ok: true, cabinets: [] }))
 
     await handleMessage('chat2', 'I want a Cabinet')
@@ -244,7 +244,7 @@ describe('Input validation errors', () => {
   })
 
   it('rejects duplicate cabinet name (409 from API)', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
 
     mockFetch
       .mockResolvedValueOnce(
@@ -259,7 +259,7 @@ describe('Input validation errors', () => {
   })
 
   it('shows error when create cabinet fails', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
 
     mockFetch
       .mockResolvedValueOnce(mockApiResponse({ ok: true, cabinets: [] }))
@@ -276,7 +276,7 @@ describe('Input validation errors', () => {
   })
 
   it('shows error when no token found in adopt_bot message', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
 
     const state: ProvisioningState = {
       step: 'adopting_bot',
@@ -304,7 +304,7 @@ describe('Cancellation routing', () => {
   beforeEach(() => clearStore())
 
   it('cancels and calls cancel API when in adopting-bots state', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
 
     const state: ProvisioningState = {
       step: 'adopting_bot',
@@ -342,7 +342,7 @@ describe('Cancellation routing', () => {
   })
 
   it('advises archive when Cabinet is already active', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
 
     const state: ProvisioningState = {
       step: 'polling_status',
@@ -369,7 +369,7 @@ describe('Cancellation routing', () => {
   })
 
   it('ignores cancel when no active flow', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
 
     // No state in Redis
     const replies = await handleMessage('chat3', 'cancel')
@@ -385,7 +385,7 @@ describe('State persistence', () => {
   beforeEach(() => clearStore())
 
   it('resumes flow from saved state on next message', async () => {
-    const { handleMessage, loadState } = await import('./provisioning-flow')
+    const { handleMessage, loadState } = await import('./flow')
 
     // Simulate partially completed session: at awaiting_name step
     const savedState: ProvisioningState = {
@@ -418,7 +418,7 @@ describe('State persistence', () => {
 
 describe('Token extraction', () => {
   it('extracts token from raw BotFather forward text', async () => {
-    const { extractTokenFromForward } = await import('./provisioning-flow')
+    const { extractTokenFromForward } = await import('./flow')
 
     const raw = 'Use this token to access the HTTP API:\n123456789:ABCDEFabcdefghij-KLMNO_pqrstu'
     const result = extractTokenFromForward(raw)
@@ -429,14 +429,14 @@ describe('Token extraction', () => {
   })
 
   it('returns null when no token in text', async () => {
-    const { extractTokenFromForward } = await import('./provisioning-flow')
+    const { extractTokenFromForward } = await import('./flow')
 
     const result = extractTokenFromForward('No token here, just text')
     expect(result).toBeNull()
   })
 
   it('shows orphan warning when token overridden', async () => {
-    const { handleMessage } = await import('./provisioning-flow')
+    const { handleMessage } = await import('./flow')
     const TOKEN_1 = '123456789:ABCDEFabcdefghij-KLMNO_pqrstu1234'
     const TOKEN_2 = '987654321:ZYXWVUzyxwvutsrq-PONML_kjihgf9876'
 
@@ -471,7 +471,7 @@ describe('Token extraction', () => {
 
 describe('Polling loop', () => {
   it('calls sendMessage with live URL when state becomes active', async () => {
-    const { startPollingLoop } = await import('./provisioning-flow')
+    const { startPollingLoop } = await import('./flow')
 
     const sent: string[] = []
     const sendMessage = vi.fn(async (msg: { text: string }) => {
