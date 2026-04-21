@@ -164,13 +164,14 @@ _(none)_
 ---
 
 ### FW-023 — Spec 039 test-fixture coverage expansion
-- **Status:** Proposed (deferred from PR-3, 2026-04-21 per COO observation).
+- **Status:** Fixture-half DONE 2026-04-21 (commit `e793059`); pytest harness-half still open.
 - **Problem:** `cabinet/scripts/lib/test_etl_fixtures.py` shipped 8 fixtures covering representative paths (LINEAR queue/wip/done/cancelled, epic synthesis, GH FW-marked + closed + no-marker). Non-blocking gaps flagged by COO: (a) no GH fixture with `state_reason='not_planned'` to validate AC #52 (closed-not-planned → cancelled) end-to-end, (b) no `captain_decision=TRUE` fixture (Linear label-based flag).
-- **Desired end state:** 2 additional fixtures added + corresponding asserts in test_etl.py (once test harness lands — currently no pytest setup exists in repo; fixture file is type-only for now).
+- **Progress 2026-04-21:** Fixture-half landed (commit `e793059`): `LINEAR_ISSUE_CAPTAIN_DECISION` (SEN-251 pricing-pivot, label-based flag on Linear side), `GH_ISSUE_CLOSED_NOT_PLANNED` (FW-013 shape, exercises AC #52 mapping), `GH_ISSUE_CAPTAIN_DECISION` (FW-010 shape, GH parity of captain-decision label). `ALL_LINEAR_ISSUES` / `ALL_GH_ISSUES` bundles updated. Pytest harness to exercise these against `_map_state` / `_captain_decision` transforms still deferred.
+- **Desired end state:** pytest harness under `cabinet/scripts/lib/tests/` that imports these fixtures and asserts transform invariants (AC #52 mapping, captain_decision flag propagation, cancelled_at=closed_at, etc.).
 - **Coupled to:** Standing up pytest in cabinet/scripts/lib/tests/ — larger hygiene work. FW-021 overlaps.
-- **Effort:** 30 min for fixtures; ~half day for pytest harness.
+- **Effort remaining:** ~half day for pytest harness + 3-5 initial asserts.
 - **Owner:** CTO.
-- **Source:** COO PR-3 code-review 2026-04-21 15:26 UTC — flagged non-blocking, cleared for self-merge with deferral understood.
+- **Source:** COO PR-3 code-review 2026-04-21 15:26 UTC — flagged non-blocking, cleared for self-merge with deferral understood. Fixture-half completed during 5m-loop quiet period 2026-04-21 per captain's standing "never report idle" directive.
 
 ---
 
