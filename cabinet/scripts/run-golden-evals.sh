@@ -511,25 +511,50 @@ if [ ! -f "$EV11_HOOK" ]; then
 else
   EV11_DEPLOY_RE=$(grep -E "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
   EV11_DRYRUN_RE=$(grep -E "elif echo .*--dry-run" "$EV11_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-  EV11_DRYRUN_LINE=$(grep -nE "elif echo .*--dry-run" "$EV11_HOOK" | head -1 | cut -d: -f1)
-  EV11_DEPLOY_LINE=$(grep -nE "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK" | head -1 | cut -d: -f1)
-  EV11_DRYRUN_COUNT=$(grep -cE "elif echo .*--dry-run" "$EV11_HOOK")
-  EV11_DEPLOY_COUNT=$(grep -cE "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK")
+  # Split-range ordering: collect ALL occurrences of each elif and pair
+  # them by index (block 5's dry-run ↔ block 5's deploy; block 6's dry-run
+  # ↔ block 6's deploy). Previous `head -1` check only asserted block 5
+  # ordering — a refactor that desynced block 6 (deploy-elif moved above
+  # dry-run-elif) would have been missed. COO observation on bde229e.
+  readarray -t EV11_DRYRUN_LINES < <(grep -nE "elif echo .*--dry-run" "$EV11_HOOK" | cut -d: -f1)
+  readarray -t EV11_DEPLOY_LINES < <(grep -nE "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK" | cut -d: -f1)
+  EV11_DRYRUN_COUNT=${#EV11_DRYRUN_LINES[@]}
+  EV11_DEPLOY_COUNT=${#EV11_DEPLOY_LINES[@]}
 
   if [ -z "$EV11_DEPLOY_RE" ]; then
     EV11_FAILURE="deploy regex extraction returned empty (hook rewrite broke extraction? update EVAL-011 pattern)"
   elif [ -z "$EV11_DRYRUN_RE" ]; then
     EV11_FAILURE="dry-run skip regex extraction returned empty (M-4b skip elif missing or extraction broken)"
-  elif [ "$EV11_DRYRUN_LINE" -gt "$EV11_DEPLOY_LINE" ]; then
-    EV11_FAILURE="dry-run skip elif (line $EV11_DRYRUN_LINE) is AFTER deploy elif (line $EV11_DEPLOY_LINE) — skip will never fire"
   elif [ "$EV11_DRYRUN_COUNT" -ne 2 ] || [ "$EV11_DEPLOY_COUNT" -ne 2 ]; then
     EV11_FAILURE="expected 2 dry-run skips + 2 deploy elifs (block 5 + block 6), got dry-run=$EV11_DRYRUN_COUNT deploy=$EV11_DEPLOY_COUNT"
   else
+    # Per-block ordering: dry-run-elif MUST precede deploy-elif in each
+    # block, otherwise the skip never fires and --dry-run falls through
+    # to AUTO-DEPLOY (or the verify-deploy reminder).
+    for i in "${!EV11_DRYRUN_LINES[@]}"; do
+      EV11_DR="${EV11_DRYRUN_LINES[$i]}"
+      EV11_DP="${EV11_DEPLOY_LINES[$i]}"
+      if [ "$EV11_DR" -gt "$EV11_DP" ]; then
+        EV11_FAILURE="block $((i+1)) ordering: dry-run skip elif (line $EV11_DR) is AFTER deploy elif (line $EV11_DP) — skip will never fire in that block"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV11_FAILURE" ]; then
+    # Positive cases: each of these MUST trigger the deploy elif.
+    # `HEAD:main` + trailing `;` added in Phase C: pre-main char class
+    # extended to [[:space:]/:] (colon), terminator class extended to
+    # [[:space:];] (semicolon). Refs/heads/main exercises the `/`
+    # separator path (same class extension).
     for cmd in \
       "git push origin main" \
       "git push main" \
       "git push https://x-access-token:FAKE@github.com/STEP-Network/Sensed main" \
-      "git push origin master"; do
+      "git push origin master" \
+      "git push origin HEAD:main" \
+      "git push origin main; echo done" \
+      "git push origin refs/heads/main"; do
       if ! echo "$cmd" | grep -qE "$EV11_DEPLOY_RE"; then
         EV11_FAILURE="deploy regex FAILED expected-positive: $cmd"
         break
@@ -537,9 +562,21 @@ else
     done
 
     if [ -z "$EV11_FAILURE" ]; then
+      # Negative cases: each of these MUST NOT trigger the deploy elif.
+      # HEADmain (no separator): verifies no empty-string fusion of
+      # HEAD→main. feat/main-branch: trailing `-branch` breaks the
+      # terminator. main-feat: trailing `-` breaks the terminator.
+      # feat/main + issue-42/main: verifies `/` is NOT a pre-main
+      # separator for arbitrary branch names — only refs/heads/ prefix
+      # is accepted (Sonnet adversary finding #1 on Phase C regex, 2026-04-21).
       for cmd in \
         "git push release-please--branches--main" \
-        "git push origin feature-branch"; do
+        "git push origin feature-branch" \
+        "git push origin HEADmain" \
+        "git push origin feat/main-branch" \
+        "git push origin main-feat" \
+        "git push origin feat/main" \
+        "git push origin issue-42/main"; do
         if echo "$cmd" | grep -qE "$EV11_DEPLOY_RE"; then
           EV11_FAILURE="deploy regex WRONGLY matched expected-negative: $cmd"
           break
