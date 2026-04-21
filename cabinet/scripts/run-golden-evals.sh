@@ -21,6 +21,21 @@ cleanup() {
   # overwrites cos_cost_micro on the very next tool call, so a poisoned value
   # self-heals within seconds. HDEL here would risk clobbering real wrapper data.
   redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL cabinet:triggers:evaltest > /dev/null 2>&1
+  # EVAL-008: clean stop-hook test residue. HDEL both today's + yesterday's
+  # keys so a midnight-spanning eval (stop-hook wrote to yesterday's key,
+  # trap fires after 00:00 UTC) still cleans up correctly. The transcript
+  # rm uses $$ scope — the glob could race against a concurrent eval run
+  # and delete a peer's in-flight transcript, so we only rm this run's file.
+  _ET_TODAY=$(date -u +%Y-%m-%d)
+  _ET_YDAY=$(date -u -d 'yesterday' +%Y-%m-%d 2>/dev/null)
+  for _ET_DT in "$_ET_TODAY" "$_ET_YDAY"; do
+    [ -z "$_ET_DT" ] && continue
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "cabinet:cost:tokens:daily:$_ET_DT" \
+      evaltest_input evaltest_output evaltest_cache_write evaltest_cache_read evaltest_cost_micro \
+      > /dev/null 2>&1
+  done
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:cost:tokens:evaltest" > /dev/null 2>&1
+  rm -f "/tmp/eval-transcript-$$.jsonl" 2>/dev/null
 }
 trap cleanup EXIT
 VERBOSE=${1:-""}
@@ -250,6 +265,96 @@ if [ -f "$PRE_HOOK" ]; then
   fi
 else
   fail "pre-tool-use.sh not found at $PRE_HOOK"
+fi
+
+# ------------------------------------------------------------------
+# Eval 008: stop-hook cost-write integrity (FW-016 regression catcher)
+# ------------------------------------------------------------------
+# stop-hook.sh writes per-turn cost data to cabinet:cost:tokens:daily:$DATE
+# HSET (FW-016). pre-tool-use.sh reads that HSET to enforce spending caps
+# (FW-002). If stop-hook silently stops writing — e.g. a jq upgrade breaks
+# the transcript parse, or the HSET pipeline loses a field — pre-tool-use
+# reads 0, every cap reads as unhit, and FW-002 silently fails open.
+#
+# This eval simulates one stop-hook invocation with a canned Opus
+# transcript (known token counts) and asserts the HSET fields populated
+# with the exact expected values. Any drift in the jq extraction, the
+# HINCRBY fields, or the COST_MICRO math flips the assertion.
+#
+# Canned Opus turn: input=1000, output=500, cache_write=200, cache_read=3000.
+# Expected cost_micro per stop-hook.sh line 52 Opus case:
+#   1000*15 + 500*75 + 200*3750/1000 + 3000*300/1000
+# = 15000 + 37500 + 750 + 900 = 54150 microdollars.
+#
+# Uses a fake officer "evaltest" (no real tier2 dir, no collision with
+# live officers). HDEL cleanup in both the inline path and the EXIT trap.
+#
+# Scope — what this eval does NOT cover:
+#   * Sonnet pricing path (stop-hook line 56) — officers run Opus per
+#     CLAUDE.md, so Opus is the primary drift surface. Extend with a
+#     second fixture if Sonnet becomes an officer model.
+#   * Unknown-model silent fallthrough to Sonnet pricing (stop-hook
+#     lines 54-57 default case) — a new model like claude-opus-5 would
+#     silently use Sonnet (5x cheaper) pricing, under-reporting cost.
+#     Proper fix is a stderr warn in stop-hook for unrecognized models;
+#     filed as a latent drift concern, not what this eval catches.
+#   * New-field schema additions (e.g. Claude Code adds a 6th usage
+#     field stop-hook should track) — the eval asserts the 5 known
+#     fields match; it won't detect that a new field exists and is
+#     being ignored. Field-rename drift DOES trip the eval (the rename
+#     makes stop-hook's jq return 0 → HSET value mismatches expected).
+#   * Redis-down or jq-missing silent failure — those require preflight
+#     checks in stop-hook itself, not observable via this round-trip test.
+#   * Cabinet-wide cap false-positive window — evaltest_cost_micro is
+#     briefly (~10ms between stop-hook HINCRBY and inline HDEL) visible
+#     in the *_cost_micro sum that pre-tool-use.sh computes for the
+#     cabinet-wide cap. Blast radius: $0.054 extra in the sum. Real
+#     officers could be incorrectly blocked IF the cabinet cap sits
+#     within 5 cents of threshold at the exact eval moment — vanishing
+#     probability in practice, but not zero. If evals start running
+#     automatically on every push (FW-025), revisit: either use a
+#     non-*_cost_micro-suffixed test field or rate-limit eval runs.
+#
+# Reserved test identity: the officer name "evaltest" is a convention
+# reserved across golden evals (also used in EVAL-005 for triggers).
+# If someone genuinely creates an officer named "evaltest", the
+# cleanup trap's HDEL would clobber their real cost data. Convention
+# not enforcement; rename if you're hiring a 100th officer.
+log "EVAL-008: stop-hook cost-write integrity (FW-016 regression catcher)"
+STOP_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/stop-hook.sh"
+if [ -f "$STOP_HOOK" ]; then
+  EVAL_DATE=$(date -u +%Y-%m-%d)
+  EVAL_KEY="cabinet:cost:tokens:daily:$EVAL_DATE"
+  # Pre-clean — HINCRBY accumulates, so prior residue would skew the test.
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "$EVAL_KEY" \
+    evaltest_input evaltest_output evaltest_cache_write evaltest_cache_read evaltest_cost_micro \
+    > /dev/null 2>&1
+  EVAL_TX="/tmp/eval-transcript-$$.jsonl"
+  cat > "$EVAL_TX" <<'EOT'
+{"type":"assistant","message":{"model":"claude-opus-4-7","usage":{"input_tokens":1000,"output_tokens":500,"cache_creation_input_tokens":200,"cache_read_input_tokens":3000}}}
+EOT
+  echo "{\"session_id\":\"eval-session\",\"transcript_path\":\"$EVAL_TX\"}" \
+    | OFFICER_NAME=evaltest bash "$STOP_HOOK" > /dev/null 2>&1
+  ACTUAL_INPUT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_input 2>/dev/null)
+  ACTUAL_OUTPUT=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_output 2>/dev/null)
+  ACTUAL_CW=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cache_write 2>/dev/null)
+  ACTUAL_CR=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cache_read 2>/dev/null)
+  ACTUAL_COST=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "$EVAL_KEY" evaltest_cost_micro 2>/dev/null)
+  if [ "$ACTUAL_INPUT" = "1000" ] && [ "$ACTUAL_OUTPUT" = "500" ] && \
+     [ "$ACTUAL_CW" = "200" ] && [ "$ACTUAL_CR" = "3000" ] && \
+     [ "$ACTUAL_COST" = "54150" ]; then
+    pass "stop-hook writes cost HSET correctly (all 5 fields, cost_micro=54150)"
+  else
+    fail "stop-hook cost-write drift (input=$ACTUAL_INPUT/1000 output=$ACTUAL_OUTPUT/500 cache_write=$ACTUAL_CW/200 cache_read=$ACTUAL_CR/3000 cost_micro=$ACTUAL_COST/54150)"
+  fi
+  # Inline cleanup (trap also handles on interrupt)
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HDEL "$EVAL_KEY" \
+    evaltest_input evaltest_output evaltest_cache_write evaltest_cache_read evaltest_cost_micro \
+    > /dev/null 2>&1
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "cabinet:cost:tokens:evaltest" > /dev/null 2>&1
+  rm -f "$EVAL_TX"
+else
+  fail "stop-hook.sh not found at $STOP_HOOK"
 fi
 
 # ------------------------------------------------------------------

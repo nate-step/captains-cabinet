@@ -212,13 +212,14 @@ _(none)_
   - `cabinet/scripts/test-escalation.sh:156` — swaps `GET` on legacy key for `HGETALL` on tokens:daily.
   - `cabinet/scripts/run-golden-evals.sh` EVAL-003 — was silently broken on two counts (wrote legacy key that pre-tool-use no longer reads; greppped stdout for a stderr message). Now: HSET writes `cos_cost_micro=999999999`, captures stderr via `2>&1 >/dev/null`, greps `BLOCKED.*officer=cos`. Skips gracefully when platform.yml cap=0.
 - **Why this mattered:** byte-count INCRBY under-reported by ~100× (byte length ≠ tokens) AND double-counted alongside the cost-aware Anthropic wrapper. Dashboard showed inflated-but-wrong numbers. More dangerous: EVAL-003 was quietly passing as a no-op for an unknown stretch — golden evals must not silently rot.
-- **Source:** CTO session 2026-04-17 23:00 UTC discovered drift; CTO session 2026-04-21 19:00 UTC shipped the fix during /loop proactive work.
+- **Regression catcher shipped 2026-04-21:** `run-golden-evals.sh` EVAL-008 pins the stop-hook → HSET write path. Canned Opus transcript (input=1000, output=500, cache_write=200, cache_read=3000) → asserts stop-hook writes `evaltest_input/output/cache_write/cache_read/cost_micro` to `cabinet:cost:tokens:daily:$DATE` with cost_micro=54150 matching the Opus math. Catches drift in the jq extraction chain, the HINCRBY field list, or the COST_MICRO formula. Trap cleanup HDELs today+yesterday to handle midnight-spanning eval runs. Sonnet adversary review caught midnight-boundary trap bug (fixed: HDEL both dates), `/tmp/eval-transcript-*.jsonl` glob race (fixed: scope to `$$`), and doc gaps (scope section expanded to note new-field drift, cabinet-wide cap window, evaltest reserved-name convention). Suite 11/11 → 12/12.
+- **Source:** CTO session 2026-04-17 23:00 UTC discovered drift; CTO session 2026-04-21 19:00 UTC shipped the fix during /loop proactive work. EVAL-008 regression catcher shipped during subsequent /loop tick after stop-hook silent-fail audit.
 
 ---
 
 ### FW-025 — Golden-evals pre-push gate (catch silent eval rot at commit boundary)
 - **Status:** Proposed.
-- **Problem:** FW-022 (`d45c8f2`, 2026-04-21 19:04Z) silently broke EVAL-001 and EVAL-002 for ~34 minutes before `8577433` (19:38Z, FW-022 regression catcher) caught it. The root cause was FW-022 migrating block messages from stdout → stderr; the two evals captured `2>/dev/null` and so saw empty output. No merge/push gate runs `run-golden-evals.sh`, so golden-evals can rot between runs with zero visibility until the next manual invocation. FW-007's pre-push hook catches force-overwrites on master but does not run the eval suite.
+- **Problem:** FW-022 (`d45c8f2`, 2026-04-21 19:16:17Z) silently broke EVAL-001 and EVAL-002 for ~56 minutes before `8577433` (20:12:14Z, FW-022 regression catcher) caught it. The root cause was FW-022 migrating block messages from stdout → stderr; the two evals captured `2>/dev/null` and so saw empty output. No merge/push gate runs `run-golden-evals.sh`, so golden-evals can rot between runs with zero visibility until the next manual invocation. FW-007's pre-push hook catches force-overwrites on master but does not run the eval suite.
 - **Desired end state:** Every `git push origin master` that touches hook files or eval plumbing runs `bash cabinet/scripts/run-golden-evals.sh` locally before the push completes; non-zero exit blocks the push with stderr explaining which eval failed (FW-022 lesson). Optionally gate all pushes regardless of changed paths — evals are <2s, cost negligible.
 - **Options:**
   1. **Extend `cabinet/scripts/git-hooks/pre-push`** — cheapest, local-only, shared-tree aware, no CI infra. Calls `run-golden-evals.sh`; non-zero exit aborts push. Respects captain's rapid-iteration-feedback preference.
@@ -233,4 +234,4 @@ _(none)_
 - **Effort:** S (~2-3h including adversary review).
 - **Owner:** CTO.
 - **Depends on:** FW-007 pre-push hook scaffold (shipped) — FW-025 extends it.
-- **Source:** COO adversary review of commit `8577433` (2026-04-21 20:15 UTC) — flagged as tangential FW opportunity, not blocking. Cascade gap empirically validated: FW-022 broke EVAL-001/002 for 34 min with no merge gate to catch.
+- **Source:** COO adversary review of commit `8577433` (2026-04-21 20:15 UTC) — flagged as tangential FW opportunity, not blocking. Cascade gap empirically validated via git authordates: FW-022 (`d45c8f2`, 19:16:17Z) broke EVAL-001/002 for 56 min with no merge gate to catch, until `8577433` (20:12:14Z) landed. Timestamp correction applied per COO review of initial FW-025 draft.
