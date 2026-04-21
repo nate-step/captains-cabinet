@@ -174,6 +174,22 @@ _(none)_
 
 ---
 
+### FW-024 — Dockerfile.officer Python deps (Spec 039 ETL durable fix)
+- **Status:** Captain founder-action — pending 2026-04-21.
+- **Problem:** Officer containers built from `cabinet/Dockerfile.officer` off `ubuntu:24.04` lack `pip3` / `psycopg2` / `requests` / `yaml`. Spec 039 Phase A Gate 1 (`migrate-sources-to-officer-tasks.sh`) fails preflight in officer containers. Officers cannot edit Dockerfile.officer themselves — pre-tool-use.sh hook line 338 blocks Edit/Write on paths containing `Dockerfile` (hard block, all officers, no bypass).
+- **Interim mitigation:** `bootstrap-host.sh` now installs the three Python modules on HOST so wet-run scripts can execute from a host shell (commit `0433733`, 2026-04-21). Unblocks tonight but does not help in-container operators.
+- **Captain founder-action:**
+  1. Edit `cabinet/Dockerfile.officer` — add to existing apt-get line: `python3-pip python3-psycopg2 python3-requests python3-yaml`.
+  2. Rebuild: `docker compose -f cabinet/docker-compose.yml build` (or `up -d --build`).
+  3. Restart: `docker compose -f cabinet/docker-compose.yml up -d --force-recreate`.
+  4. Verify: `docker exec officer-cos python3 -c 'import psycopg2, requests, yaml'` returns exit 0.
+- **Unblocks:** CoS Gate 1 dry-run (currently halting at preflight), container-shell wet-run replays.
+- **Owner:** Captain (Nate) — only role with Dockerfile edit authority per hook policy.
+- **Effort:** ~5 min edit + ~2-3 min rebuild.
+- **Source:** CoS blocker trigger 2026-04-21 15:48:01 UTC; CTO confirmation that in-session Dockerfile edit was blocked by pre-tool-use hook.
+
+---
+
 ### FW-016 — Delete byte-count cost-write path in post-tool-use.sh (partially-applied fix)
 - **Status:** Proposed (discovered 2026-04-17 23:00 UTC by CTO).
 - **Problem:** A prior session's summary claimed the byte-count cost-tracking path was removed from `post-tool-use.sh`, but git log shows no such commit. Lines 66-88 still write `COST_CENTS = wc -c-derived garbage` to three legacy keys:
