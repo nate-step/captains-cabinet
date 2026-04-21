@@ -698,6 +698,127 @@ else
 fi
 
 # ------------------------------------------------------------------
+# Eval 013: post-tool-use.sh FW-028 command-start anchor (AUTO-DEPLOY amp fix)
+# ------------------------------------------------------------------
+# FW-028 (2026-04-21, COO observation on SEN-559 validation): test-harness
+# strings like `for cmd in "git push origin main" ...` in EVAL-011 were
+# triggering the AUTO-DEPLOY substring regex, amplifying validation
+# notifications. Root cause: the deploy regex matched ANYWHERE in the
+# command payload, so quoted-string contents tripped it.
+#
+# Fix: a noop-first-elif that requires the CMD to START with a deploy-
+# style executable (git / gh / curl), optionally prefixed by
+# `sudo `, `env VAR=value `, or `timeout Ns `. `head -n1` restricts
+# the shape-check to line 1 so heredoc bodies don't trip the anchor.
+#
+# Scope: applied to BOTH block 5 (AUTO-DEPLOY notifications to validators)
+# AND block 6 (verify-deploy REMINDER echoes). A partial fix to one block
+# only would leave the other as the amplification pathway.
+#
+# This eval pins:
+#   (a) Count=2 across the file — both blocks received the anchor.
+#       (Single-occurrence grep would pass on a partial revert.)
+#   (b) Distinctive comment phrase `CMD does not start with a deploy-style
+#       executable` appears exactly 2 times (one per block's noop branch).
+#   (c) Positive matrix MUST include the three Phase C extensions
+#       (`HEAD:main`, `refs/heads/main`, `main; echo done`) per COO caveat
+#       — anchor tightening must not silently regress Phase C gains.
+#   (d) Negative matrix covers the test-harness forms that caused the
+#       original amplification (for-loop, echo, grep, bash -c, cat|grep,
+#       quoted-string leading, comment-leading).
+log "EVAL-013: post-tool-use.sh FW-028 command-start anchor invariants"
+EV13_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+EV13_FAILURE=""
+
+if [ ! -f "$EV13_HOOK" ]; then
+  EV13_FAILURE="post-tool-use.sh not found at $EV13_HOOK"
+else
+  # Static pins — both blocks received the anchor.
+  EV13_ANCHOR_COUNT=$(grep -c "head -n1 | grep -qE '\^\[\[:space:\]\]" "$EV13_HOOK")
+  EV13_NOOP_COMMENT_COUNT=$(grep -cF 'CMD does not start with a deploy-style executable' "$EV13_HOOK")
+  EV13_FW028_MARKER_COUNT=$(grep -cF 'FW-028: command-start anchor' "$EV13_HOOK")
+
+  if [ "$EV13_ANCHOR_COUNT" -lt 2 ]; then
+    EV13_FAILURE="FW-028 anchor count=$EV13_ANCHOR_COUNT (expected 2 — one per block). Partial revert would reopen AUTO-DEPLOY amplification in the un-anchored block."
+  elif [ "$EV13_NOOP_COMMENT_COUNT" -ne 2 ]; then
+    EV13_FAILURE="FW-028 noop comment count=$EV13_NOOP_COMMENT_COUNT (expected 2 — 'CMD does not start with a deploy-style executable'). Per-block comment drift signals structural divergence."
+  elif [ "$EV13_FW028_MARKER_COUNT" -lt 2 ]; then
+    EV13_FAILURE="FW-028 marker count=$EV13_FW028_MARKER_COUNT (expected >=2 — 'FW-028: command-start anchor' comment). Intent marker removed, regression risk."
+  else
+    # Extract the anchor regex to exercise it. Both blocks have the
+    # same regex — head -1 is safe.
+    EV13_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '\^\[\[:space:\]\]" "$EV13_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    if [ -z "$EV13_ANCHOR_RE" ]; then
+      EV13_FAILURE="anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-013 extractor)"
+    fi
+  fi
+
+  if [ -z "$EV13_FAILURE" ]; then
+    # Positive matrix — anchor MUST match. Failing any of these means
+    # a real push would be silently silenced (no AUTO-DEPLOY, no
+    # verify-deploy REMINDER). COO caveat on FW-028: the three Phase C
+    # forms (HEAD:main, refs/heads/main, `;` terminator) MUST still pass.
+    for cmd in \
+      "git push origin main" \
+      "git push origin HEAD:main" \
+      "git push origin refs/heads/main" \
+      "git push origin main; echo done" \
+      "git push origin master" \
+      "git push https://x-access-token:FAKE@github.com/STEP-Network/Sensed main" \
+      "sudo git push origin main" \
+      "env FOO=bar git push origin main" \
+      "env A=1 B=2 git push origin main" \
+      "timeout 60 git push origin main" \
+      "  git push origin main" \
+      "git -C /workspace/product push origin main" \
+      "gh pr merge 42 --squash"; do
+      if ! echo "$cmd" | head -n1 | grep -qE "$EV13_ANCHOR_RE"; then
+        EV13_FAILURE="FW-028 anchor FAILED expected-positive: $cmd (real push would be silently silenced, no AUTO-DEPLOY cascade)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV13_FAILURE" ]; then
+    # Negative matrix — anchor MUST NOT match. These are the test-
+    # harness forms that CAUSED the amplification before FW-028. A
+    # match here means the original bug is still present.
+    for cmd in \
+      'for cmd in "git push origin main"; do echo "$cmd"; done' \
+      'echo "git push origin main"' \
+      'grep -q "git push origin main" /tmp/foo' \
+      "bash -c 'git push origin main'" \
+      'cat /tmp/foo | grep "git push origin main"' \
+      '"git push origin main"' \
+      '# git push origin main' \
+      'python3 -c "print(\"git push origin main\")"' \
+      'EV11_DEPLOY_RE=$(grep "git push origin main" file)'; do
+      if echo "$cmd" | head -n1 | grep -qE "$EV13_ANCHOR_RE"; then
+        EV13_FAILURE="FW-028 anchor WRONGLY matched expected-negative: $cmd (test-harness form would still amplify AUTO-DEPLOY via substring hit)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV13_FAILURE" ]; then
+    # Heredoc negative: multi-line CMD with a non-deploy first line
+    # must not trip the anchor even if line 2+ contains `git push main`.
+    # `head -n1` in the hook restricts shape-check to line 1; this
+    # mirrors that restriction here.
+    EV13_HEREDOC=$'cat <<EOF\ngit push origin main\nEOF'
+    if echo "$EV13_HEREDOC" | head -n1 | grep -qE "$EV13_ANCHOR_RE"; then
+      EV13_FAILURE="FW-028 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken, heredoc bodies re-amplify"
+    fi
+  fi
+fi
+
+if [ -n "$EV13_FAILURE" ]; then
+  fail "$EV13_FAILURE"
+else
+  pass "FW-028 command-start anchor classifies AUTO-DEPLOY amplification cases correctly (Phase C positives preserved, test-harness forms rejected, heredoc bodies skipped)"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""

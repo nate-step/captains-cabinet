@@ -291,15 +291,19 @@ _(none)_
 - **Source:** Background Sonnet audit of `cabinet/scripts/hooks/post-tool-use.sh` (agent `abde8919ad9f72dd1`, completed 2026-04-21 21:00 UTC). 7 findings (H:2 M:3 L:2) → Phase A shipped 4, rejected 1 FP, deferred 2 L + 2 evals to Phase B.
 
 ### FW-028 — AUTO-DEPLOY trigger amplification (no dedup on deploy detection)
-- **Status:** Proposed 2026-04-21 (COO observation on SEN-559 Universal Links deploy validation).
+- **Status:** Phase A SHIPPED 2026-04-21 (command-start anchor, both blocks, EVAL-013). Phase B (SETNX dedup) deferred pending real-traffic observation.
 - **Symptom:** COO received 4 identical AUTO-DEPLOY triggers in 110s during SEN-559 validation (21:54:48, 21:56:07, 21:56:23, 21:56:38 UTC — deltas 79s/16s/15s). All 4 bodies identical. Single push should fire exactly one trigger.
-- **Root cause hypothesis (to confirm):** `post-tool-use.sh` deploy-detection block (lines ~253, ~283) fires on any tool call whose Bash `$CMD` matches the `git push.*main` regex — regardless of whether the command is (a) an actual `git push` invocation, (b) a test harness containing `"git push origin main"` as a string literal, (c) an `echo`/`grep`/`cat` command that includes the substring, or (d) a log-viewing command surfacing the original push. No `cabinet:deploy-notified:<hash>` dedup lock; no cooldown; no shell-level parsing to distinguish "git push is the executable" from "git push appears as string content."
-- **Evidence:** During this same window, CTO was running regex validation loops containing `for cmd in "git push origin main" ...` — these are plausible amplification sources (their CMD strings contained the matched substring but the framework-URL filter only catches `/opt/founders-cabinet` etc., not generic test harnesses). Phase C Sonnet adversary review did not probe amplification because scope was regex correctness, not dedup invariants.
-- **Proposed fix:**
-  1. **Shell-level anchor:** require the regex to match only when `git push` is the command-start (after optional `sudo`/env prefix) rather than anywhere in the CMD string. Would use anchored pattern like `^[[:space:]]*(sudo[[:space:]]+)?(env[[:space:]]+[^[:space:]]+[[:space:]]+)*git[[:space:]]+push[[:space:]]+...` or parse-then-match.
-  2. **Dedup lock:** `redis-cli SETNX cabinet:deploy-notified:<hash-of-cmd-with-refspec> 1 EX 60` before firing triggers; skip if already set. Limits amplification to 1/min per unique push.
-  3. **EVAL-013:** dynamic test — set TOOL_INPUT to a test harness like `for cmd in "git push origin main" ...; do echo "$cmd"; done`, run hook, assert zero triggers to validator officers. Pin the anchor/dedup invariant.
-- **Blast radius without fix:** Validators + reviewers get N spurious AUTO-DEPLOY triggers per deploy event, poisoning accountability ("validate deployment NOW" × 4 × 2 officers = 8 stale triggers per push). Current severity: Medium — noisy but not incorrect (validation still runs; each trigger ACK'd independently).
-- **Effort:** S (~1-2h — anchor + dedup + EVAL-013).
+- **Root cause (confirmed):** `post-tool-use.sh` deploy-detection block (5) and verify-deploy-reminder block (6) regex-matched any CMD containing `git push ... main` as a substring — regardless of whether `git push` was the actual executable or just quoted string content (e.g., `for cmd in "git push origin main"` in EVAL-011).
+- **Phase A (SHIPPED):**
+  1. **Command-start anchor in BOTH blocks 5 + 6:** noop-first-elif requires CMD to START with `(git|gh|curl)` optionally preceded by `sudo `, `env VAR=X ` (multi-assignment supported), or `timeout Ns `. `head -n1` restricts shape-check to line 1 so heredoc bodies don't trip. Adversary-validated (Finding #5: multi-assignment `env A=1 B=2 git push` coverage added pre-commit).
+  2. **EVAL-013 (static):** pins anchor count=2, distinctive comment phrases, and exercises the anchor against 13 positives (incl. COO-required Phase C forms: `HEAD:main`, `refs/heads/main`, `main; echo done`) + 9 test-harness negatives (for-loop, echo, grep, bash -c, cat|grep, quoted-string leading, comment, python, variable-assignment).
+- **Phase B (deferred):** SETNX dedup lock (`cabinet:deploy-notified:<hash> EX 60`). Decision: observe real-traffic amplification first. Anchor alone may be sufficient — the observed amplification root cause was test-harness substring match, not legitimate duplicate pushes. Re-evaluate after 1 week of post-shipping observation. If amplification recurs outside test harnesses, implement dedup with normalized-refspec hash (per COO suggestion).
+- **Known scope gaps (not in Phase A, adversary-flagged but deferred):**
+  - `git log 'git push origin main'` with literal push-string argument would still trip deploy regex (pre-existing substring-match limitation, not introduced by FW-028).
+  - `sudo -u someuser git push` (sudo with flags) — anchor only accepts bare `sudo `.
+  - `GIT_DIR=/path git push` (bare var assignment without `env ` keyword).
+  All three are theoretical — no officer push pattern uses these forms. Track as low-priority FW-029 candidate if operational.
+- **Blast radius before fix:** Validators + reviewers received N spurious AUTO-DEPLOY triggers per deploy event (observed: 4 triggers in 110s for single push).
+- **Effort:** S (~1h — shipped).
 - **Owner:** CTO.
-- **Source:** COO observation during SEN-559 Universal Links deploy validation 2026-04-21 21:57 UTC.
+- **Source:** COO observation during SEN-559 Universal Links deploy validation 2026-04-21 21:57 UTC. Phase A shipped 2026-04-21 22:XX UTC.

@@ -248,7 +248,17 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # no Vercel deployment. Without this guard, every framework master push
   # triggered a false-positive AUTO-DEPLOY cascade at the validators (COO
   # flagged 2026-04-17 after the initial release-please filter landed).
-  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
+  # FW-028: command-start anchor — CMD must START with a deploy-style
+  # executable (git / gh / curl, optionally prefixed by sudo / env VAR=X /
+  # timeout Ns). This prevents test harnesses + echoes from triggering
+  # AUTO-DEPLOY via substring match on their quoted string contents
+  # (e.g., `for cmd in "git push origin main" ...` during regex tests
+  # amplified triggers to validators — COO observation on SEN-559
+  # validation, 2026-04-21). `head -n1` restricts to the first line so
+  # heredoc bodies (`cat <<EOF\ngit push ...\nEOF`) also don't trip.
+  if ! echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git|gh|curl)[[:space:]]'; then
+    :  # noop — CMD does not start with a deploy-style executable
+  elif echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
   elif echo "$CMD" | grep -qE 'git push[^&;]*--dry-run|git push[[:space:]]+([^&;]*[[:space:]])?-n([[:space:]]|$)'; then
     :  # noop — --dry-run or short-form -n skip; [^&;] stops the scan at
@@ -275,7 +285,15 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
   # no Vercel deployment. Without this guard, every framework master push
   # triggered a false-positive AUTO-DEPLOY cascade at the validators (COO
   # flagged 2026-04-17 after the initial release-please filter landed).
-  if echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
+  # FW-028: command-start anchor — mirror of block 5. Test harnesses that
+  # contain the literal string `git push origin main` inside quoted args
+  # (e.g., EVAL-011 regex loops) should not fire the verify-deploy
+  # REMINDER echoes either. Same anchor as block 5: CMD must START with
+  # git/gh/curl (optionally prefixed by sudo / env VAR=X / timeout Ns).
+  # `head -n1` restricts to the first line so heredoc bodies don't trip.
+  if ! echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git|gh|curl)[[:space:]]'; then
+    :  # noop — CMD does not start with a deploy-style executable
+  elif echo "$CMD" | grep -qE '/opt/founders-cabinet|/opt/captains-cabinet|nate-step/captains-cabinet|nate-step/founders-cabinet'; then
     :  # noop — cabinet-framework push, not a product deploy
   elif echo "$CMD" | grep -qE 'git push[^&;]*--dry-run|git push[[:space:]]+([^&;]*[[:space:]])?-n([[:space:]]|$)'; then
     :  # noop — --dry-run or short-form -n; skip verify-deploy reminder
