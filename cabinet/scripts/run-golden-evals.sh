@@ -308,12 +308,21 @@ fi
 #   * Cabinet-wide cap false-positive window — evaltest_cost_micro is
 #     briefly (~10ms between stop-hook HINCRBY and inline HDEL) visible
 #     in the *_cost_micro sum that pre-tool-use.sh computes for the
-#     cabinet-wide cap. Blast radius: $0.054 extra in the sum. Real
-#     officers could be incorrectly blocked IF the cabinet cap sits
-#     within 5 cents of threshold at the exact eval moment — vanishing
-#     probability in practice, but not zero. If evals start running
-#     automatically on every push (FW-025), revisit: either use a
-#     non-*_cost_micro-suffixed test field or rate-limit eval runs.
+#     cabinet-wide cap. Blast radius: $0.054 extra in the sum.
+#     REVISITED 2026-04-21 (FW-025 shipped — evals now run on every
+#     master push): accepted as a known window. Mitigation via
+#     non-*_cost_micro-suffixed test field would require editing
+#     stop-hook.sh (which hardcodes `${OFFICER}_cost_micro` as the
+#     pricing-derived output field and is the very target of this
+#     regression test — changing it defeats the test). Mitigation via
+#     pre-tool-use.sh exclusion list is out of scope for FW-025 and
+#     would introduce a new untested exception path. FW-025's flock
+#     serializes eval runs across officers, capping the residue at
+#     ONE $0.054 entry at any moment rather than N×$0.054. Current
+#     platform.yml cap=0 (unlimited) gives zero false-positive risk;
+#     if Captain later tightens daily_cabinet_wide_usd below ~$1,
+#     file a follow-up FW to add an exclusion or swap the probe
+#     identity to a non-cost-summed field family.
 #
 # Reserved test identity: the officer name "evaltest" is a convention
 # reserved across golden evals (also used in EVAL-005 for triggers).

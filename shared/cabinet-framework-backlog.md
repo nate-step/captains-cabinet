@@ -218,7 +218,7 @@ _(none)_
 ---
 
 ### FW-025 — Golden-evals pre-push gate (catch silent eval rot at commit boundary)
-- **Status:** Proposed.
+- **Status:** Shipped 2026-04-21 (Option 1 — pre-push hook extension).
 - **Problem:** FW-022 (`d45c8f2`, 2026-04-21 19:16:17Z) silently broke EVAL-001 and EVAL-002 for ~56 minutes before `8577433` (20:12:14Z, FW-022 regression catcher) caught it. The root cause was FW-022 migrating block messages from stdout → stderr; the two evals captured `2>/dev/null` and so saw empty output. No merge/push gate runs `run-golden-evals.sh`, so golden-evals can rot between runs with zero visibility until the next manual invocation. FW-007's pre-push hook catches force-overwrites on master but does not run the eval suite.
 - **Desired end state:** Every `git push origin master` that touches hook files or eval plumbing runs `bash cabinet/scripts/run-golden-evals.sh` locally before the push completes; non-zero exit blocks the push with stderr explaining which eval failed (FW-022 lesson). Optionally gate all pushes regardless of changed paths — evals are <2s, cost negligible.
 - **Options:**
@@ -235,3 +235,4 @@ _(none)_
 - **Owner:** CTO.
 - **Depends on:** FW-007 pre-push hook scaffold (shipped) — FW-025 extends it.
 - **Source:** COO adversary review of commit `8577433` (2026-04-21 20:15 UTC) — flagged as tangential FW opportunity, not blocking. Cascade gap empirically validated via git authordates: FW-022 (`d45c8f2`, 19:16:17Z) broke EVAL-001/002 for 56 min with no merge gate to catch, until `8577433` (20:12:14Z) landed. Timestamp correction applied per COO review of initial FW-025 draft.
+- **Shipped:** Option 1 implemented in `cabinet/scripts/git-hooks/pre-push` via `run_golden_evals_gate()` function. Fires only when push includes `refs/heads/master`; uses `flock -w 30 /tmp/cabinet-golden-evals.lock` to serialize eval runs across concurrent officers (mitigates EVAL-008's shared `evaltest_*` Redis-key contamination). Fail-closed on non-zero eval exit. Pre-commit Sonnet adversary review (2026-04-21): 5 findings triaged — rejected 3 (false positive on BLOCK_REASON bleed, misread of flock(2) semantics, Redis-down silent-skip would re-introduce FW-022 risk), accepted 2 doc-only (`--no-verify` escape hatch documented in hook header, EVAL-008 scope note updated to reflect FW-025 shipping + accepted cap-sum window). Empirically validated: test 1 (non-master push) skips gate, test 2 (master FF) runs 12/12 evals, test 3 (master force-overwrite) blocks before gate. Follow-up watchpoint: if Captain tightens `daily_cabinet_wide_usd < $1`, re-evaluate EVAL-008 probe-field collision window.

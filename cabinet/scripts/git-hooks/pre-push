@@ -38,6 +38,17 @@
 #
 # Exit 0 = allow, Exit 1 = block. Stderr gets the reason on block —
 # silent exits are banned (FW-022 lesson).
+#
+# Emergency escape hatch (rare, last-resort):
+#   git push --no-verify origin master
+# bypasses ALL client-side hooks — including FW-007 force-push refusal
+# AND the FW-025 golden-eval gate. Use only when you're fixing a
+# broken stop-hook/eval that is itself blocking the fix push, or when
+# Redis is down and the eval suite cannot run. Document the usage in
+# shared/force-push-log.md anyway so the team knows why the normal
+# safeties were bypassed. `--no-verify` is a bigger hammer than
+# FORCE_PUSH_ANNOUNCED (which only bypasses force-push refusal) — reach
+# for it last.
 
 set -u
 
@@ -45,6 +56,8 @@ ANNOUNCE_MAX_AGE_SEC=300
 PROTECTED_REF="refs/heads/master"
 LOG_REL="shared/force-push-log.md"
 ZERO_SHA="0000000000000000000000000000000000000000"
+EVAL_LOCK_TIMEOUT_SEC=30
+EVAL_LOCK_FILE="/tmp/cabinet-golden-evals.lock"
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
@@ -53,6 +66,10 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 
 LOG_PATH="$REPO_ROOT/$LOG_REL"
+
+# Capture pushed refs once — stdin is single-use. Both the force-push
+# loop (FW-007) and the golden-evals gate (FW-025) need to scan it.
+REFS_INPUT=$(cat)
 
 is_announced() {
   local env_ts="${FORCE_PUSH_ANNOUNCED:-}"
@@ -97,6 +114,7 @@ is_announced() {
 }
 
 BLOCK_REASON=""
+PUSHES_MASTER=false
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [ -z "${remote_ref:-}" ]; then
     continue
@@ -104,6 +122,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$remote_ref" != "$PROTECTED_REF" ]; then
     continue
   fi
+  # From here on: this ref is the protected master branch.
+  PUSHES_MASTER=true
   # Deleting master is destructive — require announcement.
   if [ "$local_sha" = "$ZERO_SHA" ]; then
     BLOCK_REASON="delete of $PROTECTED_REF"
@@ -118,14 +138,71 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     continue
   fi
   BLOCK_REASON="force overwrite of $PROTECTED_REF (remote $remote_sha is not an ancestor of local $local_sha — commits would be lost)"
-done
+done <<< "$REFS_INPUT"
+
+# --- FW-025: Golden-evals gate on master pushes ---
+# Runs the local golden-eval suite before any master push completes.
+# Closes the cascade gap that let FW-022 (d45c8f2, 2026-04-21 19:16:17Z)
+# silently break EVAL-001/002 for 56 minutes — no merge gate ran evals,
+# so the breakage persisted until 8577433 (FW-022 regression catcher)
+# landed and a human manually re-ran the suite.
+#
+# Fail-closed: any non-zero eval exit aborts the push with stderr.
+# Silent-skip paths are banned (FW-022 lesson: silent skip = latent drift).
+#
+# Scope: only master pushes are gated. Feature-branch pushes skip (they
+# get evaluated when merged and pushed to master).
+#
+# Concurrency: flock on $EVAL_LOCK_FILE serializes eval runs across
+# officers sharing the tree. EVAL-008 uses shared Redis keys
+# (evaltest_*) under a fixed OFFICER_NAME=evaltest; concurrent runs
+# would cross-contaminate HINCRBY accumulation and yield spurious
+# failures OR mask real failures (peer's correct write covers for
+# broken local stop-hook). Serializing is cheap — full suite runs in
+# ~1-2s per empirical measurement.
+run_golden_evals_gate() {
+  local eval_script="$REPO_ROOT/cabinet/scripts/run-golden-evals.sh"
+  if [ ! -x "$eval_script" ]; then
+    echo "pre-push: BLOCKED — $eval_script missing or not executable (FW-025)" >&2
+    return 1
+  fi
+  if ! command -v flock >/dev/null 2>&1; then
+    echo "pre-push: BLOCKED — flock(1) unavailable; FW-025 gate requires it" >&2
+    echo "  install: apt-get install util-linux" >&2
+    return 1
+  fi
+  echo "pre-push: FW-025 — running golden-eval suite before master push (serialized, ~1-2s)..." >&2
+  (
+    flock -w "$EVAL_LOCK_TIMEOUT_SEC" 200 || {
+      echo "pre-push: golden-evals lock timeout after ${EVAL_LOCK_TIMEOUT_SEC}s — concurrent eval run?" >&2
+      exit 1
+    }
+    bash "$eval_script"
+  ) 200>"$EVAL_LOCK_FILE"
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    cat >&2 <<EOF
+pre-push: BLOCKED — golden-eval suite failed (exit $rc). Fix the failure, re-run
+  bash cabinet/scripts/run-golden-evals.sh
+locally to confirm 12/12 before retrying the push.
+EOF
+    return 1
+  fi
+  return 0
+}
 
 if [ -z "$BLOCK_REASON" ]; then
+  if $PUSHES_MASTER; then
+    run_golden_evals_gate || exit 1
+  fi
   exit 0
 fi
 
 if is_announced; then
   echo "pre-push: $BLOCK_REASON allowed — announcement $FORCE_PUSH_ANNOUNCED present in $LOG_REL" >&2
+  if $PUSHES_MASTER; then
+    run_golden_evals_gate || exit 1
+  fi
   exit 0
 fi
 
