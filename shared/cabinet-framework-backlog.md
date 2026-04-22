@@ -383,13 +383,14 @@ _(none)_
 - **Owner:** CTO.
 
 ### FW-035 — cosmetic amplifications (activity display + git-add gate stdout)
-- **Status:** Proposed 2026-04-21 (Crew sweep Findings #2 + #4, bundled LOW-priority).
-- **Symptom #1 (Finding #2):** `post-tool-use.sh:124-128` activity display string amplifies on `pulls/N/merge` and `gh pr create` substring — wrong dashboard label for 5 min.
-- **Symptom #2 (Finding #4):** `post-tool-use.sh:462` infrastructure-review gate echoes stdout warning on `git add` substring match — spurious warning inside officer session for commit bodies mentioning `git add`.
+- **Status:** SHIPPED 2026-04-22 — Phase A committed + pushed (activity display anchored via shared `_ACT_PREFIX` across 5 verb branches; infra-gate anchored on `git[[:space:]]+add`; EVAL-017 pins both with matrices).
+- **Symptom #1 (Finding #2):** `post-tool-use.sh:119-145` activity display string amplified on `pulls/N/merge` and `gh pr create` substring — wrong dashboard label for 5 min.
+- **Symptom #2 (Finding #4):** `post-tool-use.sh:472` infrastructure-review gate echoed stdout warning on `git add` substring match — spurious warning inside officer session for commit bodies mentioning `git add`.
 - **Blast radius:** LOW — cosmetic/ephemeral. No gate consumed, no trigger fired.
-- **Proposed fix:** Apply command-start anchor; pin as EVAL-017 + EVAL-018 if promoted.
-- **Effort:** XS each.
-- **Owner:** CTO (low-priority, batch with other hook work).
+- **Phase A fix:** `head -n1` extraction + shared `_ACT_PREFIX` command-start anchor (priv-esc stack: sudo/env/timeout) interpolated into 5 verb branches; `bash/sh` launcher allowance on verify-deploy branch (canonical form per skill docs); trailing `([[:space:];]|$)` alignment across all branches. Infra gate gets dedicated command-start anchor. Both pinned by EVAL-017 (static presence + activity-display positive/negative matrix + infra-gate 7/7/1 positive/negative/heredoc matrices).
+- **Adversary triage (Sonnet, 5 findings):** #1 `bash verify-deploy.sh` missed canonical form → FIXED INLINE; #3 trailing-boundary inconsistency → FIXED INLINE (aligned verify-deploy to `([[:space:];]|$)`); #4 EVAL coverage gap → FIXED INLINE (added activity-display matrix); #2 `curl POST /pulls` REST PR-create display drop → filed as FW-036 #15 (intentional narrowing, cosmetic regression); #5 chained-deploy (`pnpm run build && git push main`) → already tracked as FW-036 #10.
+- **Effort:** XS-M (shipped).
+- **Owner:** CTO.
 
 ### FW-036 — FW-032 Phase B: whitelist anchor scope gaps (under-match on legitimate forms)
 - **Status:** Proposed 2026-04-21 (Sonnet adversary on FW-032 Phase A ship — Findings #2/#3/#5/#8/#9).
@@ -403,7 +404,12 @@ _(none)_
   - **#10 `npm run build && git push origin master` (chained deploy).** FW-033 Sonnet adversary. Anchor requires deploy verb at START; `npm run build &&` precedes. Generic pattern across FW-028/029/032/033 (all share the anchor architecture). Operational impact: nudge missed on chained deploys; gate skipped on Layer 1 (real push still goes through).
   - **#11 `for i in 1 2 3; do git push; done` (loop-wrapped).** Same class as #10.
   - **#12 `GIT_SSH_COMMAND="ssh -i key" git push` (inline env assignment).** Inline `VAR=value cmd` form is NOT the `env VAR=value cmd` builtin form. Priv-esc stack covers the latter, not the former. Officers using inline env prefix (e.g., SSH key override) lose anchor match. Consistent gap across FW-028/029/032/033.
+  - **#13 Absolute-path launcher: `/usr/bin/bash /path/send-to-group.sh`, `/bin/sh /path/...`.** COO FW-032 Phase A empirical validation. `([^[:space:]]*/)?` prefix GREEDILY captures the absolute launcher path (`/usr/bin/`) instead of the optional script-path; remaining text then fails to match `bash ` at cursor because the cursor already advanced past it. Officers occasionally invoke via absolute paths for script-hardening / cron; whitelist fails → main-cap enforced.
+  - **#14 Absolute-path launcher cross-hook (git/gh): `/usr/bin/git push origin main`, `/usr/local/bin/gh pr create`.** COO FW-033 Phase A empirical validation. Same root cause as #13 but applied to FW-033's `git[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+create` stems — no optional path prefix before `git/gh`. Operational impact: experience-nudge missed on absolute-path invocations. Fail-safe direction (nudge is reminder, not gate).
+  - **#15 `curl -X POST .../pulls` REST PR-create (activity display only).** FW-035 Sonnet Finding #2. Old activity-display pattern matched `/pulls"|/pulls ` (curl REST PR-create). FW-035 narrowed to `gh pr create` only. Cosmetic drop: officer sees "working" instead of "shipping" when creating a PR via curl REST. Scope limited to post-tool-use.sh:134 activity branch.
 - **Decision on #10/#11/#12:** Accept as documented scope-gaps. Extending the anchor to cover chaining / loops / inline env would complicate the regex beyond maintainability benefit. Mitigation: officers split chained deploys into two Bash calls, or use the env builtin (`env VAR=value git push` matches).
+- **Decision on #13/#14:** Folded into Phase B as cross-hook absolute-path launcher gap. Fix: allow `([^[:space:]]*/)?` to be OPTIONAL (already is) AND allow a subsequent `(bash|sh|git|gh)` stem WITHOUT the prefix being present — essentially a choice between "priv-esc stack + script-at-cursor" OR "absolute-path launcher + stem-at-path-tail". Mitigation today: officers invoke via PATH-resolved form (no absolute launcher) OR use the whitelist-aware wrapper. Bounded operational friction, no security bypass.
+- **Decision on #15:** Accept as cosmetic regression. Officers rarely create PRs via curl REST (they use `gh pr create`). Re-introducing `/pulls"|/pulls ` without command-start anchoring would re-amplify on commit bodies mentioning `/pulls`. If restoration is desired, narrow to `_ACT_PREFIX(curl|wget)[[:space:]]` AND `/pulls"?$`.
 - **Blast radius:** Operational friction — legitimate Captain DMs may hit main-cap instead of sub-cap on certain invocation forms. No security bypass, no state corruption, no protected-branch issue.
 - **Proposed fix:** Extend Phase A anchor to cover each form; pin each with a positive EVAL-015 test case. Scope:
   1. Widen flag pattern to `((-[A-Za-z]+|-o[[:space:]]+[A-Za-z0-9]+)[[:space:]]+)*` for `-o pipefail`.
@@ -423,6 +429,28 @@ _(none)_
   2. Extract the anchor via a different channel — e.g., a comment-delimited block `# FW-032-ANCHOR-START...# FW-032-ANCHOR-END` with the pattern on its own line.
 - **Effort:** XS (~15min, one of the two options).
 - **Owner:** CTO when extending the anchor.
+
+### FW-038 — cross-hook prefix-wrapper class sweep (nohup / exec / stdbuf / subshell / brace / pipe-first)
+- **Status:** Proposed 2026-04-22 (COO FW-033 Phase A empirical validation — secondary forward-looking SGs).
+- **Context:** The FW-028/029/032/033/035 anchor family (`_ACT_PREFIX` + command-start) has a consistent cross-cut gap: command WRAPPERS that precede the target stem silence every anchor. COO observed this while validating FW-033 Phase A; same class applies to all four hooks.
+- **Wrapper forms that silence all anchors:**
+  - `nohup git push origin main` (nohup wrapper)
+  - `exec git push origin main` (exec replace)
+  - `stdbuf -oL git push origin main` (stdbuf wrapper — GNU coreutils)
+  - `(git push origin main)` (subshell)
+  - `{ git push origin main; }` (brace group)
+  - `true | git push origin main` (pipe-first)
+- **Root cause:** `_ACT_PREFIX` covers `sudo`/`env`/`timeout` as the universal priv-esc stack but omits the broader "command wrapper" class. Wrappers rearrange the execution tree without being a variable assignment or priv-esc step, so we skipped them at initial scope. Consistent gap across FW-028 (auto-deploy detector), FW-029 (Layer 1 + CI Green gate), FW-032 (telegram whitelist), FW-033 (experience nudge), FW-035 (activity display + infra gate).
+- **Blast radius:** Mixed. Fail-safe for nudge/display (reminder not gate). Fail-safe for whitelist (main-cap enforced). **Fail-OPEN for Layer 1 + CI Green** — real production pushes via wrapper forms skip Crew-review. Zero observed usage today but operational drift possible if officer scripts adopt `nohup` for long-running deploys.
+- **Proposed fix (Phase B):** Prepend a generic wrapper-class to `_ACT_PREFIX`:
+  ```
+  _WRAP_PREFIX='^[[:space:]]*(nohup[[:space:]]+|exec[[:space:]]+|stdbuf[[:space:]]+(-[a-zA-Z][[:space:]]*[a-zA-Z]+[[:space:]]+)*)?'
+  ```
+  Apply `${_WRAP_PREFIX}${_ACT_PREFIX}` as the new universal prefix across all 5 hooks. Brace/subshell/pipe-first NOT covered — those require multiline-aware regex; document as residual scope-gap.
+- **Eval coverage:** Add one positive per wrapper form to each of EVAL-011, 013, 014, 015, 016, 017.
+- **Pin in EVAL family:** Promote `_WRAP_PREFIX` to a shared library constant (`cabinet/scripts/lib/anchor-prefixes.sh`?) so all 5 hooks can source the same prefix — single-point-of-truth avoids drift.
+- **Effort:** M (~1h: regex widen across 5 hooks + eval cases + optional library extraction).
+- **Owner:** CTO when operational data shows wrapper usage OR when bundling with FW-036 Phase B.
 
 ### FW-031 — Layer 1 gate: mirror / HEAD / tag pushes silently bypass
 - **Status:** Proposed 2026-04-21 (Sonnet adversary Finding #3 on FW-029).

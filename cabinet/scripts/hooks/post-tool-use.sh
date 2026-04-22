@@ -117,21 +117,27 @@ case "$TOOL_NAME" in
     fi
     ;;
   Bash)
-    CMD_SNIP=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-    if echo "$CMD_SNIP" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:]]|$)'; then
+    # FW-035: restrict to first line (heredoc body ignored) and apply
+    # command-start anchors so commit bodies / echoed strings / grep
+    # output mentioning the verbs don't mislabel the activity display
+    # for 5 min. Impact is cosmetic, but the substring amplification
+    # belongs to the FW-028/029/032/033 family.
+    CMD_SNIP=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null | head -n1)
+    _ACT_PREFIX='^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*'
+    if echo "$CMD_SNIP" | grep -qE "${_ACT_PREFIX}git[[:space:]]+push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:];]|$)"; then
       ACTIVITY_VERB="deploying"
       ACTIVITY_OBJECT="to main"
-    elif echo "$CMD_SNIP" | grep -qE 'pulls/[0-9]+/merge'; then
+    elif echo "$CMD_SNIP" | grep -qE "${_ACT_PREFIX}(curl|gh[[:space:]]+api)[[:space:]]"  && echo "$CMD_SNIP" | grep -qE 'pulls/[0-9]+/merge'; then
       PRNUM=$(echo "$CMD_SNIP" | grep -oE 'pulls/[0-9]+' | grep -oE '[0-9]+' | head -1)
       ACTIVITY_VERB="shipping"
       ACTIVITY_OBJECT="PR #${PRNUM:-a change}"
-    elif echo "$CMD_SNIP" | grep -qE 'gh pr create|/pulls\"|/pulls '; then
+    elif echo "$CMD_SNIP" | grep -qE "${_ACT_PREFIX}gh[[:space:]]+pr[[:space:]]+create([[:space:];]|$)"; then
       ACTIVITY_VERB="shipping"
       ACTIVITY_OBJECT="a PR"
-    elif echo "$CMD_SNIP" | grep -qE '\bpnpm (install|run|test|build)|\bnpm (install|run|test|build)|\bvitest\b|\btsc\b|\beslint\b'; then
+    elif echo "$CMD_SNIP" | grep -qE "${_ACT_PREFIX}(pnpm|npm)[[:space:]]+(install|run|test|build)([[:space:];]|$)|${_ACT_PREFIX}(vitest|tsc|eslint)([[:space:];]|$)"; then
       ACTIVITY_VERB="testing"
       ACTIVITY_OBJECT="the build"
-    elif echo "$CMD_SNIP" | grep -qE 'verify-deploy\.sh'; then
+    elif echo "$CMD_SNIP" | grep -qE "${_ACT_PREFIX}(bash[[:space:]]+(-[A-Za-z]+[[:space:]]+)*|sh[[:space:]]+(-[A-Za-z]+[[:space:]]+)*)?([^[:space:]]*/)?verify-deploy\.sh([[:space:];]|$)"; then
       ACTIVITY_VERB="deploying"
       ACTIVITY_OBJECT="a release"
     else
@@ -469,7 +475,12 @@ fi
 # ============================================================
 if [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE 'git add'; then
+  # FW-035: command-start anchor — CMD must actually start with `git add`
+  # (priv-esc prefixes allowed). Prior substring match fired the gate on
+  # `echo "next: git add -A"` / commit-body / grep output mentioning
+  # `git add`. Impact bounded by the inner STAGED check, but spurious
+  # echoes of the warning still pollute officer stdout.
+  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*git[[:space:]]+add([[:space:];]|$)'; then
     # Check if critical infrastructure files are being staged
     STAGED=$(cd /opt/founders-cabinet && git diff --cached --name-only 2>/dev/null)
     if echo "$STAGED" | grep -qE '(hooks/|CLAUDE\.md|\.claude/agents/|scripts/lib/|officer-capabilities|officer-skills/|constitution/)'; then

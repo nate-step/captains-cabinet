@@ -1206,6 +1206,148 @@ else
 fi
 
 # ------------------------------------------------------------------
+# EVAL-017 — post-tool-use.sh FW-035 activity display + infra gate anchors
+# ------------------------------------------------------------------
+# FW-035 regression catcher: the activity display (post-tool-use.sh:119-145)
+# and infrastructure review gate (post-tool-use.sh:472-ish) use broad
+# substring matches. Prior activity-display patterns e.g. `pulls/[0-9]+/merge`
+# fired on commit bodies referencing merged PRs; `git add` in the infra
+# gate fired on `echo "next: git add -A"`. Blast was cosmetic (wrong
+# 5-min activity display + spurious gate stdout), but the substring
+# amplification belongs to the FW-028/029/032/033 family.
+#
+# Phase A: apply `head -n1` CMD extraction and command-start anchors.
+# Activity display uses `_ACT_PREFIX` interpolation (priv-esc stack)
+# shared across 5 branches; infra gate uses static anchor at its
+# single grep call.
+log "EVAL-017: post-tool-use.sh FW-035 activity display + infra gate anchor invariants"
+EV17_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+EV17_FAILURE=""
+
+if [ ! -f "$EV17_HOOK" ]; then
+  EV17_FAILURE="post-tool-use.sh not found at $EV17_HOOK"
+else
+  EV17_FW035_MARKER=$(grep -cF 'FW-035' "$EV17_HOOK")
+  EV17_ACT_HEAD_N1=$(grep -cE 'CMD_SNIP=\$\(echo "\$TOOL_INPUT" \| jq -r .* \| head -n1\)' "$EV17_HOOK")
+  EV17_ACT_PREFIX_DEF=$(grep -cE '_ACT_PREFIX=' "$EV17_HOOK")
+  EV17_ACT_PREFIX_USE=$(grep -cF '${_ACT_PREFIX}' "$EV17_HOOK")
+  EV17_INFRA_ANCHOR_COUNT=$(grep -E "head -n1 \| grep -qE '" "$EV17_HOOK" | grep -cF 'git[[:space:]]+add')
+
+  if [ "$EV17_FW035_MARKER" -lt 2 ]; then
+    EV17_FAILURE="FW-035 marker count=$EV17_FW035_MARKER (expected >=2 — one per touched block). Partial revert suspected."
+  elif [ "$EV17_ACT_HEAD_N1" -lt 1 ]; then
+    EV17_FAILURE="FW-035 activity display CMD_SNIP does NOT have head -n1 guard — heredoc amplification re-opened."
+  elif [ "$EV17_ACT_PREFIX_DEF" -lt 1 ]; then
+    EV17_FAILURE="FW-035 activity display _ACT_PREFIX definition missing — command-start anchor not shared across branches."
+  elif [ "$EV17_ACT_PREFIX_USE" -lt 5 ]; then
+    EV17_FAILURE="FW-035 activity display uses \${_ACT_PREFIX} in $EV17_ACT_PREFIX_USE branches (expected >=5 — one per verb-detector branch). Branch drift = partial anchor."
+  elif [ "$EV17_INFRA_ANCHOR_COUNT" -lt 1 ]; then
+    EV17_FAILURE="FW-035 infra review gate did NOT get command-start anchor on git[[:space:]]+add — spurious gate stdout re-opened."
+  else
+    # Extract the FW-035 infra-gate anchor.
+    EV17_INFRA_RE=$(grep -E "head -n1 \| grep -qE '" "$EV17_HOOK" | grep -F 'git[[:space:]]+add' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    if [ -z "$EV17_INFRA_RE" ]; then
+      EV17_FAILURE="FW-035 infra-gate anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-017 extractor)"
+    fi
+  fi
+
+  if [ -z "$EV17_FAILURE" ]; then
+    # Infra-gate positive matrix — real `git add` CMDs MUST fire.
+    for cmd in \
+      'git add file.sh' \
+      'git add -A' \
+      'git add .' \
+      'sudo git add /root/file' \
+      'env FOO=1 git add file' \
+      'timeout 10s git add -p' \
+      '  git add file'; do
+      if ! echo "$cmd" | head -n1 | grep -qE "$EV17_INFRA_RE"; then
+        EV17_FAILURE="FW-035 infra-gate anchor FAILED expected-positive: $cmd (real git add CMD would NOT trigger infra review check)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV17_FAILURE" ]; then
+    # Infra-gate negative matrix — echoed/commit-body/grep must NOT fire.
+    for cmd in \
+      'echo "next step: git add -A then commit"' \
+      'git commit -m "docs: run git add -p before staging"' \
+      'grep "git add" /var/log/audit.log' \
+      'cat notes.md | grep "git add"' \
+      'git status' \
+      'git log --grep="git add"' \
+      'vim /tmp/instructions.md'; do
+      if echo "$cmd" | head -n1 | grep -qE "$EV17_INFRA_RE"; then
+        EV17_FAILURE="FW-035 infra-gate anchor WRONGLY matched expected-negative: $cmd (spurious infra-review warning stdout on non-add CMD)"
+        break
+      fi
+    done
+  fi
+
+  if [ -z "$EV17_FAILURE" ]; then
+    # Heredoc negative.
+    EV17_HEREDOC=$'cat <<EOF\ngit add -A\nEOF'
+    if echo "$EV17_HEREDOC" | head -n1 | grep -qE "$EV17_INFRA_RE"; then
+      EV17_FAILURE="FW-035 infra-gate anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken"
+    fi
+  fi
+
+  # Activity-display matrix (Sonnet Finding #4): a branch can drift to
+  # un-anchored without tripping the static count. Verify each of the 5
+  # verb-detector branches fires on a canonical positive and silences
+  # on a canonical negative using the real _ACT_PREFIX from the hook.
+  if [ -z "$EV17_FAILURE" ]; then
+    EV17_ACT_PREFIX='^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*'
+    # Each row: branch-label | positive-cmd | negative-cmd | pattern
+    # Pattern uses ${_ACT_PREFIX} as in the hook.
+    declare -a EV17_BRANCHES=(
+      "deploying-main|git push origin main|echo \"run: git push origin main\"|${EV17_ACT_PREFIX}git[[:space:]]+push[[:space:]]+(origin[[:space:]]+)?(main|master)([[:space:];]|\$)"
+      "shipping-prcreate|gh pr create --title foo|git commit -m \"gh pr create follow-up\"|${EV17_ACT_PREFIX}gh[[:space:]]+pr[[:space:]]+create([[:space:];]|\$)"
+      "testing-pnpm|pnpm run test|echo \"pnpm run test later\"|${EV17_ACT_PREFIX}(pnpm|npm)[[:space:]]+(install|run|test|build)([[:space:];]|\$)"
+      "testing-tsc|tsc --noEmit|echo \"run tsc before push\"|${EV17_ACT_PREFIX}(vitest|tsc|eslint)([[:space:];]|\$)"
+      "deploying-verify|bash cabinet/scripts/verify-deploy.sh deploy abc|echo \"use verify-deploy.sh after merge\"|${EV17_ACT_PREFIX}(bash[[:space:]]+(-[A-Za-z]+[[:space:]]+)*|sh[[:space:]]+(-[A-Za-z]+[[:space:]]+)*)?([^[:space:]]*/)?verify-deploy\\.sh([[:space:];]|\$)"
+    )
+    for row in "${EV17_BRANCHES[@]}"; do
+      IFS='|' read -r label pos_cmd neg_cmd pattern <<< "$row"
+      if ! echo "$pos_cmd" | head -n1 | grep -qE "$pattern"; then
+        EV17_FAILURE="FW-035 activity-display $label branch FAILED expected-positive: '$pos_cmd' (real invocation silently falls through to 'working on something')"
+        break
+      fi
+      if echo "$neg_cmd" | head -n1 | grep -qE "$pattern"; then
+        EV17_FAILURE="FW-035 activity-display $label branch WRONGLY matched expected-negative: '$neg_cmd' (commit-body/echo amplification re-opened)"
+        break
+      fi
+    done
+  fi
+
+  # Shipping-PR-via-merge-API branch uses AND-composed grep (curl|gh api
+  # prefix AND pulls/N/merge substring). Verify separately.
+  if [ -z "$EV17_FAILURE" ]; then
+    EV17_MERGE_PREFIX="${EV17_ACT_PREFIX}(curl|gh[[:space:]]+api)[[:space:]]"
+    EV17_MERGE_PATH='pulls/[0-9]+/merge'
+    # Positive: curl PUT merge API.
+    EV17_POS='curl -X PUT https://api.github.com/repos/foo/bar/pulls/42/merge'
+    if ! { echo "$EV17_POS" | head -n1 | grep -qE "$EV17_MERGE_PREFIX" && echo "$EV17_POS" | head -n1 | grep -qE "$EV17_MERGE_PATH"; }; then
+      EV17_FAILURE="FW-035 activity-display shipping-merge branch FAILED positive: curl -X PUT .../pulls/42/merge"
+    fi
+  fi
+  if [ -z "$EV17_FAILURE" ]; then
+    # Negative: git log --grep references merge path but no curl/gh api prefix.
+    EV17_NEG='git log --grep="pulls/42/merge"'
+    if echo "$EV17_NEG" | head -n1 | grep -qE "$EV17_MERGE_PREFIX" && echo "$EV17_NEG" | head -n1 | grep -qE "$EV17_MERGE_PATH"; then
+      EV17_FAILURE="FW-035 activity-display shipping-merge branch WRONGLY matched expected-negative: git log --grep='pulls/N/merge'"
+    fi
+  fi
+fi
+
+if [ -n "$EV17_FAILURE" ]; then
+  fail "$EV17_FAILURE"
+else
+  pass "FW-035 activity display + infra-gate anchors classify real invocations vs commit-body/echo/grep amplification correctly"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""
