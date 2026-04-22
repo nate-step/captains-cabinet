@@ -616,6 +616,170 @@ def test_transform_issue_parent_epic_ref_from_lookup():
 
 
 # ---------------------------------------------------------------------------
+# GitHub `_transform_issue` — FW-marker gating, github_login assignee path,
+# label-driven priority/blocked/flags, closed+not_planned→cancelled
+# invariant, and the per-source invariants (context_slug, external_source,
+# parent_epic_ref=None, due_date=None).
+# ---------------------------------------------------------------------------
+
+_GH_MAPPING = {
+    "emails": {},
+    "github_logins": {
+        "cto-cabinet": "cto",
+        "nate-step": "captain",
+        "cpo-cabinet": "cpo",
+    },
+}
+
+
+def test_gh_transform_no_fw_marker_skips():
+    # Docstring invariant: absent FW-### marker → row is skipped with reason.
+    # This is how random user-reported GH issues stay out of officer_tasks.
+    skip, unresolved = [], []
+    result = etl_github._transform_issue(
+        fx.GH_ISSUE_NO_FW_MARKER, _GH_MAPPING, skip, unresolved
+    )
+    assert result is None
+    assert len(skip) == 1
+    assert skip[0]["reason"] == "no_fw_marker"
+    assert skip[0]["external_ref"] == str(fx.GH_ISSUE_NO_FW_MARKER["number"])
+
+
+def test_gh_transform_fw_marker_becomes_external_ref():
+    # external_ref is the FW-### marker, not the issue number. Critical for
+    # de-duplication against Linear rows that reference the same FW-###.
+    skip, unresolved = [], []
+    row = etl_github._transform_issue(
+        fx.GH_ISSUE_FW_MARKED, _GH_MAPPING, skip, unresolved
+    )
+    assert row is not None
+    assert row["external_ref"] == "FW-024"
+    assert row["external_source"] == "github-issues"
+
+
+def test_gh_transform_context_slug_always_cabinet_framework():
+    # GH ETL is the cabinet-framework side — context_slug invariant MUST NOT
+    # be "sensed" (that's Linear's context). If this breaks, framework tasks
+    # would pollute the Sensed product-task scope for briefings.
+    row = etl_github._transform_issue(fx.GH_ISSUE_FW_MARKED, _GH_MAPPING, [], [])
+    assert row["context_slug"] == "cabinet-framework"
+
+
+def test_gh_transform_per_source_invariants():
+    # GH ETL synthesizes no epic rows + has no native due_date field —
+    # parent_epic_ref and due_date MUST always be None on this source.
+    row = etl_github._transform_issue(fx.GH_ISSUE_FW_MARKED, _GH_MAPPING, [], [])
+    assert row["parent_epic_ref"] is None
+    assert row["due_date"] is None
+    assert row["type"] == "task"
+
+
+def test_gh_transform_closed_not_planned_cancelled_with_cancelled_at():
+    # Key contract: state='closed' + state_reason='not_planned' → status
+    # 'cancelled' AND cancelled_at takes closed_at. Distinct from completed_at
+    # (which stays None). This is the AC #52 fixture.
+    skip, unresolved = [], []
+    row = etl_github._transform_issue(
+        fx.GH_ISSUE_CLOSED_NOT_PLANNED, _GH_MAPPING, skip, unresolved
+    )
+    assert row["status"] == "cancelled"
+    assert row["cancelled_at"] == datetime(2026, 4, 8, 16, 45, 0, tzinfo=timezone.utc)
+    assert row["completed_at"] is None
+
+
+def test_gh_transform_closed_fixed_done_with_completed_at():
+    # Mirror of the above: state='closed' + state_reason='completed' → done
+    # with completed_at=closed_at, cancelled_at=None. Pins the three-way
+    # split (done / cancelled / none) works both directions.
+    skip, unresolved = [], []
+    row = etl_github._transform_issue(
+        fx.GH_ISSUE_CLOSED_FIXED, _GH_MAPPING, skip, unresolved
+    )
+    assert row["status"] == "done"
+    assert row["completed_at"] == datetime(2026, 4, 5, 11, 30, 0, tzinfo=timezone.utc)
+    assert row["cancelled_at"] is None
+
+
+def test_gh_transform_github_login_assignee_resolved():
+    # GH routes assignee via github_login (not email). Resolution must hit
+    # the github_logins side of the mapping dict, not emails.
+    issue = dict(fx.GH_ISSUE_FW_MARKED)
+    issue["assignee"] = {"login": "cto-cabinet"}
+    skip, unresolved = [], []
+    row = etl_github._transform_issue(issue, _GH_MAPPING, skip, unresolved)
+    assert row["officer_slug"] == "cto"
+    assert len(unresolved) == 0
+
+
+def test_gh_transform_captain_login_forces_founder_action():
+    # Same contract as Linear side: assignee resolving to "captain" auto-
+    # flags founder_action regardless of label presence.
+    issue = dict(fx.GH_ISSUE_FW_MARKED)
+    issue["assignee"] = {"login": "nate-step"}  # → captain
+    issue["labels"] = [{"name": "framework"}]  # no founder-action label
+    skip, unresolved = [], []
+    row = etl_github._transform_issue(issue, _GH_MAPPING, skip, unresolved)
+    assert row["officer_slug"] == "captain"
+    assert row["founder_action"] is True
+
+
+def test_gh_transform_unresolved_assignee_appends_with_fw_ref():
+    # Unresolved entry's external_ref is the FW marker (not issue number),
+    # mirroring the external_ref contract for the row. Keeps unresolved-log
+    # consistent with the skipped-row log.
+    issue = dict(fx.GH_ISSUE_FW_MARKED)
+    issue["assignee"] = {"login": "stranger-gh"}
+    skip, unresolved = [], []
+    row = etl_github._transform_issue(issue, _GH_MAPPING, skip, unresolved)
+    assert row["officer_slug"] is None
+    assert len(unresolved) == 1
+    assert unresolved[0]["external_ref"] == "FW-024"
+    assert unresolved[0]["source"] == "github-issues"
+    assert unresolved[0]["raw_identifier"] == "stranger-gh"
+
+
+def test_gh_transform_blocked_label_sets_overlay():
+    # GH has no native blocked field — "blocked" label sets blocked=True
+    # and blocked_reason="blocked" (literal, not a human-readable phrase).
+    issue = dict(fx.GH_ISSUE_FW_MARKED)
+    issue["labels"] = [{"name": "framework"}, {"name": "blocked"}]
+    row = etl_github._transform_issue(issue, _GH_MAPPING, [], [])
+    assert row["blocked"] is True
+    assert row["blocked_reason"] == "blocked"
+
+
+def test_gh_transform_no_blocked_label_blocked_false():
+    row = etl_github._transform_issue(fx.GH_ISSUE_FW_MARKED, _GH_MAPPING, [], [])
+    assert row["blocked"] is False
+    assert row["blocked_reason"] is None
+
+
+def test_gh_transform_priority_from_label():
+    # GH priority comes from labels (unlike Linear's numeric field).
+    issue = dict(fx.GH_ISSUE_FW_MARKED)
+    issue["labels"] = [{"name": "framework"}, {"name": "priority-p1"}]
+    row = etl_github._transform_issue(issue, _GH_MAPPING, [], [])
+    assert row["priority"] == "P1"
+
+
+def test_gh_transform_pr_url_extracted_from_body():
+    # PR URL extracted from body (unlike Linear's description).
+    issue = dict(fx.GH_ISSUE_FW_MARKED)
+    issue["body"] = (
+        "FW-024\n\nLanded in https://github.com/nate-step/captains-cabinet/pull/77"
+    )
+    row = etl_github._transform_issue(issue, _GH_MAPPING, [], [])
+    assert row["pr_url"] == "https://github.com/nate-step/captains-cabinet/pull/77"
+
+
+def test_gh_transform_captain_decision_label():
+    row = etl_github._transform_issue(
+        fx.GH_ISSUE_CAPTAIN_DECISION, _GH_MAPPING, [], []
+    )
+    assert row["captain_decision"] is True
+
+
+# ---------------------------------------------------------------------------
 # Standalone runner (no pytest required)
 # ---------------------------------------------------------------------------
 
