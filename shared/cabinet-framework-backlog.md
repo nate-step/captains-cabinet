@@ -525,6 +525,8 @@ _(none)_
   5. **`ln -s` symlink attack (HIGH)** — `ln -s /etc/passwd /workspace/product/passwd.md` creates an in-repo symlink to arbitrary system files. Not a write to product content but does surface protected content through product repo. Worth blocking.
   6. **Subshell / process-substitution / heredoc** — `(cp src /workspace/product/dst)`, `$(cp src /workspace/product/dst)`, `cat <<EOF > /workspace/product/x`. Subshell currently blocks via substring serendipity; process-sub and heredoc do not.
   7. **Backtick and `eval`** — `eval "cp src /workspace/product/dst"`, `` `cp src /workspace/product/dst` ``. Bypass entirely.
+  8. **sed internal-write directives** — `sed '/pat/w /workspace/product/x' /tmp/input`, `sed '/pat/W /workspace/product/x'`, `sed 'e cmd'`. `w`/`W` write matched lines to a file specified inside the sed script (no `-i` flag required); `e` executes arbitrary shell. Pre-hotfix-3 regex requires `-i`/`--in-place`, misses these. Requires sed script parsing. Source: COO 3rd-round adversary MEDIUM #3 on FW-034 hotfix 37888dc.
+  9. **Pattern 4 last-arg-is-dest violated by `-t DEST SOURCE...` ordering** — `cp -at /tmp/dst /workspace/product/` where `-t /tmp/dst` is the real target and `/workspace/product/` is the source. Pattern 4 (cp/mv/rsync general alt) assumes last positional arg is dest, false-blocks this read. Would require Pattern 4 to detect `-t DEST` upstream and short-circuit. Source: CTO discovery during hotfix-3 guard-test authoring 2026-04-22.
 - **Components (options — pick one at design time):**
   1. **Shell-parser-aware hook** — swap regex for a bash lexer (bashlex Python lib or shellcheck lib via subprocess). Cost: +50-200ms per Bash call × hook fires on every command. Offset: 99% coverage.
   2. **Allow-list instead of block-list** — invert: officers can run any command unless it writes outside known-safe targets (/tmp/, /opt/founders-cabinet/, officer home). Requires explicit path-arg classification for every command. Higher false-positive ceiling but eliminates bypass class entirely. Would also block officer tooling writes to cabinet/scripts/ — needs careful scoping.
@@ -542,3 +544,32 @@ _(none)_
   - Component 2 (allow-list) requires audit of every officer's cabinet/scripts/ write history to derive permitted-path set — couples to FW-007 officer-capability audit work.
 - **Owner:** CTO (implementation + Component selection), defers to COO adversary before commit per standing review discipline.
 - **Source:** CTO Sonnet adversary round 1 (2026-04-22 pre-FW-034 Phase A commit, 15 findings × 3-way triage) + round 2 (2026-04-22 post-Phase-A-v2 regex: single-quote dest + no-space-semicolon bypasses found, both folded into Phase A). Phase B is the explicitly deferred remainder.
+
+### FW-041 — FW-029 Layer 1 Phase 1 anchor: `git -C` / `gh -R` global-flag bypass (HIGH)
+- **Status:** Proposed 2026-04-22 (CTO Sonnet background audit of all hook-surface regexes against FW-034 Rule 4 class, same pre-tool-use.sh file).
+- **Symptom:** FW-029 Phase 1 anchor at `pre-tool-use.sh:~411` is `^[[:space:]]*(sudo[[:space:]]+|env[[:space:]]+...+|timeout[[:space:]]+...+)*(git[[:space:]]+push|gh[[:space:]]+pr|gh[[:space:]]+api|curl[[:space:]])`. The anchor requires the subcommand (`push`/`pr`/`api`) to appear **immediately** after `git[[:space:]]+` or `gh[[:space:]]+`. But `git -C /path push origin main` inserts `-C /path ` between `git` and `push`; `gh -R owner/repo pr merge N` and `gh --repo owner/repo pr merge N` insert a global flag between `gh` and `pr`. All three forms bypass Phase 1 entirely.
+- **Empirical reproduction:**
+  - `git -C /workspace/product push origin main` → Phase 1 NO_MATCH → Layer 1 gate not consulted → push proceeds without `cabinet:layer1:cto:reviewed` flag check.
+  - `gh -R nate-step/captains-cabinet pr merge 999` → Phase 1 NO_MATCH → CI Green gate also bypassed.
+  - `gh --repo nate-step/captains-cabinet pr merge 999` → same bypass.
+- **Blast radius:** HIGH. Same class as FW-034 Rule 4 (flag bundle bypass). Layer 1 (review flag enforcement) + CI Green gate (pulls/N/merge block) both rely on Phase 1. A CTO using the idiomatic `-C`/`-R` forms while cd'd elsewhere skips both gates without warning. Fail-open direction — the gate is silently not consulted, not a stderr-on-reject case.
+- **Attack patterns pinned by audit:**
+  - `git -C /some/path push origin main`
+  - `git -C /workspace/product push origin master`
+  - `gh -R owner/repo pr merge 123`
+  - `gh --repo owner/repo pr merge 123`
+  - (FW-033 nudge anchor D1 + FW-035 activity D4 share the same class as BUG-4 + BUG-6 in audit — all LOW cosmetic from same pattern family, folded separately into FW-036.)
+- **Proposed fix (Phase A, small):** Extend Phase 1 priv-esc-and-subcommand group to accept global-flag prefixes between `git`/`gh` and the subcommand verb:
+  - Current: `(git[[:space:]]+push|gh[[:space:]]+pr|gh[[:space:]]+api|curl[[:space:]])`
+  - Proposed: `(git[[:space:]]+(-[A-Za-z][^[:space:]]*[[:space:]]+[^[:space:]]+[[:space:]]+)?push|gh[[:space:]]+((-[A-Za-z]|--[A-Za-z][^[:space:]]+)[[:space:]]+[^[:space:]]+[[:space:]]+)?(pr|api)|curl[[:space:]])`
+  - Must NOT accept arbitrary args between `git` and `push` — only a single `-FLAG VALUE` pair (global-flag convention). Prevents bypass via `git push --force main` matching a multi-flag prefix and swallowing the real intent.
+- **ACs:**
+  - AC-1: Empirical regression harness pins the 3 bypass forms + priv-esc variants (`sudo git -C /path push ...`, `env VAR=1 gh -R ... pr merge ...`) as Phase 1 MATCH.
+  - AC-2: Existing Phase 1 positives (bare `git push origin main`, `gh pr merge N`) still match.
+  - AC-3: Non-gate forms (`git status`, `git log -p`, `gh repo view`) remain NO_MATCH (no false-positive on Phase 1).
+  - AC-4: EVAL-014 extended with the 3 bypass forms as positive + the 3 non-gate forms as negative.
+  - AC-5: Adversary round (Sonnet + COO empirical) before commit — per feedback_security_regex_authoring memory (≥2 passes mandatory).
+- **Blast-radius reasoning:** Unlike FW-034 (which fails closed — over-blocks reads), this is fail-open — under-blocks real writes. More severe. HIGH priority; hotfix within 24h of merge to this session.
+- **Effort:** S (~1-2h — regex surgery, evals, 2 adversary rounds, commit).
+- **Owner:** CTO.
+- **Source:** CTO Sonnet background audit (2026-04-22) applying FW-034 Rules 1-5 retrospectively to hook regex surface. Finding BUG-1/HIGH in audit report `a687dbfce166e50e7`. Audit also surfaced 5 LOW findings (BUG-2/3/4/5/6) — all folded into FW-036 Phase B as same-class cosmetic amplifications.
