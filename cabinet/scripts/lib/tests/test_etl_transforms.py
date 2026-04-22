@@ -9,6 +9,9 @@ Covers:
     absent, empty-body.
   * etl-github `_extract_priority` — positive, absent, case-insensitive.
   * Label parity — captain-decision label presence on both Linear + GH fixtures.
+  * etl-common `resolve_assignee` — email + github_login lookup hits/misses, empty raw.
+  * etl-common `extract_pr_url` — https GH PR URL regex, http-rejection, listing-page-rejection, first-match-on-multi.
+  * etl-common `_infer_source` — linear via identifier, github via html_url/url, unknown fallback, identifier-wins.
 
 Runs two ways:
     python3 -m pytest cabinet/scripts/lib/tests/       # FW-024 path
@@ -40,6 +43,7 @@ def _load(modname: str, relpath: str):
 
 etl_linear = _load("etl_linear", "etl-linear.py")
 etl_github = _load("etl_github", "etl-github.py")
+etl_common = _load("etl_common", "etl-common.py")
 
 import test_etl_fixtures as fx  # no hyphens, importable directly
 
@@ -201,6 +205,120 @@ def test_linear_queue_fixture_no_captain_decision():
 def test_gh_fw_marked_fixture_no_captain_decision():
     names = [l["name"] for l in fx.GH_ISSUE_FW_MARKED["labels"]]
     assert "captain-decision" not in names
+
+
+# ---------------------------------------------------------------------------
+# etl-common `resolve_assignee` — email / github_login lookup + miss semantics
+# ---------------------------------------------------------------------------
+
+# Synthetic mapping matching load_officer_emails() return shape.
+_MAPPING = {
+    "emails": {
+        "captain@example.com": "captain",
+        "cto@example.com": "cto",
+    },
+    "github_logins": {
+        "nate-step": "captain",
+        "cto-bot": "cto",
+    },
+}
+
+
+def test_resolve_assignee_none_raw():
+    # Empty input short-circuits to (None, None) — no lookup, no unresolved.
+    assert etl_common.resolve_assignee(None, "email", _MAPPING) == (None, None)
+
+
+def test_resolve_assignee_empty_string_raw():
+    # Falsy check on raw — "" is also (None, None), not ("", None).
+    assert etl_common.resolve_assignee("", "email", _MAPPING) == (None, None)
+
+
+def test_resolve_assignee_email_hit():
+    assert etl_common.resolve_assignee("captain@example.com", "email", _MAPPING) == ("captain", None)
+
+
+def test_resolve_assignee_email_miss():
+    # Miss: returns (None, raw) — caller logs the unresolved raw value.
+    assert etl_common.resolve_assignee("stranger@example.com", "email", _MAPPING) == (None, "stranger@example.com")
+
+
+def test_resolve_assignee_github_login_hit():
+    # kind='github_login' switches the lookup table.
+    assert etl_common.resolve_assignee("nate-step", "github_login", _MAPPING) == ("captain", None)
+
+
+def test_resolve_assignee_github_login_miss():
+    assert etl_common.resolve_assignee("unknown-user", "github_login", _MAPPING) == (None, "unknown-user")
+
+
+# ---------------------------------------------------------------------------
+# etl-common `extract_pr_url` — GH PR URL regex
+# Pattern: https://github\.com/[\w.-]+/[\w.-]+/pull/\d+
+# ---------------------------------------------------------------------------
+
+def test_extract_pr_url_none():
+    assert etl_common.extract_pr_url(None) is None
+
+
+def test_extract_pr_url_empty_string():
+    assert etl_common.extract_pr_url("") is None
+
+
+def test_extract_pr_url_plain_text_no_url():
+    assert etl_common.extract_pr_url("ordinary commit message, no URL") is None
+
+
+def test_extract_pr_url_happy_path():
+    text = "See PR https://github.com/nate-step/captains-cabinet/pull/42 for details"
+    assert etl_common.extract_pr_url(text) == "https://github.com/nate-step/captains-cabinet/pull/42"
+
+
+def test_extract_pr_url_http_rejected():
+    # Regex requires https — http is not an alternative (prevents downgrade-style false matches).
+    assert etl_common.extract_pr_url("http://github.com/foo/bar/pull/1") is None
+
+
+def test_extract_pr_url_pulls_listing_page_rejected():
+    # /pulls (listing) is not /pull/\d+ (specific PR). Regex requires the latter.
+    assert etl_common.extract_pr_url("https://github.com/foo/bar/pulls") is None
+
+
+def test_extract_pr_url_first_match_wins_on_multi():
+    text = "first https://github.com/a/b/pull/1 then https://github.com/c/d/pull/99"
+    assert etl_common.extract_pr_url(text) == "https://github.com/a/b/pull/1"
+
+
+# ---------------------------------------------------------------------------
+# etl-common `_infer_source` — source classification fallback
+# ---------------------------------------------------------------------------
+
+def test_infer_source_linear_via_identifier():
+    assert etl_common._infer_source({"identifier": "SEN-42"}) == "linear"
+
+
+def test_infer_source_github_via_html_url():
+    assert etl_common._infer_source({"html_url": "https://github.com/foo/bar/issues/1"}) == "github-issues"
+
+
+def test_infer_source_github_via_url_field_fallback():
+    # When html_url absent but `url` (GH API field) contains github.com.
+    assert etl_common._infer_source({"url": "https://api.github.com/repos/foo/bar/issues/1"}) == "github-issues"
+
+
+def test_infer_source_unknown_empty_record():
+    assert etl_common._infer_source({}) == "unknown"
+
+
+def test_infer_source_unknown_non_github_url():
+    # Non-github URL does not route to github-issues.
+    assert etl_common._infer_source({"html_url": "https://example.com/issue/1"}) == "unknown"
+
+
+def test_infer_source_identifier_wins_over_url():
+    # Even when both fields present, `identifier` check runs first.
+    record = {"identifier": "SEN-1", "html_url": "https://github.com/foo/bar/pull/1"}
+    assert etl_common._infer_source(record) == "linear"
 
 
 # ---------------------------------------------------------------------------
