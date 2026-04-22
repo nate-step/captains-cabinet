@@ -1396,6 +1396,16 @@ declare -a EV18_POS=(
   "cp -rfvt /workspace/product/ /tmp/src"
   "mv -bt /workspace/product/ /tmp/src"
   "cp -at /workspace/product/ /tmp/src"
+  "sed -i 's/<h1>/<h2>/' /workspace/product/x.html"
+  "sed -i 's|<foo>|<bar>|' /workspace/product/x.md"
+  "sed -i -e 's/<p>/<div>/' /workspace/product/x.html"
+  "sed -E -i 's/<root>/<doc>/g' /workspace/product/x.xml"
+  "sed -i.bak 's/<old>/<new>/' /workspace/product/x.html"
+  "sed -i 's/a/b/g;s/c/d/g' /workspace/product/file"
+  "sed -i 's/a/b/;s/e/f/' /workspace/product/x"
+  "cp -t/workspace/product/ /tmp/src"
+  "mv -t/workspace/product/ /tmp/src"
+  "cp -rfvt/workspace/product/ /tmp/src"
 )
 for EV18_CMD in "${EV18_POS[@]}"; do
   EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
@@ -1436,6 +1446,8 @@ if [ -z "$EV18_FAILURE" ]; then
     "rsync -rt /workspace/product/ /tmp/dst"
     "rsync -at /workspace/product/ /tmp/dst"
     "sed --posix 's/x/y/' /workspace/product/x"
+    "sed 's/<a>/<b>/' /workspace/product/x.html > /tmp/out.html"
+    "sed 's|<a>|<b>|' /workspace/product/x.md > /tmp/out.md"
   )
   for EV18_CMD in "${EV18_NEG[@]}"; do
     EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
@@ -1462,7 +1474,7 @@ fi
 if [ -n "$EV18_FAILURE" ]; then
   fail "$EV18_FAILURE"
 else
-  pass "FW-034 Bash write-target anchor classifies product-write (35 positive — incl rsync/patch/tee long-flags/quoted-dest both kinds/chained-cmd/no-space-semicolon/-t+--target-directory=+>|/sed-i.bak/cp-mv -t bundle) vs read-with-redirect / tmp-target (25 negative — incl cp -r source/rsync source/patch stdin/multi-arg cp/single-quoted source/sed non-i flags/rsync -rt source/sed --posix) correctly; CTO bypass preserved"
+  pass "FW-034 Bash write-target anchor classifies product-write (45 positive — incl rsync/patch/tee long-flags/quoted-dest both kinds/chained-cmd/no-space-semicolon/-t+--target-directory=+>|/sed-i.bak/cp-mv -t bundle/sed HTML+XML bodies/cp-mv -t/DIR no-space/sed multi-expr intra-script semicolon) vs read-with-redirect / tmp-target (27 negative — incl cp -r source/rsync source/patch stdin/multi-arg cp/single-quoted source/sed non-i flags/rsync -rt source/sed --posix/sed HTML body read-redirect) correctly; CTO bypass preserved"
 fi
 
 # ------------------------------------------------------------------

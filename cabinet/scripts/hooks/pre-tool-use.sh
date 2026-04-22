@@ -345,11 +345,25 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # BUG-2/3/4) and `cp|mv|rsync --target-directory=DEST`; rsync intentionally
     # excluded from -t bundle (rsync -t means --times not target-directory — would
     # false-block `rsync -rt SOURCE DEST` source-reads from /workspace/product/);
-    # added `>|` to Pattern 1 (bash force-overwrite under noclobber). Known gaps
-    # tracked as FW-040 Phase B: quoted dest with internal space, variable
-    # expansion, `install` + other write tools (awk/dd/touch/mkdir/truncate/
-    # sqlite3), python3 -c, node -e.
-    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+([^<]*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]][^<]*)?[[:space:]]+/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]+["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
+    # added `>|` to Pattern 1 (bash force-overwrite under noclobber).
+    # Hotfix 3 2026-04-22 (COO 3rd-round + Sonnet post-fix adversary on 37888dc):
+    # sed script-body class `[^<]*` → `[^&]*` — sed scripts legitimately contain
+    # `<` (HTML/XML bodies, e.g. `sed -i 's/<h1>/<h2>/' file.html`), `|` (valid
+    # delimiter, e.g. `sed -i 's|a|b|' f`), AND `;` (intra-script command
+    # separator, e.g. `sed -i 's/a/b/;s/c/d/' f`). Attempted hotfix-3a `[^|&;]`
+    # over-rejected `|`; hotfix-3b `[^&;]` over-rejected `;`. Final class `[^&]*`
+    # allows all three; `&` alone still flags `&&`/`|| →` command-chain
+    # boundaries. The downstream `[[:space:]]+/workspace/product/` anchor keeps
+    # the product-path write requirement (so false-pos from `sed -i /tmp/f; echo
+    # /workspace/product/` is a known pre-existing greedy-match FP, not a
+    # delta-3 regression). Pattern 5a `-[a-zA-Z]*t[[:space:]]+` → `[[:space:]]*`
+    # — GNU cp/mv accept `-t/DIR` no-space form (bundle-flag + attached-arg),
+    # bypass pre-hotfix. Known gaps tracked as FW-040 Phase B: quoted dest with
+    # internal space, variable expansion, `install` + other write tools (awk/dd/
+    # touch/mkdir/truncate/sqlite3), python3 -c, node -e, sed `/pat/w PATH`
+    # internal-write directive (no -i needed), Pattern 4 last-arg-is-dest
+    # assumption violated by `cp -t DEST SOURCE...` ordering.
+    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+([^&]*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]][^&]*)?[[:space:]]+/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
       echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi
