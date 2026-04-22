@@ -780,6 +780,311 @@ def test_gh_transform_captain_decision_label():
 
 
 # ---------------------------------------------------------------------------
+# Linear _map_state — additional type/name combinations (spec §4.5 grid)
+# ---------------------------------------------------------------------------
+
+def test_map_state_unstarted_todo():
+    # type='unstarted' is a distinct Linear type from 'backlog'. Both route to
+    # 'queue' via _STATE_TYPE_MAP, but the types hit different dict keys.
+    state = {"type": "unstarted", "name": "Todo"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "queue"
+    assert blocked is False
+    assert reason is None
+
+
+def test_map_state_triage_routes_to_queue():
+    # Linear 'triage' type — explicit in _STATE_TYPE_MAP as 'queue'.
+    state = {"type": "triage", "name": "Triage"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "queue"
+    assert blocked is False
+    assert reason is None
+
+
+def test_map_state_completed_done():
+    # type='completed', name='Done' — direct _STATE_TYPE_MAP hit → 'done'.
+    state = {"type": "completed", "name": "Done"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "done"
+    assert blocked is False
+    assert reason is None
+
+
+def test_map_state_canceled_type_maps_to_cancelled():
+    # Linear emits type='canceled' (American spelling). _STATE_TYPE_MAP maps
+    # "canceled" → "cancelled" (British). Verify the key is in the map.
+    state = {"type": "canceled", "name": "Canceled"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "cancelled"
+    assert blocked is False
+    assert reason is None
+
+
+def test_map_state_unknown_type_falls_to_queue():
+    # Unknown type falls through .get(stype, "queue") default.
+    state = {"type": "exotic", "name": "X"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "queue"
+    assert blocked is False
+    assert reason is None
+
+
+def test_map_state_blocked_name_with_started_type_stays_wip():
+    # Explicit dict: type='started', name='Blocked' → wip+blocked.
+    # The blocked-overlay path preserves wip (not queue) per §4.5.
+    state = {"type": "started", "name": "Blocked"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "wip"
+    assert blocked is True
+    assert reason == "Blocked"
+
+
+def test_map_state_started_in_progress_explicit():
+    # type='started', name='In Progress' — the special-case path in _map_state
+    # that avoids the intermediate-bucket queue override; uses _STATE_TYPE_MAP.
+    state = {"type": "started", "name": "In Progress"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "wip"
+    assert blocked is False
+    assert reason is None
+
+
+def test_map_state_ready_for_review_routes_to_queue():
+    # type='started' + name != 'In Progress' + not blocked → queue.
+    # 'Ready for Review' is the canonical intermediate workflow bucket.
+    state = {"type": "started", "name": "Ready for Review"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "queue"
+    assert blocked is False
+    assert reason is None
+
+
+def test_map_state_backlog_type_explicit():
+    # type='backlog' is distinct from type='unstarted' — verify both map to queue.
+    state = {"type": "backlog", "name": "Backlog"}
+    status, blocked, reason = etl_linear._map_state(state)
+    assert status == "queue"
+    assert blocked is False
+    assert reason is None
+
+
+# ---------------------------------------------------------------------------
+# Linear _parse_dt — additional edge-case paths
+# ---------------------------------------------------------------------------
+
+def test_parse_dt_slash_date_format_returns_none():
+    # Slash-delimited dates (2026/04/22) are not ISO-8601; ValueError swallowed.
+    assert etl_linear._parse_dt("2026/04/22") is None
+
+
+def test_parse_dt_date_only_string():
+    # Date-only strings like "2026-04-22" ARE valid fromisoformat; they should
+    # parse to a naive datetime. Pins the current contract so any timezone
+    # coercion added later is a deliberate change, not a silent regression.
+    result = etl_linear._parse_dt("2026-04-22")
+    assert result is not None
+    assert result.year == 2026 and result.month == 4 and result.day == 22
+
+
+# ---------------------------------------------------------------------------
+# Linear _transform_project — missing branch coverage
+# ---------------------------------------------------------------------------
+
+def test_transform_project_title_whitespace_stripped():
+    # name with leading/trailing whitespace must be stripped — DB has a
+    # NOT NULL but no length constraint; untrimmed titles break de-dup.
+    proj = dict(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    proj["name"] = "  Spec 039 — Migration  "
+    row = etl_linear._transform_project(proj)
+    assert row["title"] == "Spec 039 — Migration"
+
+
+def test_transform_project_description_absent_returns_none():
+    # description is optional in the GraphQL shape; must default to None, not
+    # raise KeyError. Defensive check on .get() usage.
+    proj = {"id": "p-nodesc", "name": "No Description Project"}
+    row = etl_linear._transform_project(proj)
+    assert row["description"] is None
+
+
+def test_transform_project_context_slug_is_sensed():
+    # Epic rows synthesized from Linear projects belong to the Sensed product
+    # context, not cabinet-framework. If this flips, briefings would misroute.
+    row = etl_linear._transform_project(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    assert row["context_slug"] == "sensed"
+
+
+def test_transform_project_cancelled_at_none_for_wip():
+    # wip projects must not carry cancelled_at — the status branch doesn't
+    # trigger; defensive confirmation that the default holds for non-terminal.
+    row = etl_linear._transform_project(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    assert row["cancelled_at"] is None
+
+
+def test_transform_project_completed_at_none_for_cancelled():
+    # Cancelled projects must not carry completed_at (different terminal path).
+    proj = dict(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    proj["state"] = "canceled"
+    proj["updatedAt"] = "2026-04-19T08:00:00Z"
+    proj["completedAt"] = "2026-04-18T00:00:00Z"  # spurious field present
+    row = etl_linear._transform_project(proj)
+    assert row["status"] == "cancelled"
+    assert row["completed_at"] is None
+    assert row["cancelled_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Linear _transform_issue — remaining branch gaps
+# ---------------------------------------------------------------------------
+
+def test_transform_issue_priority_none_returns_none():
+    # priority=None (key present but None value) → falsy guard → None.
+    # Distinct from priority=0 (also None) — both paths must behave identically.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["priority"] = None
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["priority"] is None
+
+
+def test_transform_issue_due_date_value_error_returns_none():
+    # dueDate present + founder-action label, but value is not parseable.
+    # ValueError must be swallowed; due_date stays None (not propagated).
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["labels"] = {"nodes": [{"name": "founder-action"}]}
+    issue["dueDate"] = "not-a-date"
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["founder_action"] is True
+    assert row["due_date"] is None
+
+
+def test_transform_issue_due_date_success_with_founder_action():
+    # dueDate present + parseable + founder-action → due_date=date(2026,4,22).
+    from datetime import date as date_cls
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["labels"] = {"nodes": [{"name": "founder-action"}]}
+    issue["dueDate"] = "2026-04-22"
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["due_date"] == date_cls(2026, 4, 22)
+
+
+def test_transform_issue_due_date_absent_without_founder_action():
+    # dueDate present on a regular issue → must be ignored (due_date=None).
+    # Already covered in test_transform_issue_due_date_only_for_founder_action,
+    # but this pin is explicit about the no-founder-action condition.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["dueDate"] = "2026-04-30"
+    # LINEAR_ISSUE_QUEUE labels = [{"name": "backend"}] — no founder-action
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["due_date"] is None
+
+
+def test_transform_issue_cancelled_at_set_for_cancelled_status():
+    # cancelled_at is populated only when status='cancelled'. Uses canceledAt field.
+    issue = dict(fx.LINEAR_ISSUE_CANCELLED)
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["status"] == "cancelled"
+    assert row["cancelled_at"] is not None
+    assert row["completed_at"] is None
+
+
+def test_transform_issue_cancelled_at_none_for_wip():
+    # WIP issue must not carry cancelled_at even if canceledAt field present.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["canceledAt"] = "2026-04-22T00:00:00Z"  # spurious / stale
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["status"] == "queue"
+    assert row["cancelled_at"] is None
+
+
+def test_transform_issue_title_whitespace_stripped():
+    # title with surrounding whitespace must be stripped (mirrors project contract).
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["title"] = "  Stripped Title  "
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["title"] == "Stripped Title"
+
+
+def test_transform_issue_no_project_key_parent_epic_ref_none():
+    # issue dict without 'project' key → project defaults to {} via `.get() or {}`
+    # → project_id is None → parent_epic_ref is None (no lookup attempted).
+    issue = {
+        "identifier": "SEN-999",
+        "title": "No Project Issue",
+        "state": {"type": "unstarted", "name": "Todo"},
+        "labels": {"nodes": []},
+        "assignee": None,
+        "priority": 0,
+        "dueDate": None,
+        "createdAt": None,
+        "completedAt": None,
+        "canceledAt": None,
+        "description": None,
+    }
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {"p1": 42}, skip, unresolved)
+    assert row["parent_epic_ref"] is None
+
+
+def test_transform_issue_project_none_parent_epic_ref_none():
+    # issue with explicit project=None → same result as missing project key.
+    issue = dict(fx.LINEAR_ISSUE_DONE)  # fixture has project=None
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {"p1": 42}, skip, unresolved)
+    assert row["parent_epic_ref"] is None
+
+
+def test_transform_issue_parent_epic_ref_lookup_miss():
+    # project.id present but not in epic_lookup → parent_epic_ref=None.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)  # project.id = "p1"
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["parent_epic_ref"] is None
+
+
+def test_transform_issue_external_ref_is_identifier():
+    # external_ref must be the Linear issue identifier (e.g. "SEN-247"),
+    # not the internal UUID or any other field. Pins the contract.
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(fx.LINEAR_ISSUE_QUEUE, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["external_ref"] == "SEN-247"
+    assert row["external_source"] == "linear"
+
+
+def test_transform_issue_type_always_task():
+    # Linear issues always synthesize as type='task', never 'epic' (projects
+    # cover epics). If this flips, briefing grouping breaks.
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(fx.LINEAR_ISSUE_QUEUE, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["type"] == "task"
+
+
+def test_transform_issue_context_slug_is_sensed():
+    # Linear issues are always Sensed product context (not cabinet-framework).
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(fx.LINEAR_ISSUE_QUEUE, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["context_slug"] == "sensed"
+
+
+def test_transform_issue_skip_entry_has_identifier_as_external_ref():
+    # The skip entry's external_ref must match the issue identifier so the
+    # skip log can be joined against officer_tasks for diagnostics.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["identifier"] = "SEN-999"
+    issue["state"] = {"id": "sdup", "name": "Done", "type": "duplicate"}
+    skip, unresolved = [], []
+    etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert skip[0]["external_ref"] == "SEN-999"
+
+
+# ---------------------------------------------------------------------------
 # Standalone runner (no pytest required)
 # ---------------------------------------------------------------------------
 
