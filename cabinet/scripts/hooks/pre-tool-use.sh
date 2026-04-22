@@ -331,9 +331,16 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
         esac
         ;;
     esac
-    # Block common Bash write patterns to product codebase (defense in depth)
-    # Two-condition check: command mentions product path AND contains a write operation
-    if echo "$CMD" | grep -q '/workspace/product/' && echo "$CMD" | grep -qE '(>\s|sed -i |tee |cp .+ |mv .+ )'; then
+    # Block Bash write patterns whose TARGET is /workspace/product/ (FW-034 fix).
+    # Pre-FW-034 used two independent substring checks (mentions-product AND has-write-op),
+    # which false-blocked `cat /workspace/product/x | tee /tmp/y` (read source is product,
+    # write target is /tmp). Regex requires product path in the write-operator's TARGET
+    # position: redirect stdout target, sed -i file arg, tee trailing file, cp/mv/rsync
+    # last arg (dest), patch filename arg. Long flags supported (--append). Double-quoted
+    # dest handled. Known gaps tracked as FW-040: quoted-string false-positives (echo with
+    # >/workspace/product/ inside quotes), variable expansion (DEST=/workspace/product/),
+    # and additional write tools (python3 -c, node -e, awk, dd, touch, mkdir, ln -s).
+    if echo "$CMD" | grep -qE '(>>?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+-[-a-zA-Z]+[^<]*[[:space:]]+/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
       echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi

@@ -494,3 +494,32 @@ _(none)_
   - MCP-branch-detector companion work rolled into AC-5 above (not separate FW-###).
   - If wrapper-class drift (FW-038) lands mid-migration, the LIBRARY_MIGRATION_IN_PROGRESS env-var gate needs a wrapper-safe anchor too.
 - **Source:** Spec 037 v2 CTO tech addendum 2026-04-22 + CPO ACK trigger 2026-04-22 00:22 UTC (msg 1776817374767-0).
+
+### FW-040 — FW-034 Bash write-gate Phase B: shell-parse-aware coverage
+- **Status:** Proposed 2026-04-22 (CTO Sonnet adversary Phase B scope gaps, filed after FW-034 Phase A inline fixes landed 2026-04-22).
+- **Why:** FW-034 Phase A regex covers the common shell forms for /workspace/product/ writes (redirect `>`/`>>`, `sed -i`, `tee`, `cp`/`mv`/`rsync`, `patch`) with target-position correlation, long-flag support, double-and-single-quote awareness, and end-of-dest anchoring (passes 24 positive + 18 negative + CTO bypass eval cases). Known gaps remain that a shell-parser-level solution would close but regex cannot:
+- **Known gaps (Phase B scope):**
+  1. **Variable expansion false-negative** — `DEST=/workspace/product/x; cp src "$DEST"` bypasses because the cp command line doesn't literally contain `/workspace/product/`. Regex has no env var tracking.
+  2. **Quoted-string literal false-positive** — `echo "text > /workspace/product/x" > /tmp/y` false-blocks because regex treats the `>` inside the echo string as a real redirect. Common with commit messages, docs, error messages referencing product paths.
+  3. **Scripting inline-writes (HIGH)** — `python3 -c 'open("/workspace/product/x","w").write(...)'`, `node -e 'fs.writeFileSync("/workspace/product/x", ...)'`, `ruby -e`. Bypasses entirely; regex can't inspect inline program semantics.
+  4. **Additional write tools** — `awk '{print > "/workspace/product/x"}' file`, `dd of=/workspace/product/x`, `touch /workspace/product/x`, `mkdir /workspace/product/newdir`, `truncate /workspace/product/x`, `sqlite3 /workspace/product/x.db ".save..."`. All bypass current Phase A regex.
+  5. **`ln -s` symlink attack (HIGH)** — `ln -s /etc/passwd /workspace/product/passwd.md` creates an in-repo symlink to arbitrary system files. Not a write to product content but does surface protected content through product repo. Worth blocking.
+  6. **Subshell / process-substitution / heredoc** — `(cp src /workspace/product/dst)`, `$(cp src /workspace/product/dst)`, `cat <<EOF > /workspace/product/x`. Subshell currently blocks via substring serendipity; process-sub and heredoc do not.
+  7. **Backtick and `eval`** — `eval "cp src /workspace/product/dst"`, `` `cp src /workspace/product/dst` ``. Bypass entirely.
+- **Components (options — pick one at design time):**
+  1. **Shell-parser-aware hook** — swap regex for a bash lexer (bashlex Python lib or shellcheck lib via subprocess). Cost: +50-200ms per Bash call × hook fires on every command. Offset: 99% coverage.
+  2. **Allow-list instead of block-list** — invert: officers can run any command unless it writes outside known-safe targets (/tmp/, /opt/founders-cabinet/, officer home). Requires explicit path-arg classification for every command. Higher false-positive ceiling but eliminates bypass class entirely. Would also block officer tooling writes to cabinet/scripts/ — needs careful scoping.
+  3. **Post-hoc audit via fs-watcher** — accept some latency between hook-block and actual detection. Inotify watcher on /workspace/product/ writes; any non-CTO write emits alert + rollback. Loses pre-write blocking guarantee.
+  4. **Incremental regex hardening** — add patterns for python3 -c / node -e / awk / dd / touch / mkdir / ln -s / truncate / sqlite3 / eval. Does not close variable-expansion or quoted-string classes. Low-cost first-pass improvement.
+- **ACs (Phase B, pick-one-scoped):**
+  - AC-1: Add EVAL-018 cases for every Phase B gap (variable expansion, quoted-string literal, python3 -c, node -e, awk print>, dd of=, touch, mkdir, ln -s, subshell, process-sub, eval) with expected behavior pinned per chosen Component.
+  - AC-2: Chosen Component produces zero regression on existing 24 positive + 18 negative + CTO bypass cases.
+  - AC-3: Hook latency measured before/after; if shell-parser path chosen, latency budget < 300ms per Bash call.
+  - AC-4: Migration path from Phase A regex documented — if allow-list chosen, per-officer permitted-write-path config lands before regex retirement.
+- **Blast radius:** MEDIUM. Phase A is net-positive vs pre-FW-034; gaps are exploitable but require officer deliberately bypassing (threat model is accidental writes, not malicious bypass). Each Component option has tradeoffs — shell-parser is highest-confidence, allow-list is most bulletproof but invasive, post-hoc audit loses pre-block, incremental hardening leaves classes open.
+- **Effort:** M (~3-6h for Component 4 incremental hardening) / L (~8-12h for Component 1 shell-parser) / XL (~20h+ for Component 2 allow-list with per-officer config migration).
+- **Dependencies:**
+  - Phase A (FW-034) landed 2026-04-22 as prerequisite baseline.
+  - Component 2 (allow-list) requires audit of every officer's cabinet/scripts/ write history to derive permitted-path set — couples to FW-007 officer-capability audit work.
+- **Owner:** CTO (implementation + Component selection), defers to COO adversary before commit per standing review discipline.
+- **Source:** CTO Sonnet adversary round 1 (2026-04-22 pre-FW-034 Phase A commit, 15 findings × 3-way triage) + round 2 (2026-04-22 post-Phase-A-v2 regex: single-quote dest + no-space-semicolon bypasses found, both folded into Phase A). Phase B is the explicitly deferred remainder.

@@ -1348,6 +1348,106 @@ else
 fi
 
 # ------------------------------------------------------------------
+# Eval 018: pre-tool-use.sh FW-034 Bash write-target correlation
+# ------------------------------------------------------------------
+# FW-034 fix narrowed the workspace-write Bash guard from "mentions product AND
+# has write-op (substring)" to "write-operator TARGET is /workspace/product/".
+# Classic failure: `cat /workspace/product/x | tee /tmp/y` — read source is
+# product, write target is /tmp; pre-fix substring-match false-blocked.
+# Matrix pins positive (block) + negative (pass) across 5 write operators.
+log "EVAL-018: pre-tool-use.sh FW-034 Bash write-target correlation"
+EV18_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh"
+EV18_FAILURE=""
+
+# Positive cases — must BLOCK (exit 2) because write TARGET is /workspace/product/
+declare -a EV18_POS=(
+  "echo hello > /workspace/product/README.md"
+  "echo x >> /workspace/product/README.md"
+  "sed -i 's/x/y/' /workspace/product/README.md"
+  "sed -i -E 's/x/y/' /workspace/product/x"
+  "tee /workspace/product/README.md"
+  "tee -a /workspace/product/log.md"
+  "cat x | tee /workspace/product/README.md"
+  "cp /tmp/foo.txt /workspace/product/README.md"
+  "mv /tmp/foo.txt /workspace/product/README.md"
+  "cp -r /tmp/pkg /workspace/product/dest"
+  "rsync /tmp/src /workspace/product/dst"
+  "rsync -a /tmp/src /workspace/product/dst"
+  "tee --append /workspace/product/log.md"
+  "cp /tmp/src \"/workspace/product/dst\""
+  "echo x > \"/workspace/product/y\""
+  "patch /workspace/product/foo < fix.patch"
+  "patch -p1 /workspace/product/foo"
+  "tee -a /tmp/foo /workspace/product/bar"
+  "mv /workspace/product/old.txt /workspace/product/new.txt"
+  "cp /tmp/src /workspace/product/dst && echo ok"
+  "cp /tmp/src '/workspace/product/dst'"
+  "cp -r /tmp/src '/workspace/product/dst'"
+  "cp /tmp/src /workspace/product/dst;echo ok"
+  "rsync /tmp/src '/workspace/product/dst'"
+)
+for EV18_CMD in "${EV18_POS[@]}"; do
+  EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+  echo "$EV18_JSON" | OFFICER_NAME=cpo bash "$EV18_HOOK" >/dev/null 2>&1
+  EV18_EC=$?
+  if [ "$EV18_EC" -ne 2 ]; then
+    EV18_FAILURE="FW-034 anchor MISSED block on positive case: '$EV18_CMD' (exit=$EV18_EC, expected=2)"
+    break
+  fi
+done
+
+# Negative cases — must PASS (exit 0) because write TARGET is NOT /workspace/product/
+# (These were false-blocked pre-FW-034: read-source was product or no write at all.)
+if [ -z "$EV18_FAILURE" ]; then
+  declare -a EV18_NEG=(
+    "cat /workspace/product/README.md | tee /tmp/out.txt"
+    "cp /workspace/product/README.md /tmp/out.txt"
+    "mv /workspace/product/old.txt /tmp/archive.txt"
+    "sed 's/x/y/' /workspace/product/x.txt > /tmp/z"
+    "sed -i 's/x/y/' /tmp/scratch.txt"
+    "grep foo /workspace/product/src/app.ts"
+    "ls -la /workspace/product/"
+    "cat /workspace/product/README.md >> /tmp/combined.md"
+    "tee /tmp/out.txt < /workspace/product/README.md"
+    "diff /workspace/product/a.txt /tmp/b.txt"
+    "rsync /workspace/product/src /tmp/dst"
+    "rsync -a /workspace/product/src /tmp/dst"
+    "cp -r /workspace/product/src /tmp/dst"
+    "patch < /workspace/product/old.patch"
+    "cat /workspace/product/x.log > /tmp/report"
+    "cp /tmp/src /workspace/product/x /more/dir/"
+    "cp '/workspace/product/src' /tmp/dst"
+    "cp '/workspace/product/src' '/tmp/dst'"
+  )
+  for EV18_CMD in "${EV18_NEG[@]}"; do
+    EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    echo "$EV18_JSON" | OFFICER_NAME=cpo bash "$EV18_HOOK" >/dev/null 2>&1
+    EV18_EC=$?
+    if [ "$EV18_EC" -eq 2 ]; then
+      EV18_FAILURE="FW-034 anchor FALSE-BLOCKED negative case: '$EV18_CMD' (exit=2, expected=0 — read-source or tmp-target, not product write)"
+      break
+    fi
+  done
+fi
+
+# CTO bypass — CTO should pass regardless of target (capability exempt)
+if [ -z "$EV18_FAILURE" ]; then
+  EV18_CTO_CMD="echo hello > /workspace/product/README.md"
+  EV18_CTO_JSON=$(jq -cn --arg cmd "$EV18_CTO_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+  echo "$EV18_CTO_JSON" | OFFICER_NAME=cto bash "$EV18_HOOK" >/dev/null 2>&1
+  EV18_CTO_EC=$?
+  if [ "$EV18_CTO_EC" -ne 0 ]; then
+    EV18_FAILURE="FW-034 CTO bypass broken: CTO blocked on '$EV18_CTO_CMD' (exit=$EV18_CTO_EC, expected=0)"
+  fi
+fi
+
+if [ -n "$EV18_FAILURE" ]; then
+  fail "$EV18_FAILURE"
+else
+  pass "FW-034 Bash write-target anchor classifies product-write (24 positive — incl rsync/patch/tee long-flags/quoted-dest both kinds/chained-cmd/no-space-semicolon) vs read-with-redirect / tmp-target (18 negative — incl cp -r source/rsync source/patch stdin/multi-arg cp/single-quoted source) correctly; CTO bypass preserved"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""
