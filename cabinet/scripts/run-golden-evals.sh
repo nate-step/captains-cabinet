@@ -1385,6 +1385,17 @@ declare -a EV18_POS=(
   "cp -r /tmp/src '/workspace/product/dst'"
   "cp /tmp/src /workspace/product/dst;echo ok"
   "rsync /tmp/src '/workspace/product/dst'"
+  "cp -t /workspace/product/ /tmp/src"
+  "mv -t /workspace/product/ /tmp/src"
+  "cp --target-directory=/workspace/product/ /tmp/src"
+  "rsync --target-directory=/workspace/product/ /tmp/src"
+  "cp -t /workspace/product/ /tmp/a /tmp/b /tmp/c"
+  "echo x >| /workspace/product/y"
+  "echo x >|/workspace/product/y"
+  "sed -i.bak 's/x/y/' /workspace/product/x"
+  "cp -rfvt /workspace/product/ /tmp/src"
+  "mv -bt /workspace/product/ /tmp/src"
+  "cp -at /workspace/product/ /tmp/src"
 )
 for EV18_CMD in "${EV18_POS[@]}"; do
   EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
@@ -1418,6 +1429,13 @@ if [ -z "$EV18_FAILURE" ]; then
     "cp /tmp/src /workspace/product/x /more/dir/"
     "cp '/workspace/product/src' /tmp/dst"
     "cp '/workspace/product/src' '/tmp/dst'"
+    "sed -n '10,20p' /workspace/product/x"
+    "sed -E 's/x/y/' /workspace/product/x"
+    "sed -e 's/x/y/' /workspace/product/x"
+    "sed -r 's/x/y/' /workspace/product/x"
+    "rsync -rt /workspace/product/ /tmp/dst"
+    "rsync -at /workspace/product/ /tmp/dst"
+    "sed --posix 's/x/y/' /workspace/product/x"
   )
   for EV18_CMD in "${EV18_NEG[@]}"; do
     EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
@@ -1444,7 +1462,7 @@ fi
 if [ -n "$EV18_FAILURE" ]; then
   fail "$EV18_FAILURE"
 else
-  pass "FW-034 Bash write-target anchor classifies product-write (24 positive — incl rsync/patch/tee long-flags/quoted-dest both kinds/chained-cmd/no-space-semicolon) vs read-with-redirect / tmp-target (18 negative — incl cp -r source/rsync source/patch stdin/multi-arg cp/single-quoted source) correctly; CTO bypass preserved"
+  pass "FW-034 Bash write-target anchor classifies product-write (35 positive — incl rsync/patch/tee long-flags/quoted-dest both kinds/chained-cmd/no-space-semicolon/-t+--target-directory=+>|/sed-i.bak/cp-mv -t bundle) vs read-with-redirect / tmp-target (25 negative — incl cp -r source/rsync source/patch stdin/multi-arg cp/single-quoted source/sed non-i flags/rsync -rt source/sed --posix) correctly; CTO bypass preserved"
 fi
 
 # ------------------------------------------------------------------

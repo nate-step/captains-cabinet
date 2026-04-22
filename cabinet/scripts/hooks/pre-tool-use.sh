@@ -335,12 +335,21 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # Pre-FW-034 used two independent substring checks (mentions-product AND has-write-op),
     # which false-blocked `cat /workspace/product/x | tee /tmp/y` (read source is product,
     # write target is /tmp). Regex requires product path in the write-operator's TARGET
-    # position: redirect stdout target, sed -i file arg, tee trailing file, cp/mv/rsync
-    # last arg (dest), patch filename arg. Long flags supported (--append). Double-quoted
-    # dest handled. Known gaps tracked as FW-040: quoted-string false-positives (echo with
-    # >/workspace/product/ inside quotes), variable expansion (DEST=/workspace/product/),
-    # and additional write tools (python3 -c, node -e, awk, dd, touch, mkdir, ln -s).
-    if echo "$CMD" | grep -qE '(>>?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+-[-a-zA-Z]+[^<]*[[:space:]]+/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
+    # position: redirect stdout target, sed -i/--in-place file arg, tee trailing file,
+    # cp/mv/rsync last arg (dest) OR -t/--target-directory=, patch filename arg.
+    # Hotfix 2026-04-22 (COO + Sonnet empirical adversary on b6c7cf2): narrowed sed
+    # flag anchor to -i/--in-place only (pre-hotfix `-[-a-zA-Z]+` over-matched
+    # -n/-E/-e/-r — broke officer read-analysis workflows); sed `-i` suffix now
+    # consumes non-space to catch `-i.bak` (Sonnet adversary BUG-1); added Patterns
+    # 5a/5b for `cp|mv -t DEST` bundle (incl -rfvt/-at/-bt — Sonnet adversary
+    # BUG-2/3/4) and `cp|mv|rsync --target-directory=DEST`; rsync intentionally
+    # excluded from -t bundle (rsync -t means --times not target-directory — would
+    # false-block `rsync -rt SOURCE DEST` source-reads from /workspace/product/);
+    # added `>|` to Pattern 1 (bash force-overwrite under noclobber). Known gaps
+    # tracked as FW-040 Phase B: quoted dest with internal space, variable
+    # expansion, `install` + other write tools (awk/dd/touch/mkdir/truncate/
+    # sqlite3), python3 -c, node -e.
+    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+([^<]*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]][^<]*)?[[:space:]]+/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]+["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
       echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi
