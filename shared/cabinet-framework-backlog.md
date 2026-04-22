@@ -375,12 +375,13 @@ _(none)_
 - **Effort (realized):** S (~45min including adversary review + Write branch fix + EVAL-013 extractor update).
 
 ### FW-034 — pre-tool-use.sh:321 workspace-write guard false-block on read-with-redirect
-- **Status:** Proposed 2026-04-21 (Crew sweep Finding #10).
+- **Status:** SHIPPED 2026-04-22 — Phase A target-correlation regex landed in commit `b6c7cf2` + FW-040 filed for Phase B scope gaps. EVAL-018 extended 22/22 → 24 positive / 18 negative / CTO bypass = 43 checks, all PASS.
 - **Symptom:** `pre-tool-use.sh:321` blocks (`exit 2`) when CMD contains BOTH `/workspace/product/` AND write pattern (`>\s`, `sed -i `, `tee`, `cp .+ `, `mv .+ `). False-positive blocks `cat /workspace/product/README.md | tee /tmp/out.txt` — a read followed by tee-to-tmp is NOT a write to `/workspace/product/`, but substring match trips both patterns.
 - **Blast radius:** MEDIUM (accuracy gap, fail-safe direction — over-blocks legitimate reads rather than under-blocking writes). Officer workflow friction; no control-bypass.
-- **Proposed fix:** Narrow write-pattern regex to require the write TARGET be `/workspace/product/`. Currently the two substring checks are independent; need to correlate write-operator destination with the product path. More complex than FW-028-class fix — requires parsing write-operator targets.
-- **Effort:** M (~2h — correlated pattern, not simple anchor).
-- **Owner:** CTO.
+- **Shipped fix (Phase A):** Target-correlation regex replaces the two-substring AND. Each write operator now requires the product path as its destination (not just anywhere in the command). Covered: redirect (`>`/`>>`) with optional quote, `sed -i` + long flags, `tee` + long flags + multi-file, `cp`/`mv`/`rsync` + flags + end-of-arg anchor + optional quote on dest (both `'` and `"`), `patch` + stdin-read-pass. Sonnet adversary double-pass caught single-quote dest bypass (`cp /tmp/src '/workspace/product/dst'`) + no-space semicolon bypass (`cp /tmp/src /workspace/product/dst;echo ok`) — both folded pre-commit. False-positive classes (`cp -r /workspace/product/src /tmp/dst`, `patch < /workspace/product/old.patch`, multi-src cp with product as source) now pass cleanly.
+- **Phase B scope gaps:** filed as FW-040 (7 gap classes: quoted-string false-positives, variable expansion `>"$DEST"`, additional write tools `install`/`ex`/`editor`, here-doc `<<EOF` over product path, fd-based redirect via exec, heredoc-with-tabs, process-substitution `> >(tee ...)`). Deferred pending COO adversary + Component selection (shell-parser vs allow-list vs fs-watcher audit vs incremental regex).
+- **Realized effort:** M (~3h including two Sonnet adversary passes + EVAL-018 extension from 22 → 43 checks + FW-040 filing).
+- **Owner:** CTO (Phase A done). Phase B → FW-040.
 
 ### FW-035 — cosmetic amplifications (activity display + git-add gate stdout)
 - **Status:** SHIPPED 2026-04-22 — Phase A committed + pushed (activity display anchored via shared `_ACT_PREFIX` across 5 verb branches; infra-gate anchored on `git[[:space:]]+add`; EVAL-017 pins both with matrices).
