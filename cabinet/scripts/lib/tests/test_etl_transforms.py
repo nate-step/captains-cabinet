@@ -401,6 +401,221 @@ def test_parse_dt_invalid_returns_none_both_modules():
 
 
 # ---------------------------------------------------------------------------
+# Linear `_transform_project` — epic-row synthesis invariants.
+# Epics violate the epic_no_parent DB CHECK if parent_epic_ref ever gets set
+# via this path; American/British spelling for `canceled/cancelled` is
+# documented defensive coercion; completed_at / cancelled_at are contract-
+# gated to the terminal statuses. Tests pin each invariant.
+# ---------------------------------------------------------------------------
+
+def test_transform_project_started_wip():
+    # Fixture: state="started" → status="wip". completed_at / cancelled_at
+    # stay None because the status branches don't trigger.
+    row = etl_linear._transform_project(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    assert row["status"] == "wip"
+    assert row["completed_at"] is None
+    assert row["cancelled_at"] is None
+
+
+def test_transform_project_completed_sets_completed_at():
+    proj = dict(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    proj["state"] = "completed"
+    proj["completedAt"] = "2026-04-20T12:00:00Z"
+    row = etl_linear._transform_project(proj)
+    assert row["status"] == "done"
+    assert row["completed_at"] == datetime(2026, 4, 20, 12, 0, 0, tzinfo=timezone.utc)
+    assert row["cancelled_at"] is None
+
+
+def test_transform_project_canceled_one_l_american_spelling():
+    # Linear uses American spelling — single-l `canceled`. Our map must
+    # coerce to the British `cancelled` status value (docstring invariant).
+    proj = dict(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    proj["state"] = "canceled"
+    proj["updatedAt"] = "2026-04-19T08:00:00Z"
+    row = etl_linear._transform_project(proj)
+    assert row["status"] == "cancelled"
+    # cancelled_at derives from updatedAt as the best proxy (no explicit
+    # Linear field; re-verify on contract change).
+    assert row["cancelled_at"] == datetime(2026, 4, 19, 8, 0, 0, tzinfo=timezone.utc)
+
+
+def test_transform_project_cancelled_two_ls_defensive():
+    # British spelling also coerces — defensive in case Linear ever emits
+    # both forms mid-migration or someone constructs a test dict directly.
+    proj = dict(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    proj["state"] = "cancelled"
+    row = etl_linear._transform_project(proj)
+    assert row["status"] == "cancelled"
+
+
+def test_transform_project_archived_maps_to_cancelled():
+    # Linear "archived" is a 3rd terminal form — treat as cancelled for
+    # officer_tasks (docstring invariant).
+    proj = dict(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    proj["state"] = "archived"
+    row = etl_linear._transform_project(proj)
+    assert row["status"] == "cancelled"
+
+
+def test_transform_project_epic_invariants():
+    # epic_no_parent CHECK at DB layer would reject any row with a parent
+    # set — application-layer invariant here is parent_epic_ref is ALWAYS
+    # None, type is ALWAYS "epic", external_ref format is stable.
+    row = etl_linear._transform_project(fx.LINEAR_PROJECT_SYNTHESIZED_EPIC)
+    assert row["type"] == "epic"
+    assert row["parent_epic_ref"] is None
+    assert row["external_ref"] == f"linear-project:{fx.LINEAR_PROJECT_SYNTHESIZED_EPIC['id']}"
+    assert row["external_source"] == "linear"
+
+
+def test_transform_project_missing_state_defaults_wip():
+    # `state` absent or unknown → wip. Keeps new-shape resilience.
+    row = etl_linear._transform_project({"id": "p-new", "name": "Fresh Project"})
+    assert row["status"] == "wip"
+    assert row["completed_at"] is None
+    assert row["cancelled_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# Linear `_transform_issue` — branch coverage on the subtle contracts.
+# Captain-assignee auto-flagging, due-date gating on founder_action,
+# priority mapping, PR URL extraction, duplicate skip semantics.
+# ---------------------------------------------------------------------------
+
+_ISSUE_MAPPING = {
+    "emails": {
+        "cto@cabinet.local": "cto",
+        "cpo@cabinet.local": "cpo",
+        "captain@cabinet.local": "captain",
+    },
+    "github_logins": {},
+}
+
+
+def test_transform_issue_duplicate_state_type_skipped():
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["state"] = {"id": "sdup", "name": "Done", "type": "duplicate"}
+    skip, unresolved = [], []
+    result = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert result is None
+    assert len(skip) == 1
+    assert skip[0]["reason"] == "duplicate_state"
+    assert skip[0]["external_ref"] == "SEN-247"
+
+
+def test_transform_issue_duplicate_state_name_skipped():
+    # Defensive branch: Linear sometimes emits type='started' with name='Duplicate'
+    # when an issue is mid-resolution. Both the type-check AND the name-check
+    # must route to skip.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["state"] = {"id": "sdup", "name": "Duplicate", "type": "started"}
+    skip, unresolved = [], []
+    result = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert result is None
+    assert len(skip) == 1
+
+
+def test_transform_issue_captain_assignee_forces_founder_action():
+    # Contract: any issue assigned to Captain auto-flags founder_action=True
+    # even if the label is absent. This is how CPO-assigned captain decisions
+    # get onto the morning briefing "overdue" list.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["assignee"] = {"email": "captain@cabinet.local"}
+    # Explicitly no founder-action label in the fixture labels.
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["officer_slug"] == "captain"
+    assert row["founder_action"] is True
+
+
+def test_transform_issue_captain_decision_label_sets_flag():
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(
+        fx.LINEAR_ISSUE_CAPTAIN_DECISION, _ISSUE_MAPPING, {}, skip, unresolved
+    )
+    assert row["captain_decision"] is True
+
+
+def test_transform_issue_unresolved_assignee_appends():
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["assignee"] = {"email": "stranger@external.com"}
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["officer_slug"] is None
+    assert len(unresolved) == 1
+    assert unresolved[0]["raw_identifier"] == "stranger@external.com"
+    assert unresolved[0]["source"] == "linear"
+
+
+def test_transform_issue_priority_mapping():
+    # Linear 1→P0, 2→P1, 3→P2, 4→P3. Priority 0 is "unset" and must map
+    # to None (not "P-1" or similar).
+    for linear_prio, expected in [(1, "P0"), (2, "P1"), (3, "P2"), (4, "P3"), (0, None)]:
+        issue = dict(fx.LINEAR_ISSUE_QUEUE)
+        issue["priority"] = linear_prio
+        skip, unresolved = [], []
+        row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+        assert row["priority"] == expected, f"priority={linear_prio} expected={expected} got={row['priority']}"
+
+
+def test_transform_issue_due_date_only_for_founder_action():
+    # Contract: dueDate is populated on many Linear issues but officer_tasks
+    # only tracks due dates for founder_action rows (Captain accountability).
+    # A regular issue with a dueDate MUST drop the date.
+    from datetime import date as date_cls
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["dueDate"] = "2026-04-30"
+    # QUEUE fixture has no founder-action label → due_date dropped.
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["founder_action"] is False
+    assert row["due_date"] is None
+
+    # Flip to founder-action label → due_date parsed.
+    issue_fa = dict(issue)
+    issue_fa["labels"] = {"nodes": [{"name": "founder-action"}]}
+    row_fa = etl_linear._transform_issue(issue_fa, _ISSUE_MAPPING, {}, [], [])
+    assert row_fa["founder_action"] is True
+    assert row_fa["due_date"] == date_cls(2026, 4, 30)
+
+
+def test_transform_issue_pr_url_extracted_from_description():
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue["description"] = "Landed: https://github.com/nate-step/captains-cabinet/pull/123 \nShip."
+    skip, unresolved = [], []
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, skip, unresolved)
+    assert row["pr_url"] == "https://github.com/nate-step/captains-cabinet/pull/123"
+
+
+def test_transform_issue_completed_at_only_for_done():
+    # Contract: completed_at populated only when status=='done'. WIP rows
+    # with a completedAt timestamp (shouldn't normally happen, but defensive)
+    # must NOT carry the timestamp through.
+    issue_done = dict(fx.LINEAR_ISSUE_DONE)
+    row_done = etl_linear._transform_issue(issue_done, _ISSUE_MAPPING, {}, [], [])
+    assert row_done["status"] == "done"
+    assert row_done["completed_at"] is not None
+
+    issue_queue = dict(fx.LINEAR_ISSUE_QUEUE)
+    issue_queue["completedAt"] = "2026-04-22T00:00:00Z"  # stale/spurious
+    row_queue = etl_linear._transform_issue(issue_queue, _ISSUE_MAPPING, {}, [], [])
+    assert row_queue["status"] == "queue"
+    assert row_queue["completed_at"] is None
+
+
+def test_transform_issue_parent_epic_ref_from_lookup():
+    # project.id → epic_lookup.get → parent_epic_ref. Empty lookup → None.
+    issue = dict(fx.LINEAR_ISSUE_QUEUE)  # project.id = "p1"
+    epic_lookup = {"p1": 7777}
+    row = etl_linear._transform_issue(issue, _ISSUE_MAPPING, epic_lookup, [], [])
+    assert row["parent_epic_ref"] == 7777
+
+    row_none = etl_linear._transform_issue(issue, _ISSUE_MAPPING, {}, [], [])
+    assert row_none["parent_epic_ref"] is None
+
+
+# ---------------------------------------------------------------------------
 # Standalone runner (no pytest required)
 # ---------------------------------------------------------------------------
 
