@@ -389,7 +389,12 @@ _(none)_
 - **Blast radius:** LOW — cosmetic/ephemeral. No gate consumed, no trigger fired.
 - **Phase A fix:** `head -n1` extraction + shared `_ACT_PREFIX` command-start anchor (priv-esc stack: sudo/env/timeout) interpolated into 5 verb branches; `bash/sh` launcher allowance on verify-deploy branch (canonical form per skill docs); trailing `([[:space:];]|$)` alignment across all branches. Infra gate gets dedicated command-start anchor. Both pinned by EVAL-017 (static presence + activity-display positive/negative matrix + infra-gate 7/7/1 positive/negative/heredoc matrices).
 - **Adversary triage (Sonnet, 5 findings):** #1 `bash verify-deploy.sh` missed canonical form → FIXED INLINE; #3 trailing-boundary inconsistency → FIXED INLINE (aligned verify-deploy to `([[:space:];]|$)`); #4 EVAL coverage gap → FIXED INLINE (added activity-display matrix); #2 `curl POST /pulls` REST PR-create display drop → filed as FW-036 #15 (intentional narrowing, cosmetic regression); #5 chained-deploy (`pnpm run build && git push main`) → already tracked as FW-036 #10.
-- **Effort:** XS-M (shipped).
+- **COO empirical post-ship review (62/62 CLEAN, 2026-04-22 00:18 UTC):** zero bugs, zero over-match, zero regressions. 3 new LOW-cosmetic scope-gaps filed as Phase B follow-ups:
+  - **Phase B #1 — GET vs PUT narrowing on shipping-merge branch.** `curl https://api.github.com/repos/x/y/pulls/42/merge` (GET mergeable-inspection) fires shipping display. Fix: AND-predicate `-X[[:space:]]+PUT|--request[[:space:]]+PUT` to distinguish shipping from inspection. LOW cosmetic.
+  - **Phase B #2 — Polyglot test-runner coverage.** `yarn test|bun test|jest|mocha|deno test|playwright test` all silence. Not a regression from v1 (prior substring also missed), but as the amplification-fix template matures, widen testing-branch stem to `(pnpm|npm|yarn|bun)` + `(vitest|tsc|eslint|jest|mocha|deno|playwright)`. LOW forward-looking.
+  - **Phase B #3 — Non-origin remote on deploying-main branch.** `git push upstream main` silenced (requires `origin` literal or bare `main`). Fork-workflow friction. Widen to `(origin|upstream)[[:space:]]+` or drop the remote capture entirely. LOW cosmetic.
+- **COO cross-hook confirmations:** absolute-path launcher class (FW-036 #13/#14) empirically reproduced on FW-035 branches 2 + 5. Wrapper class (FW-038) empirically reproduced on all 5 branches + infra gate. Confirms cross-hook scope correctness.
+- **Effort:** XS-M (Phase A shipped; Phase B bundle when FW-036 Phase B runs).
 - **Owner:** CTO.
 
 ### FW-036 — FW-032 Phase B: whitelist anchor scope gaps (under-match on legitimate forms)
