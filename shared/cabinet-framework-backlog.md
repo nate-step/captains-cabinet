@@ -344,7 +344,7 @@ _(none)_
 - **Owner:** CTO when first officer script adopts `git -C` push.
 
 ### FW-032 — pre-tool-use.sh:80 whitelist filename substring amplification (spending-cap bypass)
-- **Status:** Proposed 2026-04-21 (Crew sweep Finding #9 post-FW-029 ship).
+- **Status:** SHIPPED 2026-04-21 — Phase A command-start anchor landed in commit `16b9c51` + EVAL-015 positive/negative matrix. Phase B scope gaps filed as FW-036 (bundled regex widen) + FW-037 (extractor fragility) + FW-038 (cross-hook wrapper class sweep) — all gated on operational data.
 - **Symptom:** The Telegram whitelist detector at `pre-tool-use.sh:80` matches substring `send-to-group.sh` in `$CMD` via `grep -qE '(^|[[:space:]/])send-to-group\.sh([[:space:]]|$)'`. The left anchor `(^|[[:space:]/])` accepts START-OF-LINE, whitespace, OR `/` before the filename — so any command that READS the file path (not invokes) spuriously sets `IS_TELEGRAM_COMMS=1`. This cascades to `_SKIP_MAIN_CAP=1` (line 220), bypassing the per-officer daily spending cap for that one call.
 - **Amplification vectors:**
   - `cat /opt/founders-cabinet/cabinet/scripts/send-to-group.sh | head` — `/` before filename matches left anchor, space after matches right anchor. Bypass fires.
@@ -360,7 +360,7 @@ _(none)_
 - **Source:** CTO Crew sweep 2026-04-21 22:40 UTC (post-FW-029 ship audit of remaining regex+state amplification patterns in hooks).
 
 ### FW-033 — post-tool-use.sh experience-nudge substring amplification
-- **Status:** SHIPPED 2026-04-21 — Phase A pending commit at FW-033 Phase A push.
+- **Status:** SHIPPED 2026-04-21 — Phase A command-start anchor (Bash + Write branches) landed in commit `7ed10e7` + EVAL-016 matrix. Phase B chaining/loop/inline-env scope gaps documented as addendum to FW-036; absolute-path launcher (`/usr/bin/git push`) filed as FW-036 #14; wrapper-class sweep filed as FW-038.
 - **Symptom:** `post-tool-use.sh:185` sets `cabinet:nudge:experience-record:$OFFICER` (EX 3600) when CMD payload substring-matches `git push|gh pr create|gh pr merge`. `git commit -m "fix: pre-validate before gh pr merge"` spuriously sets the nudge key, triggering a false experience-record prompt 1h later.
 - **Shipped fix (Phase A):**
   1. Bash branch: extract `.command` from TOOL_INPUT via jq (`_NUDGE_CMD`), apply command-start anchor `^[[:space:]]*<priv-esc>*(git[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+(create|merge))([[:space:];]|$)` with `head -n1` heredoc guard. Mirrors FW-028/029/032 architecture.
@@ -470,7 +470,7 @@ _(none)_
 - **Owner:** CTO when first officer script adopts mirror/HEAD/tag push.
 
 ### FW-039 — Library migration infra (bulk markdown import + write-path hook retargeting)
-- **Status:** Proposed 2026-04-22 (Spec 037 v2 HARD PREREQ — promoted from Phase B to Phase A 2026-04-21; CPO ACKed verbatim scope 2026-04-22 trigger 1776817374767-0, Spec 037 v3 will cite).
+- **Status:** SCOPE LOCKED 2026-04-22 — entry filed in commit `4ff80b1`; COO adversary 5 AC pins folded in commit `be29da9` (v3.2 absorption); Spec 037 v3.2 cites LANDED. Phase A IMPLEMENTATION gated on Spec 037 Captain Q1-Q5 final-ack (CoS routing at 07:00 CEST handoff); CPO standdown 2026-04-22 01:10 UTC confirmed AC-6 env-var vs advisory-lock split coherent with Spec 037 AC #24 (no drift).
 - **Why HARD PREREQ:** Spec 037 (Library Notion/Obsidian UX) Phase A depends on every shared/interfaces and instance/memory/tier2 artifact being resolvable via `kb_records` at day-1. Without bulk import, `library_get_record` / section-anchor resolution / status-filter views all return empty for pre-migration prose. Without write-path retargeting, every live edit to shared/backlog.md, captain-decisions.md, experience-records/*.md writes only to the repo and leaves Library drifting — defeats the single-source-of-truth goal.
 - **Components:**
   1. **fs-walk bulk importer** — reads `shared/`, `instance/memory/tier2/<officer>/`, and designated repo paths. Frontmatter extraction, auto-derived `space` from path, populates `kb_records` + `library_record_links` + `library_record_sections` + `kb_records.status` in one transactional pass per record. Uses `github-slugger` to derive `section_slug` values matching rehype-slug output (Spec 037 A6).
