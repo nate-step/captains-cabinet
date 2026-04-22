@@ -183,6 +183,28 @@ def test_extract_priority_case_insensitive():
     assert etl_github._extract_priority(["Priority-P1"]) == "P1"
 
 
+def test_extract_priority_empty_list():
+    # No labels at all — not "priority absent among many", but zero input.
+    assert etl_github._extract_priority([]) is None
+
+
+def test_extract_priority_first_match_wins():
+    # Multiple priority labels shouldn't happen, but regex is `.match()` per
+    # label in list-order. Contract: first match wins; later entries ignored.
+    assert etl_github._extract_priority(["priority-p2", "priority-p0"]) == "P2"
+
+
+def test_extract_priority_out_of_range_rejected():
+    # Regex pins digit range to [0-3]. Anything else → no match → None.
+    assert etl_github._extract_priority(["priority-p4"]) is None
+    assert etl_github._extract_priority(["priority-p9"]) is None
+
+
+def test_extract_priority_malformed_label_no_digit():
+    # Regex requires trailing digit; bare `priority-p` shouldn't match.
+    assert etl_github._extract_priority(["priority-p"]) is None
+
+
 # ---------------------------------------------------------------------------
 # Captain-decision label parity (fixture-gap b, both sources)
 # ---------------------------------------------------------------------------
@@ -319,6 +341,63 @@ def test_infer_source_identifier_wins_over_url():
     # Even when both fields present, `identifier` check runs first.
     record = {"identifier": "SEN-1", "html_url": "https://github.com/foo/bar/pull/1"}
     assert etl_common._infer_source(record) == "linear"
+
+
+# ---------------------------------------------------------------------------
+# `_parse_dt` parity — identical impl duplicated across etl-linear +
+# etl-github. Tests run against both modules per case so future drift (one
+# side Z-normalizes differently, one side catches a different exception
+# class, one side grows timezone coercion) surfaces loudly instead of as
+# a silent desync in timestamps written to officer_tasks.
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone
+
+_PARSE_DT_MODULES = (etl_linear, etl_github)
+
+
+def test_parse_dt_none_both_modules():
+    for mod in _PARSE_DT_MODULES:
+        assert mod._parse_dt(None) is None
+
+
+def test_parse_dt_empty_string_both_modules():
+    # `if not val` short-circuits — empty string and None identical.
+    for mod in _PARSE_DT_MODULES:
+        assert mod._parse_dt("") is None
+
+
+def test_parse_dt_z_suffix_normalizes_to_utc():
+    # Linear timestamps end in `Z`; implementation replaces Z→+00:00 before
+    # fromisoformat (pre-Python-3.11 compat). Both sides must agree.
+    for mod in _PARSE_DT_MODULES:
+        dt = mod._parse_dt("2026-04-22T10:30:00Z")
+        assert dt == datetime(2026, 4, 22, 10, 30, 0, tzinfo=timezone.utc)
+        assert dt.utcoffset() == timedelta(0)
+
+
+def test_parse_dt_plus_zero_offset_both_modules():
+    # Explicit +00:00 form should parse identically to Z-suffix form.
+    for mod in _PARSE_DT_MODULES:
+        dt = mod._parse_dt("2026-04-22T10:30:00+00:00")
+        assert dt == datetime(2026, 4, 22, 10, 30, 0, tzinfo=timezone.utc)
+
+
+def test_parse_dt_negative_offset_preserves_tz():
+    # Non-UTC offsets must round-trip — comparing officer_tasks rows across
+    # timezones depends on tzinfo being preserved, not coerced to naive UTC.
+    for mod in _PARSE_DT_MODULES:
+        dt = mod._parse_dt("2026-04-22T10:30:00-05:00")
+        assert dt is not None
+        assert dt.utcoffset() == timedelta(hours=-5)
+
+
+def test_parse_dt_invalid_returns_none_both_modules():
+    # ValueError path: fromisoformat rejects garbage; try/except swallows.
+    # Contract: return None, never raise. Upstream callers lean on this.
+    for mod in _PARSE_DT_MODULES:
+        assert mod._parse_dt("not-a-date") is None
+        assert mod._parse_dt("2026/04/22") is None
 
 
 # ---------------------------------------------------------------------------
