@@ -487,14 +487,103 @@ fi
 #   accepted as fail-closed per same rationale.
 #   FW-041 Phase 2 scope-gap (quoted-space flag value) remains
 #   open — still tracked as FW-041 Phase 2.
+# FW-045 (hotfix-6 2026-04-23 — COO Pass-2 empirical adversary on f7a231b):
+#   17/20 probes against the FW-043 statement-boundary prefix bypassed
+#   Phase 1. Four HIGH classes, 14 addressable forms:
+#   (1) prefix-consumer gap — 8 POSIX command-modifier wrappers
+#   absent from alternation: `exec|time|nohup|nice|ionice|coproc|stdbuf
+#   |unbuffer cmd`. Fix: unified flag-tolerant branch
+#   `(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer)(
+#   [[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+`
+#   (same flag pattern as FW-041 for git/gh — handles `nice -n 10 cmd`,
+#   `ionice -c 3 -n 5 cmd`, `stdbuf -oL cmd`, bare `nohup cmd`).
+#   (2) inline VAR=val prefix — `GIT_TRACE=1 git push`, `FOO=bar
+#   BAZ=qux git push`. THE canonical POSIX idiom. Existing `env`
+#   branch only handles `env VAR=val cmd`, not bare assignment. Fix:
+#   prepend `[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+` to
+#   alternation — 1+ iterations handled by outer `*`.
+#   (3) boundary class gap — `!` (bash negation: `! cmd` returns
+#   !exit-code). Added to class. (`<`/`>` redirects handled as prefix
+#   consumer, not boundary, since they take an arg: `>/tmp/out cmd` =
+#   redirect-then-run-cmd.) Fix: boundary class extended from
+#   `[;&|({\`]` to `[;&|({\`!]`; redirect branch
+#   `[<>][[:space:]]*[^[:space:]]+[[:space:]]+` added to prefix-consumer.
+#   (4) wrapper-exec with quote-body — `bash -c 'git push'`, `sh -c`,
+#   `zsh -c`, `eval 'git push'`, bare `eval git push`. Fix: two new
+#   prefix-consumer branches `(bash|sh|zsh)[[:space:]]+-c[[:space:]]+
+#   ['"]?` and `eval[[:space:]]+['"]?` (optional quote absorbs through
+#   the opening delimiter — engine re-anchors at `git push` inside the
+#   quoted body).
+#   CRITICAL Phase 2 co-change: `bash -c 'git push origin main'`
+#   ends with `'` after `main`, which was NOT in Phase 2 trailing
+#   terminator class — Phase 2 then failed to match even after Phase 1
+#   succeeded. Phase 2 trailing class extended from `[[:space:];&|(){}<>\`]`
+#   to `[[:space:];&|(){}<>'"\`]` — adds quote chars as valid post-`main`
+#   terminators. (Pattern 1 from memory: "Phase 2 action regex must
+#   mirror Phase 1 anchor flag-tolerance" — FW-045 re-confirmed: any
+#   wrapper form that introduces a new post-`main` context needs Phase
+#   2 trailing class extension. 5th instance in FW-029-family work.)
+#   Sonnet Pass-3 additions (same commit, 9 new findings — HIGH: H-1
+#   `bash -x -c`, H-2 ANSI-C `$'...'`, H-3 `)` boundary, H-4 `}` boundary;
+#   MEDIUM: M-1 bare `env` (no VAR=val), M-2 Phase 2 asymmetry (`main!`,
+#   `main^`, `main~`, `main#comment`), M-3 digit-prefix redirect
+#   `2>/dev/null`, M-4 `timeout --preserve-status 30s`; plus `setsid` +
+#   `wget` tool additions):
+#   - Boundary class `[;&|({\`!]` → `[;&|({)}\`!]` (adds close-paren
+#     for case-arm end, close-brace for function-body end).
+#   - `env` branch: flag-tolerant idiom `env([[:space:]]+-[^[:space:]]+
+#     ([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+` replaces
+#     VAR=val-required form (bare-env now matches; inline VAR=val
+#     handled by separate `[A-Za-z_]…=[…]` branch).
+#   - `timeout` branch: pre-duration flag-tolerance (`timeout -k 5s
+#     --preserve-status 30s cmd`).
+#   - Wrapper list: add `setsid` (session leader).
+#   - `bash|sh|zsh` branch: flag-tolerant before `-c` (`bash -x -c`,
+#     `bash --norc -c`), ANSI-C absorber `(\$?['\''"])?` handles
+#     `bash -c $'…'`.
+#   - Redirect branch: digit-prefix `[0-9]?[<>]` handles `2>/dev/null cmd`
+#     and `1>/tmp/out cmd`.
+#   - Command alternation: add `wget[[:space:]]` (parallel to curl).
+#   - Phase 2 trailing class: add `!#\\^~` to post-`main|master`
+#     terminators (`main!`, `main#comment` shell-comment strip, `main^1`
+#     git-ancestor, `main~2` git-ancestor, `main\\foo` backslash).
+#   Sonnet Pass-4 additions (fresh-context re-review after Pass-3 fix —
+#   4 real bypasses confirmed empirically; 2 Pass-4 findings were
+#   false-positives: `<(cmd)` process sub already fires via existing
+#   `(` boundary, and `main:refs/heads/main` fires via greedy `.*main$`):
+#   - Wrapper alternation: add `command` and `builtin` — POSIX builtin
+#     modifiers (`command cmd` bypasses aliases; `builtin cmd` forces
+#     shell builtin). Real bypasses: `command git push origin main`.
+#   - Shell -c alternation: extend `(bash|sh|zsh)` →
+#     `(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)`. Real bypass:
+#     `fish -c 'git push origin main'`. All POSIX-family shells take
+#     `-c CMD_STRING`, so gap covered by common alt-shells.
+#   Remaining scope-gaps (acknowledged, NOT fixable by flat regex):
+#   (a) xargs-construct `echo origin main | xargs git push` — lexical
+#   disaggregation across pipe, main is LHS arg not RHS refspec.
+#   (b) variable expansion `X=git; $X push` — already tracked as FW-040
+#   Phase B P8.
+#   (c) dot-source `. /tmp/push.sh` + `source /tmp/push.sh` — hook can't
+#   scan file contents.
+#   (d) perl/python -e / awk 'system(…)' shell-out — not in wrapper
+#   alternation; same filesystem-escape class as dot-source, deferred
+#   to FW-040 Phase B shell-parse-aware gate.
+#   FP surface expansion (accepted fail-closed, same class as FW-043 FP-1):
+#   commit bodies or inline text containing wrapper-name or inline-VAR
+#   token adjacent to literal `git push origin main` text WILL fire the
+#   gate. Example: commit msg "nohup git push origin main for CI" →
+#   trips. Also: `git push --force-with-lease origin main` now fires
+#   (was already in flag-tolerant scope but worth calling out — ACK
+#   re-SET retry works). Mitigation: `cabinet:layer1:cto:reviewed` re-SET
+#   after gate-block → retry-commit workflow (same as FW-043).
 # Phase 2 (action regex): actual push-to-main-or-master / pr-merge pattern.
 # AND-composed so both must pass to trip the gate.
 # Action regex covers BOTH `main` (Sensed product repo) and `master`
 # (framework repo default) — CTO pushes to both.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({`])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
-     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}`]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*pr[[:space:]]+merge'; then
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
+     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}<>'\''"`!#\\^~]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*pr[[:space:]]+merge'; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
       echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
@@ -514,7 +603,7 @@ fi
 # "...pulls/42/merge..."` bodies cannot pass Phase 1.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({`])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
      echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then

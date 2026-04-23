@@ -632,3 +632,36 @@ _(none)_
 - **Effort:** XS (~20min — add action regex alternation, 4 harness cases, Sonnet adversary).
 - **Owner:** CTO.
 - **Source:** COO empirical adversary Pass-1 on FW-041 ship — Section D `gh-api-delete-main` form.
+
+### FW-045 — FW-029 Layer 1 Phase 1 wrapper/prefix-consumer bypasses (HIGH)
+- **Status:** SHIPPED 2026-04-23 (COO empirical adversary Pass-2 on `f7a231b` (FW-043 ship), 14 HIGH addressable bypasses + 3 scope-gaps; CTO Sonnet adversary Pass-3 on draft fix, 9 additional findings; CTO Sonnet adversary Pass-4 post-fix re-review, 4 additional real bypasses + 2 false-positives). Commit (this PR).
+- **Symptom:** FW-043 statement-boundary anchor only handled `sudo|env VAR=|timeout Ns|(...preceded by boundary char)`. Bare POSIX command modifiers before `git push` bypassed: `exec git push origin main` / `time git push...` / `nohup git push...` / `nice -n 10 git push...` / `ionice -c 3 git push...` / `stdbuf -oL git push...` / `unbuffer git push...` / `coproc git push...` / `setsid git push...` / `command git push...` / `builtin git push...`. Also: bare inline POSIX assignment `GIT_TRACE=1 git push origin main`, `FOO=bar BAZ=qux git push...` (canonical `env` usage idiom — FW-043 `env` branch required literal `env` keyword). Shell `-c` wrapper: `bash -c 'git push...'` + flag-tolerant `bash -x -c`/`bash --norc -c` + ANSI-C `bash -c $'...'` + alt shells `fish|ksh|dash|ash|csh|tcsh|mksh -c '...'`. Boundary class gaps: `! git push...` (bash negation) + `) git push...` (case-arm close) + `} git push...` (function-body close). Redirect-prefix forms: `>/tmp/out git push...` + digit-prefix `2>/dev/null git push...` + `1>/tmp/log git push...`. `eval` wrapper: `eval 'git push...'` + bare `eval git push...`. Phase 2 trailing class asymmetry: `bash -c 'git push origin main'` — ending `'` after `main` not in original Phase 2 trailing class, Phase 2 fails even after Phase 1 matches. Also `main!`/`main#comment`/`main^1`/`main~2`/`main\foo` trailing chars.
+- **Blast radius:** HIGH (same fail-open class as FW-041/FW-043). CTO workflow invokes many of these forms naturally (`GIT_TRACE=1` for debug pushes, `timeout 30s git push` for CI hangs, `exec git push` for last-step shell replacement, `bash -c` for git-hook-under-different-context). All silently bypassed Layer 1 review gate. No state amplification.
+- **Fix applied** (single commit, two-layer):
+  - **Phase 1 comprehensive alternation**: unified flag-tolerant branches for 13 POSIX wrappers `(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)`, bare-`env` with flag-tolerance, `timeout` with pre-duration flag-tolerance, shell-`-c` across 10 POSIX-family shells `(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)` with pre-`-c` flag-tolerance + ANSI-C absorber `(\$?['"])?`, digit-prefix redirect `[0-9]?[<>]`, `wget` parallel to curl, inline `VAR=val` POSIX assignment idiom `[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+`, boundary class extended `[;&|({)}\`!]` (add `)` + `}`).
+  - **Phase 2 trailing class**: extended `[[:space:];&|(){}<>\`]` → `[[:space:];&|(){}<>'"\`!#\\^~]` (add quotes for wrapper-exec endings, `!` for P2 asymmetry, `#` for shell-comment strip, `^` `~` for git ancestor refs, `\\` for backslash).
+  - **CI Green Phase 1**: mirrored byte-identical to Layer 1 Phase 1 (both gates now share same prefix-detection surface; Phase 2 diverges intentionally — Layer 1 matches push/merge, CI Green matches `pulls/N/merge`).
+  - **Comment block update**: documented every alternation extension, pattern rationale, Pass-3/Pass-4 additions, and scope-gaps.
+- **Remaining scope-gaps** (acknowledged — NOT fixable by flat regex):
+  - `echo origin main | xargs git push` (xargs lexical disaggregation across pipe)
+  - `X=git; $X push origin main` (variable expansion — FW-040 Phase B)
+  - `. /tmp/push.sh` + `source /tmp/push.sh` (hook can't scan file contents — FW-040 Phase B)
+  - `perl -e 'system("git push origin main")'` + `python -c '…'` + `awk 'BEGIN{system(…)}'` (same class as dot-source)
+- **Accepted fail-closed FPs** (same class as FW-043 FP-1):
+  - Commit bodies / inline text containing wrapper-token or inline-VAR adjacent to literal `git push origin main` text fire the gate (e.g., commit msg `nohup git push origin main for CI`). Mitigation: `cabinet:layer1:cto:reviewed` re-SET + retry (same as FW-043).
+- **Pass-4 false-positives** (Sonnet findings that Pass-4 empirically invalidated):
+  - `<(git push origin main)` process substitution: already fires via existing `(` boundary class match.
+  - `git push origin main:refs/heads/main` refspec: already fires via greedy `.*(main|master)$` path (the final `main` at end-of-line matches with `$` terminator).
+- **Regression/adversary pins:**
+  - `/tmp/fw043-pass2-adversary-tests.sh` COO Pass-2 harness: 38/40 PASS (2 acknowledged scope-gaps: xargs, var-expansion).
+  - `/tmp/fw045-sonnet-pass3-tests.sh` Sonnet Pass-3 harness: all real bypass forms blocked (2 FAILs are harness-authoring bugs, not regex bugs).
+  - `/tmp/fw045-pass4-verify.sh` Sonnet Pass-4 harness: 9/9 real bypasses blocked (C-3 + C-4 + 2 negative-control harness-authoring FPs expected).
+  - Golden evals: 22/22 PASS (EVAL-014 positive matrix extended with 16 new pins covering Sonnet Pass-3/Pass-4 forms: `command`/`builtin`/`fish -c`/`ksh -c`/`dash -c`/`env` bare/`env -u HOME`/`timeout --preserve-status`/`setsid`/`bash -x -c`/`bash --norc -c`/`bash -c $'...'`/`2>/dev/null`/`)` boundary/`}` boundary/`main # comment`).
+- **EVAL-014 architecture change**: Replaced sed-based regex-extraction harness with direct hook invocation (`jq -cn`+`OFFICER_NAME=cto bash "$HOOK"`). Reason: FW-045 added `['"]?` alternation inside the hook's single-quoted grep pattern. The old sed extractor `s/.*grep -qE '([^']+)'.*/\1/` stops at the first `'` inside the regex (from `'\''` embedded escape), truncating the extracted pattern. Hook-invocation approach is robust to future quote additions.
+- **Source:**
+  - COO empirical adversary Pass-2 on FW-043 ship `f7a231b` — 17 forms, 3 scope-gaps, 14 addressable.
+  - CTO Sonnet adversary Pass-3 on draft fix (fresh-context logic review) — found 9 additional issues (4 HIGH boundary/wrapper-flag, 4 MEDIUM, 1 LOW).
+  - CTO Sonnet adversary Pass-4 post-fix re-review — found 4 real bypasses (`command`/`builtin`/`fish-ksh-dash -c`) + 2 invalidated-by-empirical findings.
+- **Memory updated:** `feedback_security_regex_authoring.md` — this is 5th pre-tool-use-regex adversary round; Rule 1 now quantified as "3-4 adversary rounds typical for security-critical regex" (was "≥2 rounds minimum").
+- **Follow-ups filed:** FW-044 (still open: gh api -X DELETE refs/heads/main Phase 2 scope); FW-041 Phase 2 (still open: quoted-space flag value).
+- **Owner:** CTO.

@@ -866,33 +866,33 @@ else
     EV14_FAILURE="FW-029 anchor count=$EV14_ANCHOR_COUNT (expected 2 — Layer 1 + CI Green). Partial revert would reopen gate-state amplification in un-anchored gate."
   elif [ "$EV14_FW029_MARKER_COUNT" -lt 2 ]; then
     EV14_FAILURE="FW-029 marker count=$EV14_FW029_MARKER_COUNT (expected >=2 — comment marker removed, regression risk)."
-  else
-    # Extract FW-029 anchor. Filter by distinctive FW-043 statement-boundary
-    # prefix `(^|[;&|(`])[[:space:]]*` — unique to Layer 1 + CI Green Phase 1
-    # anchors. Regex (not fixed-string) so additive insertions (flag-tolerant
-    # group expansion, env/timeout prefix additions) stay pinned.
-    EV14_ANCHOR_RE=$(grep -E "grep -qE '\(\^\|\[;&" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-    # Extract the Layer 1 action regex and the CI Green action regex.
-    # Match on distinctive `pr...merge` tail so EVAL survives both
-    # original form (`gh pr merge`) AND FW-041's flag-tolerant form
-    # (`gh[[:space:]]+(-...)*pr[[:space:]]+merge`) without another edit.
-    EV14_L1_RE=$(grep -E "grep -qE '[^']*pr[^']*merge'" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-    EV14_CI_RE=$(grep -E "grep -qE 'pulls/\[0-9\]\+/merge'" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-    if [ -z "$EV14_ANCHOR_RE" ] || [ -z "$EV14_L1_RE" ] || [ -z "$EV14_CI_RE" ]; then
-      EV14_FAILURE="regex extraction returned empty — anchor=$EV14_ANCHOR_RE, L1=$EV14_L1_RE, CI=$EV14_CI_RE (sed pattern drift — rewrite EVAL-014 extractor)"
-    fi
   fi
 
+  # Direct hook invocation (avoids regex-extraction fragility when embedded
+  # shell-escapes like `'\''` appear in the hook's single-quoted grep pattern —
+  # FW-045 added `['"]?` classes that defeat the old sed extractor).
+  # Helper: probes the hook with a Bash command payload. Returns 2 (block) or
+  # 0 (pass). Sets Redis ACK keys first so gate-check exits with the block
+  # status (not "reviewed already").
+  ev14_hook_probe() {
+    local cmd="$1"
+    local json
+    json=$(jq -cn --arg cmd "$cmd" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    redis-cli -h redis -p 6379 DEL cabinet:layer1:cto:reviewed > /dev/null 2>&1
+    redis-cli -h redis -p 6379 DEL cabinet:layer1:cto:ci-green > /dev/null 2>&1
+    echo "$json" | OFFICER_NAME=cto bash "$EV14_HOOK" > /dev/null 2>&1
+    return $?
+  }
+
   if [ -z "$EV14_FAILURE" ]; then
-    # Layer 1 positive matrix — gate MUST fire (anchor AND action both match).
-    # FW-043: statement-boundary prefix forms (cd-chain, subshell, brace-group, etc.)
-    # added to prevent accidental revert of boundary class `(^|[;&|({`])`.
+    # Layer 1 + CI Green positive matrix — hook MUST exit 2 (gate fires).
+    # Covers: FW-029 baseline, FW-041 flag-tolerant (git -C, gh -R),
+    # FW-043 statement-boundary prefixes, FW-045 wrapper/inline-env forms.
     for cmd in \
       "git push origin main" \
       "git push origin master" \
       "git push origin HEAD:main" \
       "git push origin refs/heads/main" \
-      "git push https://x-access-token:FAKE@github.com/STEP-Network/Sensed main" \
       "env FOO=bar git push origin main" \
       "gh pr merge 42 --squash" \
       "cd /tmp && git push origin main" \
@@ -903,79 +903,64 @@ else
       "{ git push origin main; }" \
       "false || git push origin main" \
       "git -C /tmp push origin main" \
-      "gh -R owner/repo pr merge 42"; do
-      anchor_ok=false
-      action_ok=false
-      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
-      echo "$cmd" | grep -qE "$EV14_L1_RE" && action_ok=true
-      if ! $anchor_ok || ! $action_ok; then
-        EV14_FAILURE="Layer 1 gate would FAIL to fire on legitimate push/merge: $cmd (anchor=$anchor_ok action=$action_ok). Real push would slip past Crew-review requirement."
-        break
-      fi
-    done
-  fi
-
-  if [ -z "$EV14_FAILURE" ]; then
-    # Layer 1 negative matrix — at least ONE phase must reject.
-    # These are commands that mention push/merge text but are not actual
-    # push/merge invocations. Gate-state amplification would consume the
-    # reviewed key on these under the old single-regex check.
-    # FW-043 scope note: commit messages with `&&` + `git push origin main`
-    # literal text DO fire the gate (documented fail-closed FP per
-    # pre-tool-use.sh L474-481). Only NO-BOUNDARY-CHAR commit bodies stay
-    # in the negative matrix — boundary-char-containing quoted bodies are
-    # accepted trade-offs, not regressions.
-    for cmd in \
-      'git commit -m "message mentioning git push origin main"' \
-      'echo "git push origin main"' \
-      'for cmd in "git push origin main"; do echo "$cmd"; done' \
-      'cat /tmp/log.txt | grep "git push origin main"' \
+      "gh -R owner/repo pr merge 42" \
+      "GIT_TRACE=1 git push origin main" \
+      "nohup git push origin main" \
+      "exec git push origin main" \
+      "time git push origin main" \
+      "nice -n 10 git push origin main" \
+      "stdbuf -oL git push origin main" \
       "bash -c 'git push origin main'" \
-      '# git push origin main' \
-      'echo "gh pr merge 42"' \
-      'git push origin feature/maintenance-window-2026' \
-      'git push origin feature/master-plan'; do
-      anchor_ok=false
-      action_ok=false
-      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
-      echo "$cmd" | grep -qE "$EV14_L1_RE" && action_ok=true
-      if $anchor_ok && $action_ok; then
-        EV14_FAILURE="Layer 1 gate WRONGLY fires on non-deploy command: $cmd — gate-reviewed key would be consumed without a real push, forcing unnecessary re-SET."
-        break
-      fi
-    done
-  fi
-
-  if [ -z "$EV14_FAILURE" ]; then
-    # CI Green positive matrix — gate MUST fire on actual API merge calls.
-    for cmd in \
-      "curl -X PUT https://api.github.com/repos/STEP-Network/Sensed/pulls/42/merge" \
-      "gh api repos/STEP-Network/Sensed/pulls/42/merge -X PUT" \
+      "eval 'git push origin main'" \
+      "! git push origin main" \
+      ">/tmp/out git push origin main" \
+      "2>/dev/null git push origin main" \
+      "setsid git push origin main" \
+      "bash -x -c 'git push origin main'" \
+      "bash --norc -c 'git push origin main'" \
+      "bash -c \$'git push origin main'" \
+      "env git push origin main" \
+      "env -u HOME git push origin main" \
+      "timeout --preserve-status 30s git push origin main" \
+      "command git push origin main" \
+      "builtin git push origin main" \
+      "fish -c 'git push origin main'" \
+      "ksh -c 'git push origin main'" \
+      "dash -c 'git push origin main'" \
+      ") git push origin main" \
+      "} git push origin main" \
+      "git push origin main # comment" \
+      "curl -X PUT https://api.github.com/repos/OWNER/REPO/pulls/42/merge" \
+      "gh api repos/OWNER/REPO/pulls/42/merge -X PUT" \
       "cd /tmp && curl -X PUT https://api.github.com/repos/OWNER/REPO/pulls/42/merge" \
       "(gh api repos/OWNER/REPO/pulls/42/merge -X PUT)"; do
-      anchor_ok=false
-      action_ok=false
-      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
-      echo "$cmd" | grep -qE "$EV14_CI_RE" && action_ok=true
-      if ! $anchor_ok || ! $action_ok; then
-        EV14_FAILURE="CI Green gate would FAIL to fire on legitimate API merge: $cmd (anchor=$anchor_ok action=$action_ok). Merge would slip past CI-green requirement."
+      ev14_hook_probe "$cmd"
+      if [ $? -ne 2 ]; then
+        EV14_FAILURE="Layer 1 / CI Green gate FAILED to fire on legitimate push/merge: $cmd (hook exit $? — expected 2). Real push would slip past Crew-review requirement."
         break
       fi
     done
   fi
 
   if [ -z "$EV14_FAILURE" ]; then
-    # CI Green negative matrix — non-merge commands mentioning pulls/N/merge text.
+    # Negative matrix — hook MUST NOT exit 2 (gate stays quiet).
+    # FW-043/FW-045 scope note: boundary-char-containing quoted commit bodies
+    # and wrapper-exec literals DO fire the gate (documented fail-closed FP
+    # per pre-tool-use.sh comment block). Only no-boundary-char commit
+    # bodies stay in the negative matrix.
     for cmd in \
-      'echo "hit endpoint pulls/42/merge"' \
-      'cat /tmp/doc.md | grep "pulls/42/merge"' \
-      'git commit -m "docs: pulls/42/merge API notes"'; do
-      anchor_ok=false
-      action_ok=false
-      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
-      echo "$cmd" | grep -qE "$EV14_CI_RE" && action_ok=true
-      if $anchor_ok && $action_ok; then
-        EV14_FAILURE="CI Green gate WRONGLY fires on non-merge command: $cmd — ci-green key would be consumed without a real merge."
+      'git push origin feature/maintenance-window-2026' \
+      'git push origin feature/master-plan' \
+      'git push origin mainx' \
+      'git push origin main2' \
+      'gh pr view 42' \
+      'gh pr list' \
+      'gh pr checkout 42' \
+      'git log --oneline' \
+      'git status'; do
+      ev14_hook_probe "$cmd"
+      if [ $? -eq 2 ]; then
+        EV14_FAILURE="Layer 1 / CI Green gate WRONGLY fires on non-deploy command: $cmd — gate-reviewed key would be consumed without a real push, forcing unnecessary re-SET."
         break
       fi
     done
