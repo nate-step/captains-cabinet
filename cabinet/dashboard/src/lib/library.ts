@@ -38,13 +38,16 @@ export interface LibrarySpace {
 // A5: Status enum values
 export type RecordStatus = 'draft' | 'in_review' | 'approved' | 'implemented' | 'superseded'
 
-// A5: Valid state transitions
+// A5: Valid state transitions — v3.2 state machine (Spec 037 §12, AC #16)
+// New reverse edges added in v3: in_review→draft (author rescind),
+// approved→in_review (re-open after initial approval; review cycles aren't one-shot).
+// Terminals: superseded→{} (strictly terminal), implemented→{superseded} only.
 export const STATUS_TRANSITIONS: Record<RecordStatus, RecordStatus[]> = {
-  draft: ['in_review', 'superseded'],
-  in_review: ['approved', 'superseded'],
-  approved: ['implemented', 'superseded'],
+  draft:       ['in_review', 'superseded'],
+  in_review:   ['draft', 'approved', 'superseded'],
+  approved:    ['in_review', 'implemented', 'superseded'],
   implemented: ['superseded'],
-  superseded: [],
+  superseded:  [],
 }
 
 export interface LibraryRecord {
