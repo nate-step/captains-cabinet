@@ -71,6 +71,15 @@ jobs:
           # packages are optional. Install anyway to match officer container.
           pip3 install psycopg2-binary requests pyyaml pytest
 
+      - name: Setup Node
+        # FW-048: dashboard typecheck needs node + npm. Node 20 matches
+        # Next.js 15 requirements.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: founders-cabinet/cabinet/dashboard/package-lock.json
+
       - name: Bash syntax check — hooks
         run: |
           set -e
@@ -102,6 +111,15 @@ jobs:
         run: |
           cd /opt/founders-cabinet/cabinet/scripts/gates
           python3 -m pytest tests/ -v
+
+      - name: Dashboard typecheck (tsc --noEmit)
+        # FW-048: catch TS errors in dashboard before they reach Captain's
+        # localhost:3100. tsconfig has noEmit:true, so `npx tsc` alone is
+        # pure type-check (no JS output).
+        run: |
+          cd /opt/founders-cabinet/cabinet/dashboard
+          npm ci
+          npx tsc --noEmit
 
       - name: Golden evals
         # EVAL-023 (FW-047) runs under CABINET_HOOK_TEST_MODE=1 so trigger_send
