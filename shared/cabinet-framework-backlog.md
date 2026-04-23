@@ -583,18 +583,19 @@ _(none)_
 - **Phase 1 ship notes (2026-04-23):** Implemented flag-tolerant group `(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*` between tool (`git`/`gh`) and subcommand at BOTH Phase 1 anchor (line 439) AND Phase 2 action regex (line 440) in `pre-tool-use.sh`. Bare `-FLAG` (single token, e.g., `--git-dir=/path`) OR `-FLAG VALUE` pair (e.g., `-C /path`, `-R owner/repo`). Also narrowed `gh` subcommand from `(pr|api)` to `(pr[[:space:]]+merge|api)` — broad `pr` alternation false-positived every read (`gh pr view/list/checkout/status/diff`). EVAL-014 pin switched from fixed-string `git[[:space:]]+push` to regex `git\[\[:space:\]\]\+.*push` + anchor detection regex `[^']*pr[^']*merge` (survives flag-tolerant insertion; structural pin, not literal). 4 adversary passes clean (1 pre-implement + 3 post-implement Sonnet). Empirical harness `/tmp/fw041-hook-test.sh` 22/22 PASS: 5 bypass (`git -C ... push main`, `git -c ... push main`, `git --git-dir= push main`, `gh -R ... pr merge`, `gh --repo ... pr merge`) all exit=2; 4 preserved positives; 4 preserved negatives; 6 FP regression (all `gh pr` read subcommands exit=0); 2 mixed (non-main branch exit=0); 1 ACK path (after `cabinet:layer1:cto:reviewed` + `ci-green` set → exit=0).
 
 ### FW-041 Phase 2 — quoted-space flag value bypass (MEDIUM)
-- **Status:** Proposed 2026-04-23 (CTO Sonnet adversary pass-1 on FW-041 Phase 1 draft, before commit — filed as scope gap, not regression; Phase 1 shipped with this known limit).
+- **Status:** SHIPPED 2026-04-23 (CTO empirical adversary Pass-1 on FW-041 Phase 1 ship — bypass confirmed on lines 606/607/627; Sonnet adversary Pass-2 on fix draft, 0 new bypasses, 0 new FPs).
 - **Symptom:** FW-041 Phase 1 flag-tolerant group `[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?` accepts only UNQUOTED flag values. Bypass form: `git -c 'user.name=val with space' push origin main` OR `git -c "x=y z" push origin main`. The single/double-quoted value contains space, Phase 1 group can't parse through the quoted span, anchor fails to include `push`, gate bypassed.
-- **Empirical reproduction:** (to be confirmed — requires hook test with shell-quoted arg passed through jq to Bash JSON).
+- **Empirical reproduction (CONFIRMED on `002ffe8`):** `/tmp/fw041-phase2-verify.sh` against pre-fix hook: 3 of 4 claimed bypass forms returned exit=0 (gate silent) instead of exit=2. Specifically: `git -c 'user.name=val with space' push origin main`, `git -c "x.y=val with space" push origin main`, `git -c user.email=a@b -c 'user.name=val space' push origin main`. `gh -R 'nate-step/captains-cabinet' pr merge 999` already gated due to non-space dash elsewhere — false positive in initial claim.
 - **Blast radius:** MEDIUM (fail-open like Phase 1, but attack requires specifically crafting a multi-token config value with embedded space; officers rarely use quoted-space config values in git push). Lower frequency than FW-041 Phase 1 bypass class.
-- **Proposed fix:** Extend flag-tolerant group value-token to accept quoted spans: `([[:space:]]+([^-][^[:space:]]*|'[^']*'|"[^"]*"))?`. Needs same quote-balanced class work as FW-034 hotfix-4 Pass-3 fix applied to sed script-body.
+- **Fix:** Extended flag-tolerant group value-token to 3 alternatives — unquoted `[^-][^[:space:]]*` | single-quoted `'[^']*'` | double-quoted `"[^"]*"` — on lines 606/607/627 only. Comment lines 497/535 left intact.
 - **ACs:**
-  - AC-1: `git -c 'user.name=val with space' push origin main` → exit=2.
-  - AC-2: `git -c "name=val space" push origin main` → exit=2.
-  - AC-3: Existing Phase 1 positives/negatives still behave correctly (regression guard).
-- **Effort:** XS (~30min — extend value-token class in flag group, add 2 harness cases, Sonnet adversary).
+  - AC-1: `git -c 'user.name=val with space' push origin main` → exit=2. **PASS.**
+  - AC-2: `git -c "name=val space" push origin main` → exit=2. **PASS.**
+  - AC-3: Existing Phase 1 positives/negatives still behave correctly (regression guard). **PASS — 22/22.**
+- **Regression/adversary pins:** `/tmp/fw041-phase2-verify.sh` 7/7 PASS against real hook post-fix. `/tmp/fw041-phase1-regression.sh` 22/22 PASS (all Phase 1 ACs preserved). Sonnet adversary Pass-2 added 10 new probes (POSIX escape semantics, adjacent quoted flags, mixed quote+unquoted, empty quoted, curl Authorization header FP) — 0 new bypasses, 0 new FPs.
+- **Effort:** XS actual (~45min including 2 adversary passes + harness authoring).
 - **Owner:** CTO.
-- **Source:** CTO Sonnet adversary pass-1 on FW-041 Phase 1 draft — accepted as scope-gap given Phase 1's primary HIGH was `git -C /path push main` (no embedded space in value).
+- **Source:** CTO Sonnet adversary pass-1 on FW-041 Phase 1 draft (originally scope-gap), promoted to HOTFIX after empirical repro via `/tmp/fw041-phase2-verify.sh`.
 
 ### FW-043 — FW-029 Layer 1 Phase 1 prefix-bypass: statement-boundary anchors (HIGH)
 - **Status:** SHIPPED 2026-04-23 (COO empirical adversary Pass-1 against FW-041 ship `a057c77`, 6 bypass forms; Sonnet adversary Pass-2 against draft, 1 additional form). Commit (this PR).
