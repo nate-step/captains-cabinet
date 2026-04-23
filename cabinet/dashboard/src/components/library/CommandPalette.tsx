@@ -15,7 +15,7 @@
  * Keyboard nav: ↑↓ move, Enter opens, Shift-Enter opens new tab, Esc closes.
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Command,
@@ -131,6 +131,31 @@ export default function CommandPalette() {
   const prevFocusRef = useRef<Element | null>(null)
   // Track shift key for Shift-Enter
   const shiftRef = useRef(false)
+  // Dialog root — focus-trap boundary (cmdk 1.1 doesn't implement one)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+
+  // Focus-trap: wrap Tab/Shift-Tab within the dialog so the palette stays modal
+  // without pulling in @radix-ui/react-focus-trap. a11y spec requires Tab to
+  // not escape an open modal (aria-modal alone only hints to AT).
+  function handleFocusTrap(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Tab') return
+    const root = dialogRef.current
+    if (!root) return
+    const focusables = root.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+    if (focusables.length === 0) return
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    const active = document.activeElement as HTMLElement | null
+    if (e.shiftKey && active === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
 
   // Load recents from localStorage on open
   useEffect(() => {
@@ -184,6 +209,7 @@ export default function CommandPalette() {
       // Reset state on close
       setQuery('')
       setItems([])
+      setLoading(false)
     }
   }, [open])
 
@@ -212,6 +238,7 @@ export default function CommandPalette() {
     }
 
     let cancelled = false
+    setItems([])
     setLoading(true)
 
     async function fetchResults() {
@@ -315,9 +342,11 @@ export default function CommandPalette() {
 
       {/* Palette card */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="Command palette — search library records"
         aria-modal="true"
+        onKeyDown={handleFocusTrap}
         className="fixed inset-x-0 top-[15vh] z-[71] mx-auto w-full max-w-xl px-4"
       >
         <Command
