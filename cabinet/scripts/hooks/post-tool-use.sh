@@ -281,12 +281,20 @@ if has_capability "deploys_code" && [ "$TOOL_NAME" = "Bash" ]; then
     #   && / ; so a chained command's flag text doesn't falsely trip
     #   (COO M-4b + Sonnet adversary findings #1 + #2, 2026-04-21)
   elif echo "$CMD" | grep -qE '(^|[^a-z0-9_-])git push[[:space:]]+(.*[[:space:]:])?(refs/heads/)?(main|master)([[:space:];]|$)|gh pr merge|pulls/[0-9]+/merge|curl.*STEP-Network/Sensed.*pulls/[0-9]+/merge'; then
-    for target in $(officers_with "validates_deployments"); do
-      trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
-    done
-    for target in $(officers_with "reviews_implementations"); do
-      trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Review the implementation against spec: screenshot the live result via Chromium, compare against spec design intent, confirm acceptance criteria met or file issues."
-    done
+    # FW-047: suppress cross-officer trigger fan-out in test mode
+    # (CABINET_HOOK_TEST_MODE=1 set by run-golden-evals.sh hook probes).
+    # Production path unchanged — stdout REMINDER in block 6 still fires,
+    # and the eval's positive-match assertion reads stdout, not this
+    # fan-out. See FW-047 incident 2026-04-23 19:24-19:27 UTC: a single
+    # eval run sprayed 383 real AUTO-DEPLOY triggers across CPO + COO.
+    if [ "${CABINET_HOOK_TEST_MODE:-}" != "1" ]; then
+      for target in $(officers_with "validates_deployments"); do
+        trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Validate deployment NOW: check all critical flows, take screenshots, update operational-health.md. Respond with validation status."
+      done
+      for target in $(officers_with "reviews_implementations"); do
+        trigger_send "$target" "AUTO-DEPLOY DETECTED — push to main. Review the implementation against spec: screenshot the live result via Chromium, compare against spec design intent, confirm acceptance criteria met or file issues."
+      done
+    fi
   fi
 fi
 
@@ -324,35 +332,41 @@ fi
 # 6b. CROSS-VALIDATION — notify reviewers when artifacts are created
 # ============================================================
 if [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "Edit" ]; then
-  FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
-  case "$FILE_PATH" in
-    *"product-specs/"*)
-      # Spec created/edited — notify reviewers (with dedup to prevent notification loops)
-      SPEC_BASE=$(basename "$FILE_PATH")
-      for target in $(officers_with "reviews_specs"); do
-        [ "$target" = "$OFFICER" ] && continue
-        DEDUP_KEY="cabinet:notified:spec:${SPEC_BASE}:${target}"
-        ALREADY=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$DEDUP_KEY" 2>/dev/null)
-        if [ -z "$ALREADY" ] || [ "$ALREADY" = "(nil)" ]; then
-          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$DEDUP_KEY" 1 EX 600 > /dev/null 2>&1
-          trigger_send "$target" "SPEC UPDATE by $OFFICER: $SPEC_BASE was created/modified. Review against research and product strategy."
-        fi
-      done
-      ;;
-    *"research-briefs/"*)
-      # Research brief created — notify reviewers (with dedup)
-      BRIEF_BASE=$(basename "$FILE_PATH")
-      for target in $(officers_with "reviews_research"); do
-        [ "$target" = "$OFFICER" ] && continue
-        DEDUP_KEY="cabinet:notified:brief:${BRIEF_BASE}:${target}"
-        ALREADY=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$DEDUP_KEY" 2>/dev/null)
-        if [ -z "$ALREADY" ] || [ "$ALREADY" = "(nil)" ]; then
-          redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$DEDUP_KEY" 1 EX 600 > /dev/null 2>&1
-          trigger_send "$target" "RESEARCH BRIEF by $OFFICER: $BRIEF_BASE published. Review for actionable items and spec implications."
-        fi
-      done
-      ;;
-  esac
+  # FW-047: suppress cross-validation trigger fan-out in test mode.
+  # EVAL-016's Write-branch probes use shared/product-specs/* paths
+  # that match the case arm below and otherwise fire real triggers
+  # against reviews_specs / reviews_research officers.
+  if [ "${CABINET_HOOK_TEST_MODE:-}" != "1" ]; then
+    FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
+    case "$FILE_PATH" in
+      *"product-specs/"*)
+        # Spec created/edited — notify reviewers (with dedup to prevent notification loops)
+        SPEC_BASE=$(basename "$FILE_PATH")
+        for target in $(officers_with "reviews_specs"); do
+          [ "$target" = "$OFFICER" ] && continue
+          DEDUP_KEY="cabinet:notified:spec:${SPEC_BASE}:${target}"
+          ALREADY=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$DEDUP_KEY" 2>/dev/null)
+          if [ -z "$ALREADY" ] || [ "$ALREADY" = "(nil)" ]; then
+            redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$DEDUP_KEY" 1 EX 600 > /dev/null 2>&1
+            trigger_send "$target" "SPEC UPDATE by $OFFICER: $SPEC_BASE was created/modified. Review against research and product strategy."
+          fi
+        done
+        ;;
+      *"research-briefs/"*)
+        # Research brief created — notify reviewers (with dedup)
+        BRIEF_BASE=$(basename "$FILE_PATH")
+        for target in $(officers_with "reviews_research"); do
+          [ "$target" = "$OFFICER" ] && continue
+          DEDUP_KEY="cabinet:notified:brief:${BRIEF_BASE}:${target}"
+          ALREADY=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$DEDUP_KEY" 2>/dev/null)
+          if [ -z "$ALREADY" ] || [ "$ALREADY" = "(nil)" ]; then
+            redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$DEDUP_KEY" 1 EX 600 > /dev/null 2>&1
+            trigger_send "$target" "RESEARCH BRIEF by $OFFICER: $BRIEF_BASE published. Review for actionable items and spec implications."
+          fi
+        done
+        ;;
+    esac
+  fi
 fi
 
 # ============================================================

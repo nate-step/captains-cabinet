@@ -518,7 +518,10 @@ ev11_hook_probe() {
   local cmd="$1"
   local json
   json=$(jq -cn --arg cmd "$cmd" '{tool_name:"Bash",tool_input:{command:$cmd}}')
-  echo "$json" | OFFICER_NAME=cto bash "$EV11_HOOK" 2>/dev/null
+  # FW-047: CABINET_HOOK_TEST_MODE=1 suppresses block 5 trigger_send
+  # fan-out to CPO/COO production streams. Block 6 REMINDER echoes
+  # (the stdout signal this probe reads) are unaffected.
+  echo "$json" | CABINET_HOOK_TEST_MODE=1 OFFICER_NAME=cto bash "$EV11_HOOK" 2>/dev/null
   # Returns the hook stdout; caller checks for REMINDER presence
 }
 
@@ -771,7 +774,9 @@ else
     local cmd="$1"
     local json
     json=$(jq -cn --arg cmd "$cmd" '{tool_name:"Bash",tool_input:{command:$cmd}}')
-    echo "$json" | OFFICER_NAME=cto bash "$EV13_HOOK" 2>/dev/null
+    # FW-047: CABINET_HOOK_TEST_MODE=1 suppresses block 5 + 6b
+    # trigger_send fan-out. Stdout REMINDER observation unaffected.
+    echo "$json" | CABINET_HOOK_TEST_MODE=1 OFFICER_NAME=cto bash "$EV13_HOOK" 2>/dev/null
   }
 
   if [ -z "$EV13_FAILURE" ]; then
@@ -779,8 +784,11 @@ else
     # COO caveat on FW-028: the three Phase C forms (HEAD:main,
     # refs/heads/main, `;` terminator) MUST still produce REMINDER.
     # sudo/env/timeout-prefixed forms exercise the priv-esc prefix stack.
-    # Note: `gh pr merge 42 --squash` fires block 5 trigger_send (side
-    # effect accepted — test-run noise) but always produces REMINDER.
+    # Note: `gh pr merge 42 --squash` would fire block 5 trigger_send
+    # fan-out in production, but ev13_hook_probe sets
+    # CABINET_HOOK_TEST_MODE=1 which short-circuits the fan-out under
+    # FW-047. Stdout REMINDER (block 6) still fires — that's what we
+    # observe here.
     # Note on `git -C /path push origin main`: this passes the FW-028
     # anchor (starts with `git[[:space:]]`) but the deploy regex requires
     # adjacent `git push` — `git -C /path push` doesn't match. Correctly
@@ -1176,7 +1184,10 @@ else
     fi
     local nudge_key="cabinet:nudge:experience-record:cto"
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "$nudge_key" > /dev/null 2>&1
-    echo "$json" | OFFICER_NAME=cto bash "$EV16_HOOK" > /dev/null 2>&1
+    # FW-047: CABINET_HOOK_TEST_MODE=1 suppresses block 5 + 6b
+    # trigger_send fan-out. Nudge Redis key (the signal this probe
+    # reads) is set by a different block and unaffected.
+    echo "$json" | CABINET_HOOK_TEST_MODE=1 OFFICER_NAME=cto bash "$EV16_HOOK" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXISTS "$nudge_key" 2>/dev/null
     # Outputs "1" if key exists (nudge fired), "0" if not
   }
@@ -1608,6 +1619,67 @@ if [ -n "$EV22_FAILURE" ]; then
   fail "$EV22_FAILURE"
 else
   pass "AC-4 defensive: no fragile sed-extractor/'\''  mismatch detected in migrated evals (EVAL-011/013/015/016); hook probes are the sole classification mechanism"
+fi
+
+# ------------------------------------------------------------------
+# Eval 023: FW-047 trigger-storm regression guard
+# ------------------------------------------------------------------
+# AC-3 from FW-047: EVAL-011/013/016 hook probes must NOT fire
+# trigger_send against production officer streams. Pre/post queue
+# depth parity is the defensive invariant.
+#
+# The hook probes each call post-tool-use.sh with deploy-matching
+# commands. Block 5 fan-out (trigger_send to validators +
+# reviews_implementations) and block 6b fan-out (Write to
+# product-specs / research-briefs) must be gated by
+# CABINET_HOOK_TEST_MODE=1 so a full eval run leaves CPO + COO
+# stream lengths unchanged.
+#
+# If this eval fails, the 2026-04-23 incident (383 spam triggers in
+# 69s) could recur on any pre-push gate run — silently burns tokens
+# on every reviewer/validator officer.
+log "EVAL-023: FW-047 trigger-storm regression guard (hook test mode)"
+EV23_CPO_BEFORE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" XLEN "cabinet:triggers:cpo" 2>/dev/null)
+EV23_COO_BEFORE=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" XLEN "cabinet:triggers:coo" 2>/dev/null)
+EV23_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+EV23_FAILURE=""
+
+if [ ! -f "$EV23_HOOK" ]; then
+  EV23_FAILURE="post-tool-use.sh not found at $EV23_HOOK"
+else
+  # Fire 4 deploy-matching probes through the hook with the gate set.
+  # Each would trigger trigger_send to CPO + COO in production mode.
+  for EV23_CMD in \
+    "git push origin main" \
+    "gh pr merge 42 --squash" \
+    "sudo git push origin master" \
+    "timeout 60 git push origin main"; do
+    EV23_JSON=$(jq -cn --arg cmd "$EV23_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    echo "$EV23_JSON" | CABINET_HOOK_TEST_MODE=1 OFFICER_NAME=cto bash "$EV23_HOOK" > /dev/null 2>&1
+  done
+
+  # Write-branch probes (block 6b fan-out to reviews_specs / reviews_research)
+  for EV23_PATH in \
+    "/opt/founders-cabinet/shared/interfaces/product-specs/test-spec.md" \
+    "/opt/founders-cabinet/shared/interfaces/research-briefs/test-brief.md"; do
+    EV23_JSON=$(jq -cn --arg fp "$EV23_PATH" '{tool_name:"Write",tool_input:{file_path:$fp,content:"x"}}')
+    echo "$EV23_JSON" | CABINET_HOOK_TEST_MODE=1 OFFICER_NAME=cto bash "$EV23_HOOK" > /dev/null 2>&1
+  done
+
+  EV23_CPO_AFTER=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" XLEN "cabinet:triggers:cpo" 2>/dev/null)
+  EV23_COO_AFTER=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" XLEN "cabinet:triggers:coo" 2>/dev/null)
+
+  if [ "$EV23_CPO_BEFORE" != "$EV23_CPO_AFTER" ]; then
+    EV23_FAILURE="CPO trigger queue grew from $EV23_CPO_BEFORE to $EV23_CPO_AFTER during 6 hook probes (CABINET_HOOK_TEST_MODE=1 did NOT suppress block 5/6b fan-out — FW-047 regression, storm risk re-opened)"
+  elif [ "$EV23_COO_BEFORE" != "$EV23_COO_AFTER" ]; then
+    EV23_FAILURE="COO trigger queue grew from $EV23_COO_BEFORE to $EV23_COO_AFTER during 6 hook probes (CABINET_HOOK_TEST_MODE=1 did NOT suppress block 5/6b fan-out — FW-047 regression, storm risk re-opened)"
+  fi
+fi
+
+if [ -n "$EV23_FAILURE" ]; then
+  fail "$EV23_FAILURE"
+else
+  pass "FW-047 invariant: 6 deploy-matching hook probes (4 Bash + 2 Write) with CABINET_HOOK_TEST_MODE=1 produced 0 net change in CPO/COO queue depth (storm risk sealed)"
 fi
 
 # ------------------------------------------------------------------

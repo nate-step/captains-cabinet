@@ -674,7 +674,7 @@ _(none)_
 - **Owner:** CTO.
 
 ### FW-046 — Golden-eval sed-extraction fragility (systemic)
-- **Status:** SHIPPED 2026-04-23 (commit TBD — CTO).
+- **Status:** SHIPPED 2026-04-23 (commit db96891 — CTO).
 - **Symptom:** EVAL-011, EVAL-013, EVAL-015, EVAL-016 extract the hook's grep regex via `sed -E "s/.*grep -qE '([^']+)'.*/\1/"`. The `[^']+` class stops at the first `'` inside the regex content. If the hook regex contains `'\''` shell-escape (closes → literal `'` → reopens single-quote), the extractor truncates the regex mid-pattern — silently returning a partial, matching-subset regex. Test cases then pass or fail based on the truncated view, not the actual hook regex. FW-045 hit this exact bug on EVAL-014 (which used the same pattern); EVAL-014 was migrated to direct hook invocation. The remaining 4 EVALs have NOT been migrated.
 - **Blast radius:** MEDIUM (regression-catcher integrity, not production security). Currently all 4 EVALs pass because none of the hook regexes they extract contain `'\''` yet. Any future regex change adding `'\''` to:
   - post-tool-use.sh deploy detection (EVAL-011)
@@ -702,3 +702,25 @@ _(none)_
 - **Effort:** M (~90min — 4 EVAL rewrites × 20min each + defensive test + full regression).
 - **Owner:** CTO.
 - **Source:** FW-045 ship process — EVAL-014 migration surfaced the pattern; same pattern repeats 4 places.
+
+### FW-047 — Golden-eval direct hook invocation fires production triggers (HIGH)
+- **Status:** SHIPPED 2026-04-23 — Option 1 patched (env-var gate). Incident window 19:24:53-19:27:02 UTC (CPO flagged 19:26:18). Shipped same-session as diagnosis (<30min detection-to-patch). Verified by EVAL-023: 24/24 evals + full-run CPO/COO queue delta = 0.
+- **Symptom:** FW-046 (commit db96891) migrated EVAL-011/013/015/016 to direct post-tool-use.sh invocation (`echo "$json" | OFFICER_NAME=cto bash "$HOOK"`). Post-tool-use.sh block 5 (AUTO-DEPLOY fan-out) calls `trigger_send` against **production Redis** whenever the probed CMD matches the deploy-detection regex. Every deploy-positive test case in the eval's positive matrix therefore fires a real AUTO-DEPLOY trigger to every officer with `validates_deployments` + `reviews_implementations`. First incident: single eval run added 383 spam triggers to CPO (144) + COO (239) queues across 69 seconds — ~5.5 triggers/second sustained. Silently burns tokens on every reviewer/validator when the eval is run.
+- **Blast radius:** HIGH. The EVAL harness is designed to be run frequently (pre-push gate via FW-025 — which means *every framework push now fires this*). Impact scales with positive-matrix size × reviewer+validator count. Not a security bug; a cross-officer coordination + token-consumption bug. Confirmed via db96891 comment block itself: `# Note: gh pr merge 42 --squash fires block 5 trigger_send (side effect)` — the author knew but did not guard.
+- **Fix shipped (Option 1 — env-var guard):**
+  - `post-tool-use.sh` block 5 (AUTO-DEPLOY fan-out to `validates_deployments` + `reviews_implementations`) wrapped in `[ "${CABINET_HOOK_TEST_MODE:-}" != "1" ]` guard.
+  - `post-tool-use.sh` block 6b (Write/Edit cross-validation to `reviews_specs` + `reviews_research`) wrapped in same guard — EVAL-016 Write-branch probes (product-specs/research-briefs paths) otherwise re-amplify.
+  - Block 6 stdout REMINDER echoes left unguarded (the primary eval signal — stdout greps unchanged).
+  - `run-golden-evals.sh` ev11_hook_probe + ev13_hook_probe + ev16_hook_probe each set `CABINET_HOOK_TEST_MODE=1` inline (three-word env prefix, no subshell export).
+  - EVAL-015 unchanged (pre-tool-use.sh has no trigger_send or notify-officer calls — verified grep-clean).
+- **ACs met:**
+  - **AC-1 ✅** Full 24-eval run (EVAL-023 added) produces **zero** net trigger growth on `cabinet:triggers:cpo` + `cabinet:triggers:coo`.
+  - **AC-2 ✅** All positive-match assertions preserved: EVAL-011/013 still grep "REMINDER:" from stdout; EVAL-016 still reads nudge Redis key (block 7, unaffected). 24/24 PASS.
+  - **AC-3 ✅** EVAL-023 `FW-047 trigger-storm regression guard` fires 6 deploy/Write probes, asserts CPO+COO queue parity. Fails hard on regression (guard regression → re-opened storm).
+  - **AC-4 ✅** FW-046 comment `# Note: gh pr merge 42 --squash fires block 5 trigger_send (side effect accepted — test-run noise)` replaced with `# Note: ... would fire block 5 trigger_send fan-out in production, but ev13_hook_probe sets CABINET_HOOK_TEST_MODE=1 which short-circuits the fan-out under FW-047.`
+- **Alternative options NOT taken (logged for retro):**
+  - Stream-prefix redirect (`CABINET_TRIGGER_STREAM_PREFIX`) — would have been more structural but required changes in `lib/triggers.sh` + eval harness. Higher surface area, slower to ship in an active-incident context.
+  - trigger_send mock override — clean but fragile to hook modifications; every new trigger_send call site would need re-mocking.
+- **Effort:** S-actual: ~25min (10-line hook diff + 3 probe-fn edits + 65-line EVAL-023 + FW-046 comment swap).
+- **Owner:** CTO.
+- **Source:** 2026-04-23 incident; CPO infra alert; CoS diagnosis. Cross-cut with P-014 (retro: test infrastructure can silently affect production state — reinforcement: always gate test harnesses that invoke production hooks against real state-mutating sinks).
