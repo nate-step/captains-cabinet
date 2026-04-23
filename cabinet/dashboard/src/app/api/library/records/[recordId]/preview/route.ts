@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getRecord } from '@/lib/library'
+import { verifySession } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,11 +10,20 @@ export const dynamic = 'force-dynamic'
  * Returns a lightweight record preview for the Q2 wikilink hovercard.
  * Shape: { id, title, status, preview } — capped at 200 chars of plain text.
  * Strips markdown syntax before truncating so the card shows readable prose.
+ *
+ * Auth: requires a valid cabinet_session cookie. Returns 401 if missing,
+ * 404 if record not found (never 403 — don't leak existence via status code).
  */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ recordId: string }> }
 ) {
+  // Auth check — must have a valid session before any DB access.
+  const authenticated = await verifySession()
+  if (!authenticated) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const { recordId } = await params
     const record = await getRecord(recordId)

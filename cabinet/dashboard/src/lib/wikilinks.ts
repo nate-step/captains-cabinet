@@ -14,6 +14,20 @@
 import { query } from './db'
 
 // ============================================================
+// HTML escaping — applied to all user-controlled values before
+// interpolation into HTML strings rendered via dangerouslySetInnerHTML.
+// ============================================================
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// ============================================================
 // Types
 // ============================================================
 
@@ -49,7 +63,6 @@ export interface SectionRow {
   section_slug: string
   heading_text: string
   heading_level: number
-  position: number
   [key: string]: unknown
 }
 
@@ -281,24 +294,28 @@ export function renderWikilinks(
   let result = markdown
 
   for (const link of sorted) {
-    const displayText = link.alias ?? link.target
+    const displayText = escapeHtml(link.alias ?? link.target)
     let html: string
 
     if (!link.resolved) {
       // Unresolved link — dashed/dim style with create affordance
       const createTitle = encodeURIComponent(link.target)
-      html = `<a href="/library/new?title=${createTitle}" class="wikilink wikilink-unresolved" title="No such record. Click to create." data-wikilink-target="${link.target}">${displayText}</a>`
+      const safeTarget = escapeHtml(link.target)
+      html = `<a href="/library/new?title=${createTitle}" class="wikilink wikilink-unresolved" title="No such record. Click to create." data-wikilink-target="${safeTarget}">${displayText}</a>`
     } else {
       const { recordId, spaceId, sectionValid } = link.resolved
       const section = link.section ? slugify(link.section) : null
       const sectionSuffix = section ? `#${section}` : ''
       const href = `/library/${spaceId}/${recordId}${sectionSuffix}`
+      const safeTarget = escapeHtml(link.target)
+      const safeTitle = escapeHtml(link.resolved.title)
 
       if (link.section && sectionValid === false) {
         // Record exists but section is missing — warn + still link to record
-        html = `<a href="/library/${spaceId}/${recordId}" class="wikilink wikilink-section-missing" title="Section '${link.section}' not found in ${link.resolved.title}." data-wikilink-target="${link.target}">${displayText}</a>`
+        const safeSection = escapeHtml(link.section)
+        html = `<a href="/library/${spaceId}/${recordId}" class="wikilink wikilink-section-missing" title="Section &#39;${safeSection}&#39; not found in ${safeTitle}." data-wikilink-target="${safeTarget}">${displayText}</a>`
       } else {
-        html = `<a href="${href}" class="wikilink wikilink-resolved" data-wikilink-target="${link.target}">${displayText}</a>`
+        html = `<a href="${href}" class="wikilink wikilink-resolved" data-wikilink-target="${safeTarget}">${displayText}</a>`
       }
     }
 
@@ -370,13 +387,12 @@ export async function indexSections(
 
   for (const h of headings) {
     await query(
-      `INSERT INTO library_record_sections (record_id, section_slug, heading_text, heading_level, position)
-       VALUES ($1::bigint, $2, $3, $4, $5)
+      `INSERT INTO library_record_sections (record_id, section_slug, heading_text, heading_level)
+       VALUES ($1::bigint, $2, $3, $4)
        ON CONFLICT (record_id, section_slug) DO UPDATE SET
          heading_text = EXCLUDED.heading_text,
-         heading_level = EXCLUDED.heading_level,
-         position = EXCLUDED.position`,
-      [recordId, h.slug, h.text, h.level, h.position]
+         heading_level = EXCLUDED.heading_level`,
+      [recordId, h.slug, h.text, h.level]
     )
   }
 }

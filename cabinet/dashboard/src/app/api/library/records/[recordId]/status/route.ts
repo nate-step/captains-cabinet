@@ -20,6 +20,16 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ recordId: string }> }
 ) {
+  // AC #24 (v3.2): quarantine guard — block status mutations during live migration.
+  // Must be checked before auth + DB reads to prevent authz oscillation during
+  // partial backfill where some rows may not yet have a valid status.
+  if (process.env.LIBRARY_MIGRATION_IN_PROGRESS === '1') {
+    return NextResponse.json(
+      { error: 'migration_in_progress', retry_after_seconds: 300 },
+      { status: 503 }
+    )
+  }
+
   try {
     const { recordId } = await params
     const body = (await req.json()) as {
@@ -41,11 +51,20 @@ export async function PATCH(
     )
 
     if (!result.ok) {
-      const status = result.error?.includes('Invalid status transition') ? 409 : 404
-      return NextResponse.json(
-        { error: result.error, allowed_transitions: result.allowed_transitions },
-        { status }
-      )
+      const isInvalidTransition = result.current_status !== undefined
+      if (isInvalidTransition) {
+        // AC #16: pin exact 409 shape with from/to fields
+        return NextResponse.json(
+          {
+            error: 'invalid_transition',
+            from: result.current_status,
+            to: body.status,
+            allowed_transitions: result.allowed_transitions,
+          },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json({ error: result.error }, { status: 404 })
     }
 
     return NextResponse.json({ ok: true })
