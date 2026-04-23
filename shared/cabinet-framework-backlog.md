@@ -663,5 +663,35 @@ _(none)_
   - CTO Sonnet adversary Pass-3 on draft fix (fresh-context logic review) — found 9 additional issues (4 HIGH boundary/wrapper-flag, 4 MEDIUM, 1 LOW).
   - CTO Sonnet adversary Pass-4 post-fix re-review — found 4 real bypasses (`command`/`builtin`/`fish-ksh-dash -c`) + 2 invalidated-by-empirical findings.
 - **Memory updated:** `feedback_security_regex_authoring.md` — this is 5th pre-tool-use-regex adversary round; Rule 1 now quantified as "3-4 adversary rounds typical for security-critical regex" (was "≥2 rounds minimum").
-- **Follow-ups filed:** FW-044 (still open: gh api -X DELETE refs/heads/main Phase 2 scope); FW-041 Phase 2 (still open: quoted-space flag value).
+- **Follow-ups filed:** FW-044 (still open: gh api -X DELETE refs/heads/main Phase 2 scope); FW-041 Phase 2 (still open: quoted-space flag value); FW-046 (evaluator sed-extraction fragility — systemic).
 - **Owner:** CTO.
+
+### FW-046 — Golden-eval sed-extraction fragility (systemic)
+- **Status:** Proposed 2026-04-23 (CTO audit during FW-045 ship).
+- **Symptom:** EVAL-011, EVAL-013, EVAL-015, EVAL-016 extract the hook's grep regex via `sed -E "s/.*grep -qE '([^']+)'.*/\1/"`. The `[^']+` class stops at the first `'` inside the regex content. If the hook regex contains `'\''` shell-escape (closes → literal `'` → reopens single-quote), the extractor truncates the regex mid-pattern — silently returning a partial, matching-subset regex. Test cases then pass or fail based on the truncated view, not the actual hook regex. FW-045 hit this exact bug on EVAL-014 (which used the same pattern); EVAL-014 was migrated to direct hook invocation. The remaining 4 EVALs have NOT been migrated.
+- **Blast radius:** MEDIUM (regression-catcher integrity, not production security). Currently all 4 EVALs pass because none of the hook regexes they extract contain `'\''` yet. Any future regex change adding `'\''` to:
+  - post-tool-use.sh deploy detection (EVAL-011)
+  - post-tool-use.sh FW-028 command-start anchor (EVAL-013)
+  - pre-tool-use.sh FW-032 whitelist anchor (EVAL-015)
+  - pre-tool-use.sh FW-033 experience-nudge anchor (EVAL-016)
+  → silently breaks the eval. Detection requires reading the eval output carefully enough to notice the extracted regex is truncated (hard to spot).
+- **Proposed fix:** Port the EVAL-014 direct-hook-invocation pattern to the other 4 EVALs:
+  ```bash
+  ev_hook_probe() {
+    local cmd="$1"
+    local json
+    json=$(jq -cn --arg cmd "$cmd" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    redis-cli -h redis -p 6379 DEL <gate-key-1> <gate-key-2> >/dev/null 2>&1
+    echo "$json" | OFFICER_NAME=<officer> bash "$HOOK" >/dev/null 2>&1
+    return $?
+  }
+  ```
+  Replace all `sed -E "s/.*grep -qE '([^']+)'.*/\1/"` extractions + subsequent `echo "$cmd" | grep -qE "$EXTRACTED"` with `ev_hook_probe "$cmd"` + exit-code check.
+- **ACs:**
+  - AC-1: All 4 EVALs (011/013/015/016) use direct hook invocation.
+  - AC-2: Regex-extraction sed pattern removed from golden-evals.
+  - AC-3: 22/22 golden evals still PASS with the migration.
+  - AC-4: Add a defensive test that fails hard if any eval's extracted regex contains `'\''` (future-regression guard).
+- **Effort:** M (~90min — 4 EVAL rewrites × 20min each + defensive test + full regression).
+- **Owner:** CTO.
+- **Source:** FW-045 ship process — EVAL-014 migration surfaced the pattern; same pattern repeats 4 places.
