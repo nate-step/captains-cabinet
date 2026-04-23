@@ -1,5 +1,6 @@
 import Nav from '@/components/nav'
 import KillSwitchHeader from '@/components/kill-switch-header'
+import CommandPalette from '@/components/library/CommandPalette'
 import { getProjects, getActiveProject } from '@/actions/projects'
 import { getDashboardConfig } from '@/lib/config'
 import redis from '@/lib/redis'
@@ -34,6 +35,13 @@ export default async function AuthenticatedLayout({
         consumerModeEnabled={consumerModeEnabled}
         cabinetsEnabled={cabinetsEnabled}
       />
+
+      {/*
+        Command Palette — Spec 037 A3.
+        Global Cmd-K / Ctrl-K listener across all authenticated pages.
+        Client island — no SSR, z-[70] above kill switch (z-60).
+      */}
+      <CommandPalette />
 
       {/*
         Persistent kill switch pill — Spec 032 §5.

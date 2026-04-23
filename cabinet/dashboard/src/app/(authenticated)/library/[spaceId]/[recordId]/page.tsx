@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getRecord, getSpace, getRecordHistory } from '@/lib/library'
 import RecordEditor from './record-editor'
+import RecordVisitTracker from './record-visit-tracker'
 import type { SchemaJson } from './schema-fields'
 
 export const dynamic = 'force-dynamic'
@@ -33,6 +34,14 @@ export default async function RecordPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Track visit for command palette recents — client island, renders nothing */}
+      <RecordVisitTracker
+        id={recordId}
+        title={record.title}
+        spaceId={spaceId}
+        spaceName={space.name}
+      />
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-zinc-600">
         <Link href="/library" className="hover:text-zinc-400 transition-colors">Library</Link>
