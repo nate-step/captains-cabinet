@@ -336,12 +336,9 @@ _(none)_
 - **Adversary-found CODE BUG fixed pre-commit:** Layer 1 action regex `git push.*(main|master)` over-matched on feature-branch names containing `main`/`master` as substrings (`feature/maintenance-window-2026` → `.*main`tenance matches; `feature/master-plan` → `.*master`-plan matches). Fixed by adding trailing word-boundary `([[:space:];]|$)` to mirror post-tool-use.sh:267's `(main|master)([[:space:];]|$)` pattern. Two negative test cases appended to EVAL-014. Sonnet adversary Finding #1, 2026-04-21.
 
 ### FW-030 — Layer 1 gate: `git -C <dir> push` silently bypasses anchor
-- **Status:** Proposed 2026-04-21 (Sonnet adversary Finding #2 on FW-029).
+- **Status:** SUPERSEDED-BY-FW-041 2026-04-23 (commit `a057c77`). FW-041 Phase 1 widened the bypass scope from FW-030's single-flag `-C <dir>` case to the general flag-tolerant group `(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*` covering `-C /path`, `-c cfg`, `--git-dir=...`, `-R owner/repo`, `--repo owner/repo`. Pinned by `/tmp/fw041-hook-test.sh` 22/22 PASS + EVAL-014 regex-structural pin. Originally Proposed 2026-04-21 (Sonnet adversary Finding #2 on FW-029).
 - **Symptom:** FW-029's narrowed anchor `git[[:space:]]+push` requires literal `git` directly followed by whitespace then `push`. The `-C <dir>` directory-override flag intervenes, so `git -C /workspace/product push origin main` silently fails Phase 1 — Crew-review gate bypassed.
-- **Current usage:** Zero. Grep confirms `git -C` push appears only in EVAL-013 test matrix, not in any actual officer invocation. Documented CTO push form (see `reference_github_push_invocation.md` memory) uses explicit tokenized-URL — `git push https://x-access-token:$PAT@... main`.
-- **Fix (when operational):** Extend anchor alternation to include `git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push`. Pin with EVAL-014 positive case.
-- **Effort:** XS (~10min, single regex edit + one eval case).
-- **Owner:** CTO when first officer script adopts `git -C` push.
+- **Resolution:** Covered by FW-041 Phase 1 (`pre-tool-use.sh:439/440`). No separate work needed.
 
 ### FW-032 — pre-tool-use.sh:80 whitelist filename substring amplification (spending-cap bypass)
 - **Status:** SHIPPED 2026-04-21 — Phase A command-start anchor landed in commit `16b9c51` + EVAL-015 positive/negative matrix. Phase B scope gaps filed as FW-036 (bundled regex widen) + FW-037 (extractor fragility) + FW-038 (cross-hook wrapper class sweep) — all gated on operational data.
