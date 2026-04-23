@@ -19,7 +19,8 @@ async function loadSidebarData(): Promise<SidebarSpaceData[]> {
   let spaces
   try {
     spaces = await listSpaces()
-  } catch {
+  } catch (err) {
+    console.error('[LibraryLayout] listSpaces failed', err)
     return []
   }
 
@@ -28,7 +29,8 @@ async function loadSidebarData(): Promise<SidebarSpaceData[]> {
       let records: SidebarRecord[]
       try {
         records = await listRecordsForSidebar(space.id, { limit: SIDEBAR_RECORD_LIMIT })
-      } catch {
+      } catch (err) {
+        console.error('[LibraryLayout] listRecordsForSidebar failed', space.id, err)
         records = []
       }
       return {

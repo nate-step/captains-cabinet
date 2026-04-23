@@ -11,32 +11,35 @@
  * The heavy data-fetching and structural HTML live in LibrarySidebar (server).
  */
 
-import type { ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
-const LS_KEY = 'library.sidebar.collapsed'
+// Spec 037 Q3: key is `library.sidebar.open`. Semantics: true = open (default).
+const LS_KEY = 'library.sidebar.open'
 
-function readCollapsed(): boolean {
-  if (typeof window === 'undefined') return false
+function readOpen(): boolean {
+  if (typeof window === 'undefined') return true
   try {
-    return window.localStorage.getItem(LS_KEY) === 'true'
+    const v = window.localStorage.getItem(LS_KEY)
+    return v === null ? true : v === 'true'
   } catch {
-    return false
+    return true
   }
 }
 
-function writeCollapsed(value: boolean): void {
+function writeOpen(value: boolean): void {
   try {
     window.localStorage.setItem(LS_KEY, String(value))
   } catch {
-    // Ignore storage errors
+    // localStorage unavailable (Safari private mode etc.) — state persists in-memory only.
   }
 }
 
-// Applies aria-current="page" and active classes to the link matching pathname.
-// DOM-patching approach keeps the parent server component and avoids prop-drilling
-// usePathname() through a client boundary into a deeply nested link.
+// Applies aria-current="page" to the link matching pathname + adds active classes
+// (append-only, never touches base color/hover classes so server-rendered styling
+// for variants like "All Spaces" keeps its original text-zinc-500 tone). Also
+// auto-opens the parent <details> so the highlighted link is visible in the tree.
 export function SidebarActiveHighlight() {
   const pathname = usePathname()
 
@@ -47,11 +50,11 @@ export function SidebarActiveHighlight() {
       if (isActive) {
         a.setAttribute('aria-current', 'page')
         a.classList.add('bg-zinc-800', 'text-white')
-        a.classList.remove('text-zinc-400', 'hover:bg-zinc-800/50', 'hover:text-zinc-200')
+        const parentDetails = a.closest('details')
+        if (parentDetails && !parentDetails.open) parentDetails.open = true
       } else {
         a.removeAttribute('aria-current')
         a.classList.remove('bg-zinc-800', 'text-white')
-        a.classList.add('text-zinc-400', 'hover:bg-zinc-800/50', 'hover:text-zinc-200')
       }
     })
   }, [pathname])
@@ -66,16 +69,16 @@ interface SidebarShellProps {
 }
 
 export function SidebarShell({ children }: SidebarShellProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [open, setOpen] = useState(true)
 
   useEffect(() => {
-    setCollapsed(readCollapsed())
+    setOpen(readOpen())
   }, [])
 
   const toggle = useCallback(() => {
-    setCollapsed((prev: boolean) => {
+    setOpen((prev: boolean) => {
       const next = !prev
-      writeCollapsed(next)
+      writeOpen(next)
       return next
     })
   }, [])
@@ -83,7 +86,7 @@ export function SidebarShell({ children }: SidebarShellProps) {
   return (
     <div
       className={`relative flex flex-col transition-[width] duration-200 ${
-        collapsed ? 'w-10' : 'w-56'
+        open ? 'w-56' : 'w-10'
       }`}
     >
       {/* Active highlight — zero DOM output, pure side-effect */}
@@ -94,28 +97,29 @@ export function SidebarShell({ children }: SidebarShellProps) {
         <button
           type="button"
           onClick={toggle}
-          aria-label={collapsed ? 'Expand library sidebar' : 'Collapse library sidebar'}
+          aria-label={open ? 'Collapse library sidebar' : 'Expand library sidebar'}
+          aria-expanded={open}
           className="flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
         >
-          {collapsed ? (
+          {open ? (
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
             </svg>
           ) : (
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
             </svg>
           )}
         </button>
       </div>
 
       {/* Tree content */}
-      <div className={collapsed ? 'hidden' : 'block min-w-0 overflow-hidden'}>
+      <div className={open ? 'block min-w-0 overflow-hidden' : 'hidden'}>
         {children}
       </div>
 
       {/* Collapsed rail — reopen affordance */}
-      {collapsed && (
+      {!open && (
         <button
           type="button"
           onClick={toggle}
@@ -141,19 +145,62 @@ interface LibraryDrawerProps {
 export function LibraryDrawer({ children }: LibraryDrawerProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLElement | null>(null)
 
   // Close drawer on navigation
   useEffect(() => {
     setOpen(false)
   }, [pathname])
 
+  // AC14 a11y: Esc closes, focus moves into panel on open, restores to trigger on close.
+  useEffect(() => {
+    if (!open) return
+    const prevActive = document.activeElement as HTMLElement | null
+    const id = requestAnimationFrame(() => panelRef.current?.focus())
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      cancelAnimationFrame(id)
+      window.removeEventListener('keydown', onKeyDown)
+      if (prevActive && typeof prevActive.focus === 'function') prevActive.focus()
+    }
+  }, [open])
+
+  // Focus trap for Tab / Shift-Tab inside the drawer panel.
+  const handleFocusTrap = useCallback((e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Tab' || !panelRef.current) return
+    const focusables = panelRef.current.querySelectorAll<HTMLElement>(
+      'a[href], button, [tabindex]:not([tabindex="-1"])'
+    )
+    if (focusables.length === 0) return
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    const active = document.activeElement
+    if (e.shiftKey && active === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }, [])
+
   return (
     <>
       {/* Hamburger — visible only on mobile */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open library navigation"
+        aria-expanded={open}
+        aria-controls="library-drawer-panel"
         className="mb-4 flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 md:hidden"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -173,13 +220,19 @@ export function LibraryDrawer({ children }: LibraryDrawerProps) {
 
       {/* Drawer panel */}
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-full w-72 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-950 pt-14 transition-transform md:hidden ${
+        ref={panelRef}
+        id="library-drawer-panel"
+        role="dialog"
+        aria-modal={open || undefined}
+        aria-labelledby="library-drawer-title"
+        tabIndex={-1}
+        onKeyDown={handleFocusTrap}
+        className={`fixed left-0 top-0 z-50 flex h-full w-72 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-950 pt-14 transition-transform focus:outline-none md:hidden ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
-        aria-label="Library navigation drawer"
       >
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <span className="text-sm font-semibold text-zinc-300">Library</span>
+          <span id="library-drawer-title" className="text-sm font-semibold text-zinc-300">Library</span>
           <button
             type="button"
             onClick={() => setOpen(false)}
