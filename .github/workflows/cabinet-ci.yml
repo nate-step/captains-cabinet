@@ -39,8 +39,14 @@ jobs:
           --health-retries 10
 
     env:
+      # pre-compact.sh, stop-hook.sh, run-golden-evals.sh read REDIS_HOST directly.
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
+      # pre-tool-use.sh + post-tool-use.sh derive host/port from REDIS_URL — the
+      # REDIS_HOST/PORT above would otherwise be ignored, and redis-cli attempts
+      # to resolve the (non-existent on GH runner) `redis` service hostname.
+      # First CI run (24855610921) failed EVAL-001/008/015/016 for exactly this.
+      REDIS_URL: redis://127.0.0.1:6379
 
     steps:
       - name: Checkout
