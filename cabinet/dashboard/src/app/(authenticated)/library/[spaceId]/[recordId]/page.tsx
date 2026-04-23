@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { getRecord, getSpace, getRecordHistory } from '@/lib/library'
 import RecordEditor from './record-editor'
 import RecordVisitTracker from './record-visit-tracker'
+import RenderedContent from '@/components/library/RenderedContent'
+import StatusBadge from '@/components/library/StatusBadge'
 import type { SchemaJson } from './schema-fields'
 
 export const dynamic = 'force-dynamic'
@@ -55,6 +57,8 @@ export default async function RecordPage({ params }: Props) {
 
       {/* Metadata bar */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-600">
+        {/* A5 status badge — Q5 palette applied in StatusBadge component */}
+        <StatusBadge status={record.status} recordId={recordId} />
         <span>
           <span className="text-zinc-500">version</span>{' '}
           <span className="font-semibold text-zinc-400">v{record.version}</span>
@@ -84,6 +88,17 @@ export default async function RecordPage({ params }: Props) {
           </span>
         )}
       </div>
+
+      {/* Rendered content — wikilinks resolved + Q2 hovercard + Q4 dashed-dim */}
+      {record.content_markdown && (
+        <section aria-label="Record content">
+          <RenderedContent
+            markdown={record.content_markdown}
+            spaceId={spaceId}
+            className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-5 py-4"
+          />
+        </section>
+      )}
 
       {/* Editor — client component handles save */}
       <RecordEditor

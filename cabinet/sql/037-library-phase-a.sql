@@ -66,9 +66,13 @@ CREATE TABLE IF NOT EXISTS library_record_sections (
   section_slug TEXT NOT NULL,
   heading_text TEXT NOT NULL,
   heading_level SMALLINT NOT NULL CHECK (heading_level BETWEEN 1 AND 6),
-  position INTEGER NOT NULL DEFAULT 0, -- order index in document
   PRIMARY KEY (record_id, section_slug)
 );
+
+-- v3.2 spec §4.7: drop vestigial position column (write-only-never-read;
+-- scroll anchoring uses rendered DOM id on section_slug — drift-free).
+-- IF EXISTS guard makes this idempotent on fresh schemas that never had it.
+ALTER TABLE library_record_sections DROP COLUMN IF EXISTS position;
 
 CREATE INDEX IF NOT EXISTS idx_lrs_slug
   ON library_record_sections(record_id, section_slug);

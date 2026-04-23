@@ -1,20 +1,32 @@
 'use client'
 
 /**
- * StatusBadge — Spec 037 A5
+ * StatusBadge — Spec 037 A5 + Q5 palette refresh (PR C)
  * Renders a color-coded badge for the 5 record statuses.
  * Optionally shows an advance button (author-only) when onAdvance is provided.
+ *
+ * Q5 palette (Spec 037 §12, Captain autonomy msg 1649, pinned tokens):
+ *   draft        = gray-500   text
+ *   in_review    = blue-500   text
+ *   approved     = green-600  text
+ *   implemented  = indigo-600 text
+ *   superseded   = gray-400   text + line-through (semantic cue)
+ *
+ * Tokens are from Tailwind default scale; WCAG AA at both light + dark stops.
  */
 
 import { useState } from 'react'
 import type { RecordStatus } from '@/lib/library'
 
+// Q5 pinned palette — border-accent variant for dark dashboard backgrounds.
+// Each badge gets a semi-transparent background tinted to match its text color,
+// plus a matching border for definition at low-contrast densities.
 const STATUS_STYLES: Record<RecordStatus, string> = {
-  draft: 'bg-zinc-800 text-zinc-400',
-  in_review: 'bg-blue-950/40 text-blue-400 border border-blue-800/50',
-  approved: 'bg-green-950/40 text-green-400 border border-green-800/50',
-  implemented: 'bg-indigo-950/40 text-indigo-400 border border-indigo-800/50',
-  superseded: 'bg-zinc-800/60 text-zinc-600 line-through',
+  draft:       'bg-zinc-800/70 text-zinc-500 border border-zinc-700/60',
+  in_review:   'bg-blue-950/50 text-blue-500 border border-blue-700/50',
+  approved:    'bg-green-950/50 text-green-600 border border-green-800/50',
+  implemented: 'bg-indigo-950/50 text-indigo-600 border border-indigo-800/50',
+  superseded:  'bg-zinc-800/50 text-zinc-400 border border-zinc-700/50 line-through',
 }
 
 const STATUS_LABELS: Record<RecordStatus, string> = {
@@ -35,12 +47,14 @@ interface Props {
 
 // Legal next states — MUST mirror server-side STATUS_TRANSITIONS in lib/library.ts.
 // Kept as a literal (not imported) because library.ts pulls in server-only `query`.
+// v3.2 state machine: in_review → draft (rescind), approved → in_review (re-open).
+// superseded → {} strictly terminal; implemented → {superseded} replaceable-not-reversible.
 const NEXT_STATES: Record<RecordStatus, RecordStatus[]> = {
-  draft: ['in_review', 'superseded'],
-  in_review: ['approved', 'superseded'],
-  approved: ['implemented', 'superseded'],
+  draft:       ['in_review', 'superseded'],
+  in_review:   ['draft', 'approved', 'superseded'],
+  approved:    ['in_review', 'implemented', 'superseded'],
   implemented: ['superseded'],
-  superseded: [],
+  superseded:  [],
 }
 
 export default function StatusBadge({ status, recordId, onAdvance, className = '' }: Props) {

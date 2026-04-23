@@ -25,3 +25,61 @@ body {
   color: var(--color-zinc-400);
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+/* ============================================================
+ * Wikilink styles — Spec 037 Q4 (unresolved / section-missing)
+ * Applied to <a> tags emitted by renderWikilinks() in wikilinks.ts.
+ * ============================================================ */
+
+/* Resolved wikilink — standard internal link, subtle blue tint */
+.wikilink-resolved {
+  color: #93c5fd; /* blue-300 — readable on dark bg */
+  text-decoration: underline;
+  text-decoration-color: rgba(147, 197, 253, 0.4);
+  text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.wikilink-resolved:hover,
+.wikilink-resolved:focus {
+  color: #bfdbfe; /* blue-200 */
+  text-decoration-color: rgba(191, 219, 254, 0.7);
+  outline: none;
+}
+
+/* Q4 — Unresolved link (target record missing).
+ * Spec: dashed underline + opacity-60.
+ * Behavior: Cmd-click → create record (handled by JS in WikilinkHovercard). */
+.wikilink-unresolved {
+  color: #a1a1aa; /* zinc-400 */
+  opacity: 0.6;
+  text-decoration: underline dashed;
+  text-decoration-color: #71717a; /* zinc-500 */
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.wikilink-unresolved:hover,
+.wikilink-unresolved:focus {
+  opacity: 0.85;
+  outline: none;
+}
+
+/* Q4 — Section-missing link (record exists but heading not found).
+ * Same dashed-dim treatment as unresolved, with amber tint to distinguish. */
+.wikilink-section-missing {
+  color: #fcd34d; /* amber-300 */
+  opacity: 0.6;
+  text-decoration: underline dashed;
+  text-decoration-color: #f59e0b; /* amber-500 */
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.wikilink-section-missing:hover,
+.wikilink-section-missing:focus {
+  opacity: 0.85;
+  outline: none;
+}
