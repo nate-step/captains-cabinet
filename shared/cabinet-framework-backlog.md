@@ -593,3 +593,42 @@ _(none)_
 - **Effort:** XS (~30min — extend value-token class in flag group, add 2 harness cases, Sonnet adversary).
 - **Owner:** CTO.
 - **Source:** CTO Sonnet adversary pass-1 on FW-041 Phase 1 draft — accepted as scope-gap given Phase 1's primary HIGH was `git -C /path push main` (no embedded space in value).
+
+### FW-043 — FW-029 Layer 1 Phase 1 prefix-bypass: statement-boundary anchors (HIGH)
+- **Status:** SHIPPED 2026-04-23 (COO empirical adversary Pass-1 against FW-041 ship `a057c77`, 6 bypass forms; Sonnet adversary Pass-2 against draft, 1 additional form). Commit (this PR).
+- **Symptom:** Pre-fix Layer 1 + CI Green gate Phase 1 anchor required command to START at LINE-START (`^[[:space:]]*` with `head -n1` pre-pipe). Real pushes-to-main preceded by any shell statement-boundary construct silently skipped both phases (fail-open — gate never prompted, reviewed key never consumed).
+- **Empirical bypass forms confirmed on commit `a057c77`:**
+  - (a) `cd /tmp && git push origin main` — chain prefix
+  - (b) `echo ok\ngit push origin main` (multi-line) — `head -n1` ate line 1
+  - (c) `(git push origin main)` — subshell paren prefix
+  - (d) `true && git push origin main` — always-succeed chain
+  - (e) `: ; git push origin main` — null-command + semi
+  - (f) `git push origin main &` — trailing backgrounding (Phase 1 OK but Phase 2 trailing class `[[:space:];]|$` excluded `&`, so Phase 2 failed to match)
+  - (g) `{ git push origin main; }` — brace-group prefix (Sonnet adversary against draft)
+- **Blast radius:** HIGH. Same class as FW-041 — silent skip of Layer 1 review gate + CI Green gate. Officer believes gate enforces; gate never runs. No state amplification (gate doesn't consume reviewed key on these forms), but same fail-open severity as FW-041.
+- **Fix applied** (pre-tool-use.sh lines 492, 493, 513):
+  1. Removed `head -n1 |` from both Phase 1 anchor pipelines — grep's line-mode naturally handles multi-line (each line checked independently against `^`-anchored pattern, form (b) resolved).
+  2. Widened Phase 1 anchor prefix from `^[[:space:]]*` to `(^|[;&|({\`])[[:space:]]*` — accepts bare line-start OR preceding shell statement-boundary char (semi, amp, pipe, open-paren, open-brace, backtick) + whitespace. Resolves forms (a)(c)(d)(e)(g).
+  3. Extended Layer 1 Phase 2 action regex trailing terminator class from `[[:space:];]|$` to `[[:space:];&|(){}\`]|$` — `main`/`master` followed by backgrounding `&`, pipe `|`, close-brace `}`, close-paren `)`, backtick now also match. Resolves form (f).
+- **Trade-offs accepted (fail-closed direction):**
+  - FP-1: commit messages containing `&&` + `git push origin main` literal text fire the gate (e.g., `git commit -m "ci: run && git push origin main later"` → exit 2). Rare in officer workflow; gate prompts CTO to set reviewed key + retry, no amplification.
+  - FP-2: heredoc bodies with `git push origin main` fire the gate (grep line-mode sees body line as standalone). Rare; same mitigation.
+  - FP-3: `$(git push origin main)` command substitution fires gate. Arguably correct (IS a real push).
+- **Regression/adversary pins:** `/tmp/fw034-hotfix4-adversary-tests.sh` Section D 5/5 + (f) extended → 6/6 PASS. `/tmp/fw043-adversary.sh` 12/12 HIGH bypass probes PASS + 2/2 CI Green + 1/1 CI commit-msg negative. FW-041 regression 22/22 PASS. FW-034 hotfix-4 regression 30/30 PASS. Golden evals 22/22 PASS (EVAL-014 pin updated to match new prefix `(^|[;&|({...`).
+- **EVAL-014 pin evolution:** switched from `"head -n1 \| grep -qE '"` preamble filter to `"grep -qE '\(\^\|\[;&"` — distinctive FW-043 statement-boundary prefix; no other gate in the hook uses this alternation form, so pin is unambiguous.
+- **Source:** COO empirical adversary (3rd Pass-1 on FW-041 ship `a057c77`) + CTO Sonnet adversary Pass-2 on draft fix (caught brace-group gap).
+- **Follow-ups filed:** FW-044 (`gh api -X DELETE refs/heads/main` Phase 2 scope), FW-040 addendum (6 write-tool scope gaps — perl/tar/gawk/ruby/ln/ex/install/truncate/dd/touch/mkdir/awk-redirect — SEPARATE from FW-043 anchor work).
+
+### FW-044 — `gh api -X DELETE refs/heads/main` Phase 2 scope (MEDIUM)
+- **Status:** Proposed 2026-04-23 (COO empirical adversary Pass-1 on `a057c77`).
+- **Symptom:** `gh api -X DELETE repos/OWNER/REPO/git/refs/heads/main` passes Phase 1 (`gh api` is in the subcommand alternation) but Phase 2 action regex `pr[[:space:]]+merge` doesn't match — command is `gh api`, not `gh pr merge`. Result: destructive ref-deletion against main silently bypasses Layer 1 review gate.
+- **Blast radius:** MEDIUM. Deletes the `main` branch ref (arguably more severe than a push — but prerequisite is attacker-crafted CTO command, not common workflow). Not amplification; straight bypass. Severity MEDIUM vs HIGH because the attack form is unusual and requires explicit `gh api -X DELETE` — not a natural mistyping.
+- **Proposed fix:** Extend Phase 2 regex to match `gh[[:space:]]+(-FLAG)*api.*(DELETE|-X[[:space:]]+DELETE).*refs/heads/(main|master)` OR broader: any `gh api` with state-changing verb + target `main`/`master`. Needs care — `gh api -X GET repos/.../refs/heads/main` (read-only) should NOT fire.
+- **ACs:**
+  - AC-1: `gh api -X DELETE repos/OWNER/REPO/git/refs/heads/main` → exit=2.
+  - AC-2: `gh api -X DELETE repos/OWNER/REPO/git/refs/heads/master` → exit=2.
+  - AC-3: `gh api repos/OWNER/REPO/git/refs/heads/main` (GET default) → exit=0.
+  - AC-4: `gh api repos/OWNER/REPO/git/refs/heads/feature-branch` → exit=0 (non-main).
+- **Effort:** XS (~20min — add action regex alternation, 4 harness cases, Sonnet adversary).
+- **Owner:** CTO.
+- **Source:** COO empirical adversary Pass-1 on FW-041 ship — Section D `gh-api-delete-main` form.

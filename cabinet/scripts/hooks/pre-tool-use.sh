@@ -456,14 +456,45 @@ fi
 #   alternation ALSO narrowed from `(pr|api)` to `(pr merge|api)` —
 #   read-only `gh pr view/list/checkout/status` are not write actions
 #   and have no business passing Phase 1.
+# FW-043 (hotfix 2026-04-23 — COO + Sonnet empirical adversary on FW-041 ship):
+#   6 bypass forms silently skipped Phase 1 because the anchor was
+#   LINE-START-ONLY (`^[[:space:]]*` + `head -n1`), not statement-start.
+#   Forms: (a) `cd /tmp && git push origin main` — chain prefix,
+#   (b) multiline `echo ok\ngit push origin main` — head -n1 eats
+#   line 1, (c) `(git push origin main)` — subshell paren prefix,
+#   (d) `true && git push origin main` — always-succeed chain,
+#   (e) `: ; git push origin main` — null-command + semi,
+#   (f) `{ git push origin main; }` — brace-group prefix (Sonnet
+#   pass-1 against initial fix). Fix for both Layer 1 + CI Green
+#   gate: (1) remove `head -n1` — grep's line-mode handles
+#   multiline naturally (each line checked independently against
+#   the anchor, which still uses `^`). (2) Widen anchor prefix
+#   from `^[[:space:]]*` to `(^|[;&|({\`][[:space:]]*)` — accepts
+#   bare line-start OR a preceding shell statement-boundary char
+#   (semi, amp, pipe, open-paren, open-brace, backtick) + whitespace.
+#   Trade-off: false-positives when a boundary char appears INSIDE
+#   a quoted string followed by literal `git push origin main` text,
+#   e.g., `git commit -m "staged && git push origin main"` would fire
+#   the gate (Phase 2 already substring-matched; Phase 1 now also
+#   matches at `&&` inside quotes). Accepted as fail-closed trade
+#   (over-block vs FW-041's silent fail-open); FP rate ~rare in
+#   officer workflow, gate prompt tells CTO to set the reviewed
+#   key + retry. Also extends Layer 1 Phase 2 trailing-terminator
+#   class from `[[:space:];]|$` to `[[:space:];&|(){}\`]|$` so
+#   trailing shell-chain chars (incl. close-brace/close-paren)
+#   after `main`/`master` also match. Heredoc body FP (line-mode
+#   grep sees `git push origin main` as its own line) also
+#   accepted as fail-closed per same rationale.
+#   FW-041 Phase 2 scope-gap (quoted-space flag value) remains
+#   open — still tracked as FW-041 Phase 2.
 # Phase 2 (action regex): actual push-to-main-or-master / pr-merge pattern.
 # AND-composed so both must pass to trip the gate.
 # Action regex covers BOTH `main` (Sensed product repo) and `master`
 # (framework repo default) — CTO pushes to both.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
-     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push.*(main|master)([[:space:];]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*pr[[:space:]]+merge'; then
+  if echo "$CMD" | grep -qE '(^|[;&|({`])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
+     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}`]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*pr[[:space:]]+merge'; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
       echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
@@ -483,7 +514,7 @@ fi
 # "...pulls/42/merge..."` bodies cannot pass Phase 1.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
+  if echo "$CMD" | grep -qE '(^|[;&|({`])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
      echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then

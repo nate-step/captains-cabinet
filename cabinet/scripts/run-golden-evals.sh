@@ -854,12 +854,12 @@ if [ ! -f "$EV14_HOOK" ]; then
   EV14_FAILURE="pre-tool-use.sh not found at $EV14_HOOK"
 else
   # Static pins — both FW-029 gates received the anchor. Filter on
-  # `git[[:space:]]+...push` (FW-029-specific subcommand alternation) so
-  # FW-032's whitelist anchor (same `head -n1 | grep -qE '` preamble
-  # but different alternation) doesn't inflate the count. Regex (not
-  # fixed-string) so FW-041's flag-tolerant insertion between
-  # `git[[:space:]]+` and `push` stays pinned.
-  EV14_ANCHOR_COUNT=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -cE 'git\[\[:space:\]\]\+.*push')
+  # FW-043's statement-boundary prefix `(^|[;&|(`])[[:space:]]*` —
+  # unique to Layer 1 + CI Green Phase 1 anchors (FW-032's whitelist
+  # anchor uses a different prefix, different subcommand alternation).
+  # Regex (not fixed-string) so additive inserts to flag-tolerant
+  # group or env/timeout prefixes stay pinned.
+  EV14_ANCHOR_COUNT=$(grep -cE "grep -qE '\(\^\|\[;&" "$EV14_HOOK")
   EV14_FW029_MARKER_COUNT=$(grep -cF 'FW-029' "$EV14_HOOK")
 
   if [ "$EV14_ANCHOR_COUNT" -lt 2 ]; then
@@ -867,12 +867,11 @@ else
   elif [ "$EV14_FW029_MARKER_COUNT" -lt 2 ]; then
     EV14_FAILURE="FW-029 marker count=$EV14_FW029_MARKER_COUNT (expected >=2 — comment marker removed, regression risk)."
   else
-    # Extract FW-029 anchor. Filter by distinctive `git[[:space:]]+...push`
-    # alternation to avoid picking FW-032's whitelist anchor (which
-    # shares the `head -n1 | grep -qE '` prefix but has
-    # `send-to-group\.sh` tail). Regex (not fixed-string) so FW-041's
-    # flag-tolerant insertion between `git[[:space:]]+` and `push` stays pinned.
-    EV14_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -E 'git\[\[:space:\]\]\+.*push' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    # Extract FW-029 anchor. Filter by distinctive FW-043 statement-boundary
+    # prefix `(^|[;&|(`])[[:space:]]*` — unique to Layer 1 + CI Green Phase 1
+    # anchors. Regex (not fixed-string) so additive insertions (flag-tolerant
+    # group expansion, env/timeout prefix additions) stay pinned.
+    EV14_ANCHOR_RE=$(grep -E "grep -qE '\(\^\|\[;&" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
     # Extract the Layer 1 action regex and the CI Green action regex.
     # Match on distinctive `pr...merge` tail so EVAL survives both
     # original form (`gh pr merge`) AND FW-041's flag-tolerant form
