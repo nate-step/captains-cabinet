@@ -885,6 +885,8 @@ else
 
   if [ -z "$EV14_FAILURE" ]; then
     # Layer 1 positive matrix — gate MUST fire (anchor AND action both match).
+    # FW-043: statement-boundary prefix forms (cd-chain, subshell, brace-group, etc.)
+    # added to prevent accidental revert of boundary class `(^|[;&|({`])`.
     for cmd in \
       "git push origin main" \
       "git push origin master" \
@@ -892,10 +894,19 @@ else
       "git push origin refs/heads/main" \
       "git push https://x-access-token:FAKE@github.com/STEP-Network/Sensed main" \
       "env FOO=bar git push origin main" \
-      "gh pr merge 42 --squash"; do
+      "gh pr merge 42 --squash" \
+      "cd /tmp && git push origin main" \
+      "(git push origin main)" \
+      "true && git push origin main" \
+      ": ; git push origin main" \
+      "git push origin main &" \
+      "{ git push origin main; }" \
+      "false || git push origin main" \
+      "git -C /tmp push origin main" \
+      "gh -R owner/repo pr merge 42"; do
       anchor_ok=false
       action_ok=false
-      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
       echo "$cmd" | grep -qE "$EV14_L1_RE" && action_ok=true
       if ! $anchor_ok || ! $action_ok; then
         EV14_FAILURE="Layer 1 gate would FAIL to fire on legitimate push/merge: $cmd (anchor=$anchor_ok action=$action_ok). Real push would slip past Crew-review requirement."
@@ -909,6 +920,11 @@ else
     # These are commands that mention push/merge text but are not actual
     # push/merge invocations. Gate-state amplification would consume the
     # reviewed key on these under the old single-regex check.
+    # FW-043 scope note: commit messages with `&&` + `git push origin main`
+    # literal text DO fire the gate (documented fail-closed FP per
+    # pre-tool-use.sh L474-481). Only NO-BOUNDARY-CHAR commit bodies stay
+    # in the negative matrix — boundary-char-containing quoted bodies are
+    # accepted trade-offs, not regressions.
     for cmd in \
       'git commit -m "message mentioning git push origin main"' \
       'echo "git push origin main"' \
@@ -921,7 +937,7 @@ else
       'git push origin feature/master-plan'; do
       anchor_ok=false
       action_ok=false
-      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
       echo "$cmd" | grep -qE "$EV14_L1_RE" && action_ok=true
       if $anchor_ok && $action_ok; then
         EV14_FAILURE="Layer 1 gate WRONGLY fires on non-deploy command: $cmd — gate-reviewed key would be consumed without a real push, forcing unnecessary re-SET."
@@ -934,10 +950,12 @@ else
     # CI Green positive matrix — gate MUST fire on actual API merge calls.
     for cmd in \
       "curl -X PUT https://api.github.com/repos/STEP-Network/Sensed/pulls/42/merge" \
-      "gh api repos/STEP-Network/Sensed/pulls/42/merge -X PUT"; do
+      "gh api repos/STEP-Network/Sensed/pulls/42/merge -X PUT" \
+      "cd /tmp && curl -X PUT https://api.github.com/repos/OWNER/REPO/pulls/42/merge" \
+      "(gh api repos/OWNER/REPO/pulls/42/merge -X PUT)"; do
       anchor_ok=false
       action_ok=false
-      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
       echo "$cmd" | grep -qE "$EV14_CI_RE" && action_ok=true
       if ! $anchor_ok || ! $action_ok; then
         EV14_FAILURE="CI Green gate would FAIL to fire on legitimate API merge: $cmd (anchor=$anchor_ok action=$action_ok). Merge would slip past CI-green requirement."
@@ -954,7 +972,7 @@ else
       'git commit -m "docs: pulls/42/merge API notes"'; do
       anchor_ok=false
       action_ok=false
-      echo "$cmd" | head -n1 | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
+      echo "$cmd" | grep -qE "$EV14_ANCHOR_RE" && anchor_ok=true
       echo "$cmd" | grep -qE "$EV14_CI_RE" && action_ok=true
       if $anchor_ok && $action_ok; then
         EV14_FAILURE="CI Green gate WRONGLY fires on non-merge command: $cmd — ci-green key would be consumed without a real merge."
