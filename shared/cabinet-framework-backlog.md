@@ -726,3 +726,21 @@ _(none)_
 - **Effort:** S-actual: ~25min (10-line hook diff + 3 probe-fn edits + 65-line EVAL-023 + FW-046 comment swap).
 - **Owner:** CTO.
 - **Source:** 2026-04-23 incident; CPO infra alert; CoS diagnosis. Cross-cut with P-014 (retro: test infrastructure can silently affect production state — reinforcement: always gate test harnesses that invoke production hooks against real state-mutating sinks).
+
+---
+
+### FW-048 — Add dashboard `tsc --noEmit` to Cabinet CI (MEDIUM)
+- **Status:** Proposed 2026-04-23 (CTO, post-Spec 037 PR A ship).
+- **Scope:** Add a `typecheck-dashboard` job to `.github/workflows/cabinet-ci.yml` running `cd cabinet/dashboard && npm ci && npx tsc --noEmit`. Blocks PR merge on TS errors in the dashboard tree.
+- **Motivation:** Spec 037 PR A (CommandPalette) shipped with a latent type-shadow error (`import { type KeyboardEvent }` from React shadowed the global DOM `KeyboardEvent` used by window-level keydown listeners). Caught in local `tsc --noEmit` pre-push — but `pre-push-gate.sh` doesn't run dashboard tsc; only a CI check would catch it on PRs where the author forgot to tsc locally. High-leverage additive safety (~45s job once npm cache warm).
+- **Dependencies:**
+  - **Soft blocker:** `src/lib/provisioning/flow.test.ts` has 2 pre-existing tsc errors (vitest module not found + implicit `any` on `call` parameter). Must either install `vitest` + typings as devDep, OR exclude test files from tsc strict run, OR fix the `any` + leave the file as `// @ts-nocheck` pending vitest install. Check with CPO / test-infra owner before picking.
+- **Acceptance criteria:**
+  - **AC-1:** `cabinet-ci.yml` has a `typecheck-dashboard` job running `npx tsc --noEmit` against `cabinet/dashboard`, gated on PR + push to master.
+  - **AC-2:** Pre-existing `flow.test.ts` errors resolved (method picked per Dependencies section).
+  - **AC-3:** One planted type error on a throwaway branch fails the new job (regression pin — prove the gate actually fails, not just passes).
+  - **AC-4:** Job completes in under 90s with npm-cache hit; under 3 minutes cold.
+- **Out of scope:** Full dashboard test suite (vitest run), ESLint, Next.js build. Type-check only — the narrowest gate that would have caught PR A's error.
+- **Effort:** S (workflow YAML addition + flow.test.ts resolution + regression pin).
+- **Owner:** CTO.
+- **Source:** CTO self-retro post-PR-A ship; experience record `2026-04-23-cto-1776975201-*`.
