@@ -188,7 +188,8 @@ _(none)_
 ---
 
 ### FW-024 — Dockerfile.officer Python deps (Spec 039 ETL durable fix)
-- **Status:** Captain founder-action — pending 2026-04-21.
+- **Status:** Captain founder-action — **COMMITTED 2026-04-24 morning CEST** (msg 1649, 2026-04-23 19:37 UTC).
+- **Handoff doc:** `shared/interfaces/fw-024-rebuild-handoff.md` (staged 2026-04-23 19:45 UTC by CTO) — 1-line Dockerfile edit, 2-cmd rebuild, 1-cmd verify, pre-staged Gate 1 dry-run invocation. Captain is 1-keystroke from wet-run start.
 - **Problem:** Officer containers built from `cabinet/Dockerfile.officer` off `ubuntu:24.04` lack `pip3` / `psycopg2` / `requests` / `yaml`. Spec 039 Phase A Gate 1 (`migrate-sources-to-officer-tasks.sh`) fails preflight in officer containers. Officers cannot edit Dockerfile.officer themselves — pre-tool-use.sh hook line 338 blocks Edit/Write on paths containing `Dockerfile` (hard block, all officers, no bypass).
 - **Interim mitigation:** `bootstrap-host.sh` now installs the three Python modules on HOST so wet-run scripts can execute from a host shell (commit `0433733`, 2026-04-21). Unblocks tonight but does not help in-container operators.
 - **Captain founder-action:**
@@ -240,7 +241,8 @@ _(none)_
 ---
 
 ### FW-026 — FW-025 follow-ups: finer-grained escape, pushed-commit evaluation, GH Actions belt-and-suspenders
-- **Status:** Proposed (Phase B — not blocking FW-025).
+- **Status:** Option 3 (GH Actions CI) SHIPPED 2026-04-23. `.github/workflows/cabinet-ci.yml` runs on PR + push to master: bash -n on hooks + lib, shell unit tests (test-triggers.sh + test-memory.sh), Python pytest (ETL transforms FW-023 + gate-3-idempotency FW-021), golden evals (24-eval suite inc. EVAL-023 FW-047 regression guard). Symlinks `$GITHUB_WORKSPACE/founders-cabinet` → `/opt/founders-cabinet` so hardcoded paths resolve; Redis 7 services container per job for isolated state. `permissions: contents: read` for minimum-privilege. Sonnet fresh-context review: 1 MEDIUM (permissions) fixed pre-commit; 5 other concerns SAFE (shell tests, XLEN on non-existent stream, concurrency group, state pollution, hardcoded /opt path via symlink). Options 1 + 2 (fine-grained escape envs, pushed-commit evaluation) remain deferred as Phase B — pre-push + CI together cover the 99+% surface; revisit if a host-push-vector incident justifies. Source ship context: CoS msg 2026-04-23 19:39 UTC granting Captain autonomy + CTO directional pick.
+- **Prior status:** Proposed (Phase B — not blocking FW-025).
 - **Problem:** FW-025 shipped three Phase-A accepted gaps:
   1. **M-1: `--no-verify` couples FW-007+FW-025 bypass.** The sole emergency escape from the FW-025 eval gate is `git push --no-verify`, which simultaneously disables FW-007's force-push refusal. Same keystroke that bypasses the eval gate also enables accidental master destruction. Granularity risk is low today (officer pushes are deliberate), but will grow once the Captain gets a web-push vector.
   2. **M-2: Gate evaluates WORKING TREE, not pushed commits.** `run-golden-evals.sh` tests on-disk state of `cabinet/scripts/*`, not the ref SHAs being pushed. Amend-off (fix in WT, committed version stale), selective-file commits (fix un-staged, bad code in commit), and parent-pushes (`git push origin HEAD^:master`) can slip broken commits past a green gate. Full mitigation requires `git stash && checkout <local_sha> && eval && restore` which is invasive and unsafe in a shared tree.

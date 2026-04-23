@@ -1,0 +1,104 @@
+name: Cabinet CI
+
+# FW-026 Option 3 — belt-and-suspenders CI for Cabinet framework code.
+# Additive to the pre-push gate (`scripts/pre-push-gate.sh`): local hook catches
+# 99% of regressions pre-push, this workflow catches the 1% where officers push
+# from host shell or where a `--no-verify` bypass slipped through.
+#
+# Runs: syntax checks (bash -n) + shell unit tests + Python tests + golden evals.
+# Does NOT run: Dockerfile rebuilds, deploy-triggering ops, MCP integration.
+# Minimal by design — expand once signal justifies.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cabinet-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: founders-cabinet
+
+      - name: Mount checkout at /opt/founders-cabinet
+        # Many scripts hardcode /opt/founders-cabinet paths; symlinking is cheaper
+        # than refactoring CABINET_ROOT usage across the codebase.
+        run: sudo ln -s "$GITHUB_WORKSPACE/founders-cabinet" /opt/founders-cabinet
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-tools jq
+
+      - name: Install Python deps
+        run: |
+          python3 -m pip install --upgrade pip
+          # Python tests stub requests/yaml/psycopg2 via sys.modules, so real
+          # packages are optional. Install anyway to match officer container.
+          pip3 install psycopg2-binary requests pyyaml pytest
+
+      - name: Bash syntax check — hooks
+        run: |
+          set -e
+          for f in /opt/founders-cabinet/cabinet/scripts/hooks/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: Bash syntax check — lib
+        run: |
+          set -e
+          for f in /opt/founders-cabinet/cabinet/scripts/lib/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: Shell unit tests — triggers.sh
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-triggers.sh
+
+      - name: Shell unit tests — memory.sh
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-memory.sh
+
+      - name: Python tests — ETL transforms (FW-023)
+        run: |
+          cd /opt/founders-cabinet/cabinet/scripts/lib
+          python3 -m pytest tests/ -v
+
+      - name: Python tests — Gate 3 idempotency hash (FW-021)
+        run: |
+          cd /opt/founders-cabinet/cabinet/scripts/gates
+          python3 -m pytest tests/ -v
+
+      - name: Golden evals
+        # EVAL-023 (FW-047) runs under CABINET_HOOK_TEST_MODE=1 so trigger_send
+        # fan-out is suppressed. This step also exercises the full hook-probe
+        # surface end-to-end.
+        run: bash /opt/founders-cabinet/cabinet/scripts/run-golden-evals.sh
