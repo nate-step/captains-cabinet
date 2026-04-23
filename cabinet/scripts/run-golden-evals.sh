@@ -854,10 +854,12 @@ if [ ! -f "$EV14_HOOK" ]; then
   EV14_FAILURE="pre-tool-use.sh not found at $EV14_HOOK"
 else
   # Static pins — both FW-029 gates received the anchor. Filter on
-  # `git[[:space:]]+push` (FW-029-specific subcommand alternation) so
+  # `git[[:space:]]+...push` (FW-029-specific subcommand alternation) so
   # FW-032's whitelist anchor (same `head -n1 | grep -qE '` preamble
-  # but different alternation) doesn't inflate the count.
-  EV14_ANCHOR_COUNT=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -cF 'git[[:space:]]+push')
+  # but different alternation) doesn't inflate the count. Regex (not
+  # fixed-string) so FW-041's flag-tolerant insertion between
+  # `git[[:space:]]+` and `push` stays pinned.
+  EV14_ANCHOR_COUNT=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -cE 'git\[\[:space:\]\]\+.*push')
   EV14_FW029_MARKER_COUNT=$(grep -cF 'FW-029' "$EV14_HOOK")
 
   if [ "$EV14_ANCHOR_COUNT" -lt 2 ]; then
@@ -865,15 +867,17 @@ else
   elif [ "$EV14_FW029_MARKER_COUNT" -lt 2 ]; then
     EV14_FAILURE="FW-029 marker count=$EV14_FW029_MARKER_COUNT (expected >=2 — comment marker removed, regression risk)."
   else
-    # Extract FW-029 anchor. Filter by distinctive `git[[:space:]]+push`
+    # Extract FW-029 anchor. Filter by distinctive `git[[:space:]]+...push`
     # alternation to avoid picking FW-032's whitelist anchor (which
     # shares the `head -n1 | grep -qE '` prefix but has
-    # `send-to-group\.sh` tail).
-    EV14_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -F 'git[[:space:]]+push' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    # `send-to-group\.sh` tail). Regex (not fixed-string) so FW-041's
+    # flag-tolerant insertion between `git[[:space:]]+` and `push` stays pinned.
+    EV14_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '" "$EV14_HOOK" | grep -E 'git\[\[:space:\]\]\+.*push' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
     # Extract the Layer 1 action regex and the CI Green action regex.
-    # Match on distinctive `gh pr merge` tail so EVAL survives future
-    # action-regex widening (main|master) without another extractor edit.
-    EV14_L1_RE=$(grep -E "grep -qE '[^']*gh pr merge'" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
+    # Match on distinctive `pr...merge` tail so EVAL survives both
+    # original form (`gh pr merge`) AND FW-041's flag-tolerant form
+    # (`gh[[:space:]]+(-...)*pr[[:space:]]+merge`) without another edit.
+    EV14_L1_RE=$(grep -E "grep -qE '[^']*pr[^']*merge'" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
     EV14_CI_RE=$(grep -E "grep -qE 'pulls/\[0-9\]\+/merge'" "$EV14_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
     if [ -z "$EV14_ANCHOR_RE" ] || [ -z "$EV14_L1_RE" ] || [ -z "$EV14_CI_RE" ]; then
       EV14_FAILURE="regex extraction returned empty — anchor=$EV14_ANCHOR_RE, L1=$EV14_L1_RE, CI=$EV14_CI_RE (sed pattern drift — rewrite EVAL-014 extractor)"

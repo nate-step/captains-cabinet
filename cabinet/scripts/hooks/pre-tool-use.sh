@@ -353,7 +353,29 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # separator, e.g. `sed -i 's/a/b/;s/c/d/' f`). Attempted hotfix-3a `[^|&;]`
     # over-rejected `|`; hotfix-3b `[^&;]` over-rejected `;`. Final class `[^&]*`
     # allows all three; `&` alone still flags `&&`/`|| →` command-chain
-    # boundaries. The downstream `[[:space:]]+/workspace/product/` anchor keeps
+    # boundaries.
+    # Hotfix 4 2026-04-23 (COO 4th-round + Sonnet adversary pass 2 & 3 on
+    # hotfix-4 interim forms): `[^&]*` over-rejects sed replacement-`&`
+    # (standard sed feature meaning "the matched text"): `s/foo/&bar/`,
+    # `/&/d`, `s/^/& /`, and sed's `&&` = "matched text twice"
+    # (`s/a/&&/`). Progression:
+    #   - Interim (COO) `([^&]|&[^&])*`: fixed single-& but missed
+    #     `&&`-inside-quotes (Sonnet pass 2 HIGH).
+    #   - Interim 2 (quote-balanced) `([^&'"]|'[^']*'|"[^"]*"|&[^&])*`:
+    #     fixed `&&`-in-quotes but broke A2 (escape-out `'\''` idiom)
+    #     and A6 (quoted product path `'/workspace/product/x'`) — both
+    #     HIGH (Sonnet pass 3).
+    # Final class: `([^&'"]|'[^']*'|"[^"]*"|'|"|&[^&])*` — balanced-span
+    # alternatives absorb `&&`/`;`/`|` inside quotes; solo `'`/`"`
+    # fallbacks absorb orphan quotes (escape-out idioms, unmatched
+    # trailing quotes); `&[^&]` still consumes sed-literal `&`; outside
+    # quotes, none of the alternatives accept `&&` so the match still
+    # halts at shell chain boundaries. Plus `/workspace/product/` anchor
+    # now accepts optional `["']?` opening quote to catch quoted path
+    # forms (`sed -i ... '/workspace/product/x'`). Verified: `sed -i
+    # 's/x/y/' /tmp/f && cat /workspace/product/log` still correctly
+    # PASSES (the `&&` halts the unquoted class before the product
+    # anchor can be reached). The downstream `[[:space:]]+/workspace/product/` anchor keeps
     # the product-path write requirement (so false-pos from `sed -i /tmp/f; echo
     # /workspace/product/` is a known pre-existing greedy-match FP, not a
     # delta-3 regression). Pattern 5a `-[a-zA-Z]*t[[:space:]]+` → `[[:space:]]*`
@@ -363,7 +385,7 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # touch/mkdir/truncate/sqlite3), python3 -c, node -e, sed `/pat/w PATH`
     # internal-write directive (no -i needed), Pattern 4 last-arg-is-dest
     # assumption violated by `cp -t DEST SOURCE...` ordering.
-    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+([^&]*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]][^&]*)?[[:space:]]+/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
+    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+(([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]]([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*)?[[:space:]]+["'\'']?/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
       echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi
@@ -416,14 +438,32 @@ fi
 #   priv-esc / env VAR=X / timeout. Subcommand-level narrowing rejects
 #   `git commit`, `git log`, `gh pr view` etc. at Phase 1 so substring
 #   action matches on their -m/--grep bodies cannot trip the gate.
+# FW-041 (hotfix 2026-04-22 — Rule 4 class from FW-034): BOTH phases
+#   extended to accept `git -FLAG [VALUE] push` and `gh -FLAG [VALUE]
+#   pr merge`. GNU `git` accepts global flags (-C <path>, -c key=val,
+#   --git-dir=<path>, --work-tree=<path>, --namespace=<ns>) BETWEEN
+#   `git` and the subcommand; `gh` accepts (-R owner/repo, --repo
+#   owner/repo). Pre-hotfix Phase 1 required subcommand immediately
+#   after `git`/`gh`, AND Phase 2 required literal `git push` / `gh pr
+#   merge` — so `git -C /path push origin main` and `gh -R owner/repo
+#   pr merge N` bypassed BOTH phases (fail-open — gate silently not
+#   consulted). Fix: identical optional repeated `(-FLAG [VALUE] )*`
+#   group between tool and subcommand at BOTH phases. Each flag group
+#   requires leading `-` on the flag and non-`-` leading char on the
+#   value, so non-deploy subcommands like `git commit -m "..."` —
+#   where `commit` doesn't start with `-` — still correctly fall out
+#   of the flag-repeat and fail the `push` verb check. Phase 1 `gh`
+#   alternation ALSO narrowed from `(pr|api)` to `(pr merge|api)` —
+#   read-only `gh pr view/list/checkout/status` are not write actions
+#   and have no business passing Phase 1.
 # Phase 2 (action regex): actual push-to-main-or-master / pr-merge pattern.
 # AND-composed so both must pass to trip the gate.
 # Action regex covers BOTH `main` (Sensed product repo) and `master`
 # (framework repo default) — CTO pushes to both.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+push|gh[[:space:]]+pr|gh[[:space:]]+api|curl[[:space:]])' && \
-     echo "$CMD" | grep -qE 'git push.*(main|master)([[:space:];]|$)|gh pr merge'; then
+  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
+     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push.*(main|master)([[:space:];]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*pr[[:space:]]+merge'; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
       echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
@@ -443,7 +483,7 @@ fi
 # "...pulls/42/merge..."` bodies cannot pass Phase 1.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+push|gh[[:space:]]+pr|gh[[:space:]]+api|curl[[:space:]])' && \
+  if echo "$CMD" | head -n1 | grep -qE '^[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+)+[[:space:]]+|timeout[[:space:]]+[0-9]+[smhd]?[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]])' && \
      echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then
