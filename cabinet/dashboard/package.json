@@ -9,20 +9,21 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest",
+    "cmdk": "^1.1.1",
     "ioredis": "^5.4.2",
     "js-yaml": "^4.1.0",
-    "pg": "^8.13.3"
+    "next": "latest",
+    "pg": "^8.13.3",
+    "react": "latest",
+    "react-dom": "latest"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.11",
+    "@tailwindcss/postcss": "^4.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.11",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0"
   }
