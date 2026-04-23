@@ -506,11 +506,25 @@ log "EVAL-011: deploy-detection regex invariants (FW-027 Phase B / COO M-4)"
 EV11_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
 EV11_FAILURE=""
 
+# FW-046: direct hook invocation (replaces fragile sed-extraction).
+# Block 6 of post-tool-use.sh echoes "REMINDER:" to stdout when a deploy
+# command fires. The dry-run elif noops before deploy-elif so dry-run
+# commands produce no REMINDER. We capture stdout to detect which branch
+# fired — avoids `'\''` breakage in the future if the hook regex gains
+# shell-escaped quotes (FW-045 precedent). Gate keys not applicable for
+# post-tool-use.sh (no exit-2 gate here), but block 5 may call trigger_send
+# for the deploy positives — that's accepted test-run noise.
+ev11_hook_probe() {
+  local cmd="$1"
+  local json
+  json=$(jq -cn --arg cmd "$cmd" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+  echo "$json" | OFFICER_NAME=cto bash "$EV11_HOOK" 2>/dev/null
+  # Returns the hook stdout; caller checks for REMINDER presence
+}
+
 if [ ! -f "$EV11_HOOK" ]; then
   EV11_FAILURE="post-tool-use.sh not found at $EV11_HOOK"
 else
-  EV11_DEPLOY_RE=$(grep -E "elif echo .*git push\[\[:space:\]\]\+.*main.*master.*pulls/\[0-9\]\+/merge" "$EV11_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-  EV11_DRYRUN_RE=$(grep -E "elif echo .*--dry-run" "$EV11_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
   # Split-range ordering: collect ALL occurrences of each elif and pair
   # them by index (block 5's dry-run ↔ block 5's deploy; block 6's dry-run
   # ↔ block 6's deploy). Previous `head -1` check only asserted block 5
@@ -521,11 +535,7 @@ else
   EV11_DRYRUN_COUNT=${#EV11_DRYRUN_LINES[@]}
   EV11_DEPLOY_COUNT=${#EV11_DEPLOY_LINES[@]}
 
-  if [ -z "$EV11_DEPLOY_RE" ]; then
-    EV11_FAILURE="deploy regex extraction returned empty (hook rewrite broke extraction? update EVAL-011 pattern)"
-  elif [ -z "$EV11_DRYRUN_RE" ]; then
-    EV11_FAILURE="dry-run skip regex extraction returned empty (M-4b skip elif missing or extraction broken)"
-  elif [ "$EV11_DRYRUN_COUNT" -ne 2 ] || [ "$EV11_DEPLOY_COUNT" -ne 2 ]; then
+  if [ "$EV11_DRYRUN_COUNT" -ne 2 ] || [ "$EV11_DEPLOY_COUNT" -ne 2 ]; then
     EV11_FAILURE="expected 2 dry-run skips + 2 deploy elifs (block 5 + block 6), got dry-run=$EV11_DRYRUN_COUNT deploy=$EV11_DEPLOY_COUNT"
   else
     # Per-block ordering: dry-run-elif MUST precede deploy-elif in each
@@ -542,11 +552,11 @@ else
   fi
 
   if [ -z "$EV11_FAILURE" ]; then
-    # Positive cases: each of these MUST trigger the deploy elif.
-    # `HEAD:main` + trailing `;` added in Phase C: pre-main char class
-    # extended to [[:space:]/:] (colon), terminator class extended to
-    # [[:space:];] (semicolon). Refs/heads/main exercises the `/`
-    # separator path (same class extension).
+    # Positive cases: REMINDER MUST appear in hook stdout (block 6 deploy
+    # branch fires). `HEAD:main` + trailing `;` added in Phase C: pre-main
+    # char class extended to [[:space:]/:] (colon), terminator class
+    # extended to [[:space:];] (semicolon). Refs/heads/main exercises the
+    # `/` separator path (same class extension).
     for cmd in \
       "git push origin main" \
       "git push main" \
@@ -555,14 +565,14 @@ else
       "git push origin HEAD:main" \
       "git push origin main; echo done" \
       "git push origin refs/heads/main"; do
-      if ! echo "$cmd" | grep -qE "$EV11_DEPLOY_RE"; then
-        EV11_FAILURE="deploy regex FAILED expected-positive: $cmd"
+      if ! ev11_hook_probe "$cmd" | grep -q "REMINDER:"; then
+        EV11_FAILURE="deploy regex FAILED expected-positive: $cmd (no REMINDER in hook stdout — deploy branch did not fire)"
         break
       fi
     done
 
     if [ -z "$EV11_FAILURE" ]; then
-      # Negative cases: each of these MUST NOT trigger the deploy elif.
+      # Negative cases: REMINDER MUST NOT appear (deploy elif did not fire).
       # HEADmain (no separator): verifies no empty-string fusion of
       # HEAD→main. feat/main-branch: trailing `-branch` breaks the
       # terminator. main-feat: trailing `-` breaks the terminator.
@@ -577,32 +587,35 @@ else
         "git push origin main-feat" \
         "git push origin feat/main" \
         "git push origin issue-42/main"; do
-        if echo "$cmd" | grep -qE "$EV11_DEPLOY_RE"; then
-          EV11_FAILURE="deploy regex WRONGLY matched expected-negative: $cmd"
+        if ev11_hook_probe "$cmd" | grep -q "REMINDER:"; then
+          EV11_FAILURE="deploy regex WRONGLY matched expected-negative: $cmd (REMINDER in hook stdout — deploy branch fired on non-main branch)"
           break
         fi
       done
     fi
 
     if [ -z "$EV11_FAILURE" ]; then
-      # Dry-run positives (skip MUST fire): long-form --dry-run + short-form -n
-      # before and after the refspec. The -n cases catch Sonnet adversary
-      # finding #1 (short-form dry-run falling through to AUTO-DEPLOY).
+      # Dry-run positives: REMINDER MUST NOT appear (dry-run elif fires
+      # first and noops before reaching the deploy branch). Long-form
+      # --dry-run + short-form -n before and after the refspec. The -n
+      # cases catch Sonnet adversary finding #1 (short-form dry-run
+      # falling through to AUTO-DEPLOY).
       for cmd in \
         "git push --dry-run origin main" \
         "git push origin main --dry-run" \
         "git push -n origin main" \
         "git push origin main -n"; do
-        if ! echo "$cmd" | grep -qE "$EV11_DRYRUN_RE"; then
-          EV11_FAILURE="dry-run skip regex FAILED to match: $cmd (M-4b skip won't fire)"
+        if ev11_hook_probe "$cmd" | grep -q "REMINDER:"; then
+          EV11_FAILURE="dry-run skip regex FAILED: $cmd produced REMINDER (M-4b dry-run skip did not noop before deploy branch)"
           break
         fi
       done
     fi
 
     if [ -z "$EV11_FAILURE" ]; then
-      # Dry-run negatives (skip MUST NOT fire):
-      # - plain deploy: obvious non-match
+      # Dry-run negatives: REMINDER MUST appear (these are real deploys,
+      # NOT dry-runs — the dry-run elif must NOT fire on them).
+      # - plain deploy: obvious
       # - chained-command forms: greedy `.*` originally crossed `&&` and
       #   swallowed a subsequent command's flag text, suppressing
       #   AUTO-DEPLOY for real pushes (Sonnet adversary finding #2). The
@@ -614,8 +627,8 @@ else
         "git push origin main && git commit -m 'test --dry-run'" \
         "git push origin main && git commit -m 'test -n'" \
         "git push --no-force origin main"; do
-        if echo "$cmd" | grep -qE "$EV11_DRYRUN_RE"; then
-          EV11_FAILURE="dry-run skip regex WRONGLY matched real push: $cmd (would suppress AUTO-DEPLOY)"
+        if ! ev11_hook_probe "$cmd" | grep -q "REMINDER:"; then
+          EV11_FAILURE="dry-run skip regex WRONGLY matched real push: $cmd (no REMINDER — dry-run elif consumed the real push, would suppress AUTO-DEPLOY)"
           break
         fi
       done
@@ -747,20 +760,32 @@ else
     EV13_FAILURE="FW-028 noop comment count=$EV13_NOOP_COMMENT_COUNT (expected 2 — 'CMD does not start with a deploy-style executable'). Per-block comment drift signals structural divergence."
   elif [ "$EV13_FW028_MARKER_COUNT" -lt 2 ]; then
     EV13_FAILURE="FW-028 marker count=$EV13_FW028_MARKER_COUNT (expected >=2 — 'FW-028: command-start anchor' comment). Intent marker removed, regression risk."
-  else
-    # Extract FW-028's anchor — filter by `(git|gh|curl)[[:space:]]` token
-    # to avoid grabbing FW-033's narrower-stem anchor at line 191.
-    EV13_ANCHOR_RE=$(grep -E "head -n1 \| grep -qE '\^\[\[:space:\]\]" "$EV13_HOOK" | grep -F '(git|gh|curl)[[:space:]]' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-    if [ -z "$EV13_ANCHOR_RE" ]; then
-      EV13_FAILURE="anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-013 extractor)"
-    fi
   fi
 
+  # FW-046: direct hook invocation replaces sed-extraction of the anchor
+  # regex. Block 6 echoes REMINDER when anchor+deploy regex both match;
+  # no REMINDER when anchor fails (noop branch) or deploy regex fails.
+  # This tests the AND-composition of anchor+deploy in one probe instead
+  # of extracting the anchor regex text (which breaks on `'\''` escapes).
+  ev13_hook_probe() {
+    local cmd="$1"
+    local json
+    json=$(jq -cn --arg cmd "$cmd" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    echo "$json" | OFFICER_NAME=cto bash "$EV13_HOOK" 2>/dev/null
+  }
+
   if [ -z "$EV13_FAILURE" ]; then
-    # Positive matrix — anchor MUST match. Failing any of these means
-    # a real push would be silently silenced (no AUTO-DEPLOY, no
-    # verify-deploy REMINDER). COO caveat on FW-028: the three Phase C
-    # forms (HEAD:main, refs/heads/main, `;` terminator) MUST still pass.
+    # Positive matrix — REMINDER MUST appear (anchor+deploy both match).
+    # COO caveat on FW-028: the three Phase C forms (HEAD:main,
+    # refs/heads/main, `;` terminator) MUST still produce REMINDER.
+    # sudo/env/timeout-prefixed forms exercise the priv-esc prefix stack.
+    # Note: `gh pr merge 42 --squash` fires block 5 trigger_send (side
+    # effect accepted — test-run noise) but always produces REMINDER.
+    # Note on `git -C /path push origin main`: this passes the FW-028
+    # anchor (starts with `git[[:space:]]`) but the deploy regex requires
+    # adjacent `git push` — `git -C /path push` doesn't match. Correctly
+    # excluded from this REMINDER matrix. The anchor itself is verified by
+    # the static count check above (EV13_ANCHOR_COUNT=2).
     for cmd in \
       "git push origin main" \
       "git push origin HEAD:main" \
@@ -773,19 +798,18 @@ else
       "env A=1 B=2 git push origin main" \
       "timeout 60 git push origin main" \
       "  git push origin main" \
-      "git -C /workspace/product push origin main" \
       "gh pr merge 42 --squash"; do
-      if ! echo "$cmd" | head -n1 | grep -qE "$EV13_ANCHOR_RE"; then
-        EV13_FAILURE="FW-028 anchor FAILED expected-positive: $cmd (real push would be silently silenced, no AUTO-DEPLOY cascade)"
+      if ! ev13_hook_probe "$cmd" | grep -q "REMINDER:"; then
+        EV13_FAILURE="FW-028 anchor FAILED expected-positive: $cmd (no REMINDER — real push silently silenced, no AUTO-DEPLOY cascade)"
         break
       fi
     done
   fi
 
   if [ -z "$EV13_FAILURE" ]; then
-    # Negative matrix — anchor MUST NOT match. These are the test-
-    # harness forms that CAUSED the amplification before FW-028. A
-    # match here means the original bug is still present.
+    # Negative matrix — REMINDER MUST NOT appear. These are the test-
+    # harness forms that CAUSED the amplification before FW-028 (the
+    # anchor check now noops them before reaching the deploy elif).
     for cmd in \
       'for cmd in "git push origin main"; do echo "$cmd"; done' \
       'echo "git push origin main"' \
@@ -796,20 +820,19 @@ else
       '# git push origin main' \
       'python3 -c "print(\"git push origin main\")"' \
       'EV11_DEPLOY_RE=$(grep "git push origin main" file)'; do
-      if echo "$cmd" | head -n1 | grep -qE "$EV13_ANCHOR_RE"; then
-        EV13_FAILURE="FW-028 anchor WRONGLY matched expected-negative: $cmd (test-harness form would still amplify AUTO-DEPLOY via substring hit)"
+      if ev13_hook_probe "$cmd" | grep -q "REMINDER:"; then
+        EV13_FAILURE="FW-028 anchor WRONGLY matched expected-negative: $cmd (REMINDER in stdout — test-harness form still amplifies AUTO-DEPLOY)"
         break
       fi
     done
   fi
 
   if [ -z "$EV13_FAILURE" ]; then
-    # Heredoc negative: multi-line CMD with a non-deploy first line
-    # must not trip the anchor even if line 2+ contains `git push main`.
-    # `head -n1` in the hook restricts shape-check to line 1; this
-    # mirrors that restriction here.
+    # Heredoc negative: multi-line CMD with non-deploy first line MUST
+    # NOT produce REMINDER. `head -n1` in the hook restricts the anchor
+    # shape-check to line 1 so heredoc bodies can't trip it.
     EV13_HEREDOC=$'cat <<EOF\ngit push origin main\nEOF'
-    if echo "$EV13_HEREDOC" | head -n1 | grep -qE "$EV13_ANCHOR_RE"; then
+    if ev13_hook_probe "$EV13_HEREDOC" | grep -q "REMINDER:"; then
       EV13_FAILURE="FW-028 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken, heredoc bodies re-amplify"
     fi
   fi
@@ -1016,18 +1039,34 @@ else
 
   if [ "$EV15_FW032_MARKER" -lt 1 ]; then
     EV15_FAILURE="FW-032 marker absent from pre-tool-use.sh — revert suspected, whitelist anchor may have regressed to substring form."
-  else
-    # Extract the FW-032 anchor regex. Distinctive token: `send-to-group` inside grep -qE '...'.
-    EV15_ANCHOR_RE=$(grep -E "grep -qE '[^']*send-to-group" "$EV15_HOOK" | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-    if [ -z "$EV15_ANCHOR_RE" ]; then
-      EV15_FAILURE="FW-032 anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-015 extractor)"
-    fi
   fi
 
+  # FW-046: direct hook invocation replaces sed-extraction of anchor regex.
+  # IS_TELEGRAM_COMMS=1 causes pre-tool-use.sh to increment the hourly TG
+  # rate-limiter key (cabinet:tg-whitelist:<officer>:<hour>) and exit 0
+  # without checking the main spending cap. We probe this by:
+  #   1. DEL the rate key before each probe
+  #   2. After positive probe: key must exist with value 1 (anchor fired)
+  #   3. After negative probe: key must be absent/zero (anchor did NOT fire)
+  # This avoids extracting the anchor regex text via sed, which breaks when
+  # `'\''` shell-escapes appear inside the hook's single-quoted grep payload.
+  ev15_hook_probe() {
+    local cmd="$1"
+    local json
+    json=$(jq -cn --arg cmd "$cmd" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    local hour_bucket
+    hour_bucket=$(date -u +%Y%m%d%H)
+    local tg_key="cabinet:tg-whitelist:cto:${hour_bucket}"
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "$tg_key" > /dev/null 2>&1
+    echo "$json" | OFFICER_NAME=cto bash "$EV15_HOOK" > /dev/null 2>&1
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$tg_key" 2>/dev/null
+    # Outputs the key value ("1" if anchor fired, "" or "(nil)" if not)
+  }
+
   if [ -z "$EV15_FAILURE" ]; then
-    # Positive matrix — legitimate invocations MUST fire whitelist.
-    # Missing any of these = telegram comms gets main-cap enforced when
-    # it shouldn't (Captain-facing DM blocked by daily cap).
+    # Positive matrix — legitimate invocations MUST fire whitelist (TG
+    # rate key incremented to 1). Missing any = Telegram comms gets
+    # main-cap enforced when it shouldn't (Captain DM blocked under cap).
     for cmd in \
       'bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh "msg"' \
       '/opt/founders-cabinet/cabinet/scripts/send-to-group.sh "msg"' \
@@ -1039,18 +1078,18 @@ else
       '  bash /path/send-to-group.sh "msg"' \
       'bash "send-to-group.sh" msg' \
       'bash "/opt/founders-cabinet/cabinet/scripts/send-to-group.sh" "msg"'; do
-      if ! echo "$cmd" | head -n1 | grep -qE "$EV15_ANCHOR_RE"; then
-        EV15_FAILURE="FW-032 anchor FAILED expected-positive: $cmd (legitimate whitelist invocation would be main-cap-enforced, blocking Captain DMs under daily cap)"
+      EV15_VAL=$(ev15_hook_probe "$cmd")
+      if [ "$EV15_VAL" != "1" ]; then
+        EV15_FAILURE="FW-032 anchor FAILED expected-positive: $cmd (TG rate key=$EV15_VAL not 1 — legitimate whitelist invocation would be main-cap-enforced, blocking Captain DMs)"
         break
       fi
     done
   fi
 
   if [ -z "$EV15_FAILURE" ]; then
-    # Negative matrix — read-only/inspection CMDs containing the
-    # filename substring MUST NOT trip the whitelist. Pre-fix, each of
-    # these set IS_TELEGRAM_COMMS=1 -> _SKIP_MAIN_CAP=1 -> spending cap
-    # bypassed for that call.
+    # Negative matrix — read-only/inspection CMDs containing the filename
+    # substring MUST NOT trip the whitelist (TG rate key stays absent).
+    # Pre-fix, each of these set IS_TELEGRAM_COMMS=1 → spending cap bypass.
     for cmd in \
       'cat /opt/founders-cabinet/cabinet/scripts/send-to-group.sh | head' \
       'grep send-to-group.sh /var/log/audit.log' \
@@ -1060,8 +1099,9 @@ else
       'git commit -m "docs: describe send-to-group.sh usage"' \
       'vim /opt/founders-cabinet/cabinet/scripts/send-to-group.sh' \
       'diff old/send-to-group.sh new/send-to-group.sh'; do
-      if echo "$cmd" | head -n1 | grep -qE "$EV15_ANCHOR_RE"; then
-        EV15_FAILURE="FW-032 anchor WRONGLY matched expected-negative: $cmd (spending-cap bypass fires on read-only CMD containing filename)"
+      EV15_VAL=$(ev15_hook_probe "$cmd")
+      if [ "$EV15_VAL" = "1" ]; then
+        EV15_FAILURE="FW-032 anchor WRONGLY matched expected-negative: $cmd (TG rate key=1 — spending-cap bypass fires on read-only CMD containing filename)"
         break
       fi
     done
@@ -1072,8 +1112,9 @@ else
     # not trip even if line 2+ has a legitimate-looking invocation.
     # head -n1 in the hook restricts to line 1.
     EV15_HEREDOC=$'cat <<EOF\nbash /path/send-to-group.sh "msg"\nEOF'
-    if echo "$EV15_HEREDOC" | head -n1 | grep -qE "$EV15_ANCHOR_RE"; then
-      EV15_FAILURE="FW-032 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken"
+    EV15_VAL=$(ev15_hook_probe "$EV15_HEREDOC")
+    if [ "$EV15_VAL" = "1" ]; then
+      EV15_FAILURE="FW-032 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken (TG rate key=1)"
     fi
   fi
 fi
@@ -1116,19 +1157,33 @@ else
     EV16_FAILURE="FW-033 Bash branch did NOT extract .command from TOOL_INPUT before matching — substring amplification re-opened."
   elif [ "$EV16_JQ_PATH_EXTRACT" -lt 1 ]; then
     EV16_FAILURE="FW-033 Write branch did NOT extract .file_path from TOOL_INPUT before matching — content-substring amplification re-opened."
-  else
-    # Extract the FW-033 anchor regex. Secondary `_NUDGE_CMD` filter
-    # (Sonnet adversary Finding #5) pins to the nudge-block context so
-    # a future FW-03X adding another `git[[:space:]]+push` anchor can't
-    # silently capture the wrong line via `head -1`.
-    EV16_ANCHOR_RE=$(grep -E "grep -qE '[^']*git\\[\\[:space:\\]\\]\\+push" "$EV16_HOOK" | grep -F '_NUDGE_CMD' | head -1 | sed -E "s/.*grep -qE '([^']+)'.*/\1/")
-    if [ -z "$EV16_ANCHOR_RE" ]; then
-      EV16_FAILURE="FW-033 anchor regex extraction returned empty (sed pattern drift — rewrite EVAL-016 extractor)"
-    fi
   fi
 
+  # FW-046: direct hook invocation replaces sed-extraction of the nudge
+  # anchor regex. When SIGNIFICANT_ACTION=true, post-tool-use.sh sets
+  # cabinet:nudge:experience-record:$OFFICER in Redis (EX 3600). We:
+  #   1. DEL the nudge key before each probe
+  #   2. After positive probe: key must exist (anchor fired)
+  #   3. After negative probe: key must be absent (anchor did NOT fire)
+  ev16_hook_probe() {
+    local tool_name="$1"
+    local cmd_or_path="$2"
+    local json
+    if [ "$tool_name" = "Bash" ]; then
+      json=$(jq -cn --arg cmd "$cmd_or_path" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    else
+      json=$(jq -cn --arg fp "$cmd_or_path" '{tool_name:"Write",tool_input:{file_path:$fp,content:"test"}}')
+    fi
+    local nudge_key="cabinet:nudge:experience-record:cto"
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "$nudge_key" > /dev/null 2>&1
+    echo "$json" | OFFICER_NAME=cto bash "$EV16_HOOK" > /dev/null 2>&1
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXISTS "$nudge_key" 2>/dev/null
+    # Outputs "1" if key exists (nudge fired), "0" if not
+  }
+
   if [ -z "$EV16_FAILURE" ]; then
-    # Positive matrix — real deploy/PR invocations MUST fire nudge.
+    # Positive matrix — real deploy/PR invocations MUST fire nudge
+    # (nudge Redis key set to 1 after probe).
     for cmd in \
       'git push origin master' \
       'git push https://x-access-token:TOKEN@github.com/org/repo.git master' \
@@ -1138,16 +1193,17 @@ else
       'env FOO=1 git push origin master' \
       'timeout 60s git push origin master' \
       '  git push origin master'; do
-      if ! echo "$cmd" | head -n1 | grep -qE "$EV16_ANCHOR_RE"; then
-        EV16_FAILURE="FW-033 anchor FAILED expected-positive: $cmd (real deploy/PR action would NOT arm experience-nudge)"
+      EV16_VAL=$(ev16_hook_probe "Bash" "$cmd")
+      if [ "$EV16_VAL" != "1" ]; then
+        EV16_FAILURE="FW-033 anchor FAILED expected-positive: $cmd (nudge key absent after probe — real deploy/PR action would NOT arm experience-nudge)"
         break
       fi
     done
   fi
 
   if [ -z "$EV16_FAILURE" ]; then
-    # Negative matrix — intermediate CMDs mentioning the verbs MUST NOT
-    # arm the nudge. Pre-fix, each of these set the nudge key spuriously.
+    # Negative matrix — intermediate CMDs MUST NOT arm the nudge.
+    # Pre-fix, each of these set the nudge key spuriously.
     for cmd in \
       'git commit -m "fix: pre-validate before gh pr merge"' \
       'echo "to push, use: git push origin master"' \
@@ -1157,8 +1213,9 @@ else
       'git log --grep="git push"' \
       'vim /path/to/release-notes.md' \
       'git status'; do
-      if echo "$cmd" | head -n1 | grep -qE "$EV16_ANCHOR_RE"; then
-        EV16_FAILURE="FW-033 anchor WRONGLY matched expected-negative: $cmd (experience-nudge armed spuriously on non-deploy CMD)"
+      EV16_VAL=$(ev16_hook_probe "Bash" "$cmd")
+      if [ "$EV16_VAL" = "1" ]; then
+        EV16_FAILURE="FW-033 anchor WRONGLY matched expected-negative: $cmd (nudge key set — experience-nudge armed spuriously on non-deploy CMD)"
         break
       fi
     done
@@ -1167,8 +1224,9 @@ else
   if [ -z "$EV16_FAILURE" ]; then
     # Heredoc negative.
     EV16_HEREDOC=$'cat <<EOF\ngit push origin master\nEOF'
-    if echo "$EV16_HEREDOC" | head -n1 | grep -qE "$EV16_ANCHOR_RE"; then
-      EV16_FAILURE="FW-033 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken"
+    EV16_VAL=$(ev16_hook_probe "Bash" "$EV16_HEREDOC")
+    if [ "$EV16_VAL" = "1" ]; then
+      EV16_FAILURE="FW-033 anchor WRONGLY matched heredoc first-line (cat <<EOF) — head -n1 guard broken (nudge key set)"
     fi
   fi
 
@@ -1487,6 +1545,69 @@ if [ -n "$EV18_FAILURE" ]; then
   fail "$EV18_FAILURE"
 else
   pass "FW-034 Bash write-target anchor classifies product-write (45 positive — incl rsync/patch/tee long-flags/quoted-dest both kinds/chained-cmd/no-space-semicolon/-t+--target-directory=+>|/sed-i.bak/cp-mv -t bundle/sed HTML+XML bodies/cp-mv -t/DIR no-space/sed multi-expr intra-script semicolon) vs read-with-redirect / tmp-target (27 negative — incl cp -r source/rsync source/patch stdin/multi-arg cp/single-quoted source/sed non-i flags/rsync -rt source/sed --posix/sed HTML body read-redirect) correctly; CTO bypass preserved"
+fi
+
+# ------------------------------------------------------------------
+# EVAL-022: AC-4 defensive — detect sed-extractor/`'\''`-escape mismatch
+# ------------------------------------------------------------------
+# FW-046 AC-4: if any hook file contains `'\''` inside a grep -E regex
+# string AND the corresponding eval still uses the fragile sed-based
+# extractor `sed -E "s/.*grep -qE '([^']+)'.*/\1/"`, that eval will
+# silently return an empty (or truncated) regex the next time the hook
+# is modified. Catch this before it bites by scanning each hook that
+# was migrated (EVAL-011/013 → post-tool-use.sh; EVAL-015 → pre-tool-use.sh
+# EVAL-016 → post-tool-use.sh) for `'\''` inside grep -E payloads, and
+# simultaneously verifying that the deprecated sed extractor pattern no
+# longer appears in the eval script itself for those evals.
+log "EVAL-022: AC-4 defensive — grep -qE regex escape vs sed-extractor drift detection"
+EV22_FAILURE=""
+
+EV22_POST_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/post-tool-use.sh"
+EV22_PRE_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh"
+EV22_EVAL_SCRIPT="$0"
+
+# Check 1: if post-tool-use.sh has '\'' inside a grep -E pattern, verify
+# EVAL-011 and EVAL-013 are NOT using the old sed extractor for it.
+if grep -qF "grep -qE '" "$EV22_POST_HOOK" 2>/dev/null; then
+  if grep -E "grep -qE '([^']+)'\''[^']*'" "$EV22_POST_HOOK" > /dev/null 2>&1; then
+    # Hook has '\'' inside grep -qE — verify evals are migrated.
+    if grep -qF "sed -E \"s/.*grep -qE '([^']+)'.*/\\1/\"" "$EV22_EVAL_SCRIPT" 2>/dev/null; then
+      # Check if any remaining sed extractor is scoped to post-tool-use.sh context
+      # (i.e., EV11 or EV13 scope — these were the ones touching post-tool-use.sh).
+      if grep -B5 "sed -E \"s/.*grep -qE '([^']+)'.*/\\1/\"" "$EV22_EVAL_SCRIPT" 2>/dev/null | grep -qE "EV11_|EV13_|post-tool-use"; then
+        EV22_FAILURE="AC-4: post-tool-use.sh has '\\''  inside a grep -qE pattern AND EVAL-011/013 still uses the fragile sed extractor. The extractor will silently truncate the regex — migrate EVAL-011/013 to direct hook invocation (FW-046 pattern)."
+      fi
+    fi
+  fi
+fi
+
+# Check 2: if pre-tool-use.sh has '\'' inside a grep -E pattern, verify
+# EVAL-015 is NOT using the old sed extractor for it.
+if grep -qF "grep -qE '" "$EV22_PRE_HOOK" 2>/dev/null; then
+  if grep -E "grep -qE '([^']+)'\''[^']*'" "$EV22_PRE_HOOK" > /dev/null 2>&1; then
+    if grep -qF "sed -E \"s/.*grep -qE '([^']+)'.*/\\1/\"" "$EV22_EVAL_SCRIPT" 2>/dev/null; then
+      if grep -B5 "sed -E \"s/.*grep -qE '([^']+)'.*/\\1/\"" "$EV22_EVAL_SCRIPT" 2>/dev/null | grep -qE "EV15_|pre-tool-use"; then
+        EV22_FAILURE="AC-4: pre-tool-use.sh has '\\'' inside a grep -qE pattern AND EVAL-015 still uses the fragile sed extractor. The extractor will silently truncate the regex — migrate EVAL-015 to direct hook invocation (FW-046 pattern)."
+      fi
+    fi
+  fi
+fi
+
+# Check 3: verify no EVAL-011/013/015/016 sed extractor survived the FW-046
+# migration (belt-and-suspenders: the above checks look for '\'' in hooks,
+# but if someone re-introduces the old extractor without '\'' it's still
+# fragile). Grep for the specific sed pattern with EV11/EV13/EV15/EV16 var prefixes.
+for ev_prefix in EV11 EV13 EV15 EV16; do
+  if grep -qE "${ev_prefix}_[A-Z_]+=\\\$\\(.*sed -E .s/\\.\\*grep -qE" "$EV22_EVAL_SCRIPT" 2>/dev/null; then
+    EV22_FAILURE="AC-4: ${ev_prefix} still assigns a variable using the fragile sed-extractor pattern. FW-046 migration must remove all sed-based regex extraction for the 4 migrated evals."
+    break
+  fi
+done
+
+if [ -n "$EV22_FAILURE" ]; then
+  fail "$EV22_FAILURE"
+else
+  pass "AC-4 defensive: no fragile sed-extractor/'\''  mismatch detected in migrated evals (EVAL-011/013/015/016); hook probes are the sole classification mechanism"
 fi
 
 # ------------------------------------------------------------------

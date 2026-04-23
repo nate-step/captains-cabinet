@@ -674,7 +674,7 @@ _(none)_
 - **Owner:** CTO.
 
 ### FW-046 — Golden-eval sed-extraction fragility (systemic)
-- **Status:** Proposed 2026-04-23 (CTO audit during FW-045 ship).
+- **Status:** SHIPPED 2026-04-23 (commit TBD — CTO).
 - **Symptom:** EVAL-011, EVAL-013, EVAL-015, EVAL-016 extract the hook's grep regex via `sed -E "s/.*grep -qE '([^']+)'.*/\1/"`. The `[^']+` class stops at the first `'` inside the regex content. If the hook regex contains `'\''` shell-escape (closes → literal `'` → reopens single-quote), the extractor truncates the regex mid-pattern — silently returning a partial, matching-subset regex. Test cases then pass or fail based on the truncated view, not the actual hook regex. FW-045 hit this exact bug on EVAL-014 (which used the same pattern); EVAL-014 was migrated to direct hook invocation. The remaining 4 EVALs have NOT been migrated.
 - **Blast radius:** MEDIUM (regression-catcher integrity, not production security). Currently all 4 EVALs pass because none of the hook regexes they extract contain `'\''` yet. Any future regex change adding `'\''` to:
   - post-tool-use.sh deploy detection (EVAL-011)
