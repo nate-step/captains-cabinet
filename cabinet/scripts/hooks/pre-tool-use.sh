@@ -558,6 +558,18 @@ fi
 #     `(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)`. Real bypass:
 #     `fish -c 'git push origin main'`. All POSIX-family shells take
 #     `-c CMD_STRING`, so gap covered by common alt-shells.
+#   COO Pass-5 additions (fresh-context empirical post-Pass-4 — 6 real
+#   bypasses in one HIGH class confirmed on e588850, all canonical bash
+#   compound-statement keywords; 2 additional MEDIUM stdin-shell forms
+#   documented as scope-gap):
+#   - Prefix-consumer alt: add `(then|do|else|elif)[[:space:]]+` branch.
+#     No flag-tolerance — bash reserved words do NOT take flags. Closes
+#     `if ci_green; then git push origin main; fi` canonical conditional
+#     push, `while <cond>; do git push origin main; done` retry loop,
+#     `for x in a b; do git push origin main; done` batch, `until` wait-
+#     then-push, `elif`/`else` branches. The reserved word follows a `;`
+#     (or newline) statement-boundary — anchor fires at `;`, but prior
+#     regex had no alt to consume `then|do|else|elif`, so scan halted.
 #   Remaining scope-gaps (acknowledged, NOT fixable by flat regex):
 #   (a) xargs-construct `echo origin main | xargs git push` — lexical
 #   disaggregation across pipe, main is LHS arg not RHS refspec.
@@ -568,21 +580,30 @@ fi
 #   (d) perl/python -e / awk 'system(…)' shell-out — not in wrapper
 #   alternation; same filesystem-escape class as dot-source, deferred
 #   to FW-040 Phase B shell-parse-aware gate.
+#   (e) shell-stdin-mode `bash <<<"git push …"` here-string + `echo ...
+#   | bash -s` explicit-stdin-read — same dataflow-decoupled class as
+#   xargs and dot-source (the `git push` text is carried across a
+#   stdin boundary, flat regex can't bridge). Deferred to FW-040 Phase
+#   B. Pass-5 MEDIUM #2.
 #   FP surface expansion (accepted fail-closed, same class as FW-043 FP-1):
 #   commit bodies or inline text containing wrapper-name or inline-VAR
 #   token adjacent to literal `git push origin main` text WILL fire the
 #   gate. Example: commit msg "nohup git push origin main for CI" →
 #   trips. Also: `git push --force-with-lease origin main` now fires
 #   (was already in flag-tolerant scope but worth calling out — ACK
-#   re-SET retry works). Mitigation: `cabinet:layer1:cto:reviewed` re-SET
-#   after gate-block → retry-commit workflow (same as FW-043).
+#   re-SET retry works). Pass-6 Sonnet widening: multi-line `-m` commit
+#   bodies with a line starting `then git push origin main` / `do git
+#   push …` / `else …` / `elif …` now also fire (new reserved-word
+#   branch matches at `^` anchor on the second line). Same class, same
+#   workaround. Mitigation: `cabinet:layer1:cto:reviewed` re-SET after
+#   gate-block → retry-commit workflow (same as FW-043).
 # Phase 2 (action regex): actual push-to-main-or-master / pr-merge pattern.
 # AND-composed so both must pass to trip the gate.
 # Action regex covers BOTH `main` (Sensed product repo) and `master`
 # (framework repo default) — CTO pushes to both.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
      echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}<>'\''"`!#\\^~]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*pr[[:space:]]+merge'; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
@@ -603,7 +624,7 @@ fi
 # "...pulls/42/merge..."` bodies cannot pass Phase 1.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
      echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then

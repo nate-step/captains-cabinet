@@ -930,6 +930,12 @@ else
       ") git push origin main" \
       "} git push origin main" \
       "git push origin main # comment" \
+      "if true; then git push origin main; fi" \
+      "if false; elif true; then git push origin main; fi" \
+      "if false; then :; else git push origin main; fi" \
+      "while true; do git push origin main; done" \
+      "for x in a b; do git push origin main; done" \
+      "until false; do git push origin main; done" \
       "curl -X PUT https://api.github.com/repos/OWNER/REPO/pulls/42/merge" \
       "gh api repos/OWNER/REPO/pulls/42/merge -X PUT" \
       "cd /tmp && curl -X PUT https://api.github.com/repos/OWNER/REPO/pulls/42/merge" \
