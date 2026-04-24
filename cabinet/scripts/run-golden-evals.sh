@@ -890,7 +890,9 @@ else
   # anchor uses a different prefix, different subcommand alternation).
   # Regex (not fixed-string) so additive inserts to flag-tolerant
   # group or env/timeout prefixes stay pinned.
-  EV14_ANCHOR_COUNT=$(grep -cE "grep -qE '\(\^\|\[;&" "$EV14_HOOK")
+  # FW-051 (2026-04-24): Section 6 + 7 regex extracted into shell vars
+  # L1_P1 and S7_P1. Anchor now lives at the start of each VAR='...'.
+  EV14_ANCHOR_COUNT=$(grep -cE "^  (L1_P1|S7_P1)='\(\^\|\[;&" "$EV14_HOOK")
   EV14_FW029_MARKER_COUNT=$(grep -cF 'FW-029' "$EV14_HOOK")
 
   if [ "$EV14_ANCHOR_COUNT" -lt 2 ]; then
@@ -932,6 +934,15 @@ else
     # gh `-H` quoted pr merge, nohup wrapper + quoted -c, env prefix + gh api DELETE.
     # 4 FP adversary guards — benign escaped-space config value, commit-message DQ,
     # ANSI-C echo body, git -c for non-push subcommand (rebase).
+    # FW-051 (2026-04-24): 8 no-preprocessing scope-gap attack-form pins —
+    # SP1 `"gh" api` (quoted-splice), SP2 `g"h" api` (inner-quote-splice),
+    # B2 URL-encoded refs (`%2fheads%2fmain`), PA-D1 sq-concat DELETE
+    # (`-X 'DE''LETE'`), PA-D2 dq-concat DELETE (`-X "DE""LETE"`), CA1 escape-eval
+    # (`eval "PATH=\"foo bar\" gh api -X DELETE …"`), full-path shell
+    # (`/bin/bash -c …`), fused `-lc` flag (`bash -lc …`). Triple-scan regression
+    # guard: RAW $CMD prong preserves escape-aware atom semantics (FW-041 hf4),
+    # CMD_L1_NORM prong catches empty-quote-pair bypass, HAS_SPLICE-gated
+    # CMD_L1_UNQUOTED prong catches command-position quoted splice.
     for cmd in \
       "git push origin main" \
       "git push origin master" \
@@ -1013,7 +1024,15 @@ else
       "GIT_TRACE=1 git -c alias.x='a b' push origin main" \
       "gh -H \"Accept: x y\" pr merge 42 --squash" \
       "nohup git -c alias.x='a b' push origin main" \
-      "PATH=\"foo bar\" gh api -X DELETE repos/a/b/refs/heads/main"; do
+      "PATH=\"foo bar\" gh api -X DELETE repos/a/b/refs/heads/main" \
+      "\"gh\" api -X DELETE repos/O/R/git/refs/heads/main" \
+      "g\"h\" api -X DELETE repos/O/R/git/refs/heads/main" \
+      "gh api -X DELETE repos/O/R/git/refs%2fheads%2fmain" \
+      "gh api -X 'DE''LETE' repos/O/R/git/refs/heads/main" \
+      "gh api -X \"DE\"\"LETE\" repos/O/R/git/refs/heads/main" \
+      "eval \"PATH=\\\"foo bar\\\" gh api -X DELETE refs/heads/main\"" \
+      "/bin/bash -c \"gh api -X DELETE refs/heads/main\"" \
+      "bash -lc \"gh api -X DELETE refs/heads/main\""; do
       ev14_hook_probe "$cmd"
       if [ $? -ne 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate FAILED to fire on legitimate push/merge: $cmd (hook exit $? — expected 2). Real push would slip past Crew-review requirement."
