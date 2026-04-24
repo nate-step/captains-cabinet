@@ -143,3 +143,11 @@ jobs:
         # Hardcoded `-h redis` in DEL cleanup calls fails silently in CI
         # (keys aren't set in fresh CI redis anyway); hook itself reads REDIS_URL.
         run: bash /opt/founders-cabinet/cabinet/scripts/run-hook-regression.sh
+
+      - name: Framework backlog drift audit (advisory)
+        # Surfaces FW-series entries with Status: Proposed/Paused older than
+        # threshold (default: Proposed≥7d, Paused≥14d). Advisory only — exits
+        # 0 always, never fails CI. Catches the FW-002 drift class (shipped
+        # code + stale Proposed status for 7 days unnoticed). Punch-list
+        # shows in the CI run log; CTO reacts in the next /loop tick.
+        run: bash /opt/founders-cabinet/cabinet/scripts/audit-framework-backlog-drift.sh
