@@ -153,6 +153,20 @@ jobs:
           cd /opt/founders-cabinet/cabinet/scripts/gates
           python3 -m pytest tests/ -v
 
+      - name: Python tests — MCP server (FW-005)
+        # 20 tests: stdio + HTTP transport, bearer auth, error handling.
+        # Runs as a standalone script (not pytest) — the file's __main__ block
+        # drives unittest. Spec 035 Phase A shipped in #33, so this is the
+        # regression net for cross-Cabinet comms.
+        run: python3 /opt/founders-cabinet/cabinet/mcp-server/test_server.py
+
+      - name: Python tests — Host-agent (Spec 035 Phase A)
+        # 49 tests: auth protocol, error codes, log-before-exec, timeout,
+        # peer-cred rejection, pause flag, self-restart-forbidden, file-too-large,
+        # patch-failed. Uses mock Unix sockets — no root/daemon required.
+        # Standalone script mode (uses unittest discovery via __main__).
+        run: python3 /opt/founders-cabinet/cabinet/host-agent/test_server.py
+
       - name: Dashboard typecheck (tsc --noEmit)
         # FW-048: catch TS errors in dashboard before they reach Captain's
         # localhost:3100. tsconfig has noEmit:true, so `npx tsc` alone is
