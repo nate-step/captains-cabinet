@@ -428,13 +428,25 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   #     empirically verified via `bash -c '{,echo}} MAGIC_OK'` → `}: command not
   #     found`. Classified SCOPE_GAP, not BUG; regex-adv confirmed non-exploitable.
 
+  # v3.7.2 BSQ fix: normalize backslash-escaped quotes (`\"` → `"`, `\'` → `'`)
+  # in the input string. Defeats backslash-escape quoted-splice class bypass
+  # (COO Pass-1 on 716fb96): `echo hi;\"sudo\" ls`, `(\"sudo\" ls)`, etc. all
+  # bypassed HAS_SPLICE because the `\` between boundary and quote hides the
+  # quote-adjacent-letter structural signal that HAS_SPLICE detects. Bash
+  # treats `\"` in unquoted context as literal `"`, so normalizing to `"`
+  # preserves bash exec semantics for attack inputs (adjacent-quote concat
+  # still fuses the token at runtime) while restoring the detectable splice
+  # signal for our regex. Applied once; CMD_STRIPPED, CMD_UNQUOTED, CMD_MASKED
+  # all derive from CMD_NORM so no surface is missed.
+  CMD_NORM=$(printf '%s' "$CMD" | sed -e 's/\\"/"/g' -e "s/\\\\'/'/g")
+
   # (a) Strip data-context quotes. sed -e runs each independently to survive
   #     malformed quotes. Order: \$'...' then '...' then "...". Double-quote
   #     strip preserves spans containing `$` or backtick (code-substitution
   #     context) so `"$(sudo)"` and `"$(`sudo`)"` survive for RAW scans.
   # v3.3: perl pipe strips `<<WORD\n...\nWORD` heredoc bodies — their content is
   # always data, never a direct invocation. Fixes E22 FP (`cat <<EOF\ndocker...\nEOF`).
-  CMD_STRIPPED=$(printf '%s' "$CMD" \
+  CMD_STRIPPED=$(printf '%s' "$CMD_NORM" \
     | sed -e "s/\\\$'[^']*'//g" -e "s/'[^']*'//g" -e 's/"[^"$`]*"//g' \
     | perl -0777 -pe 's/<<([A-Za-z_]\w*)\n.*?\n\1(?=\n|\z)//gs')
 
@@ -444,7 +456,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   # a POSIX word-splicing feature; bash emits the fused literal. Scanned against
   # STRICT_KW_START (boundary-only, no VAR= absorber) so we don't FP on
   # `echo "sudo ls"` (kw preceded by space, not by operator boundary).
-  CMD_UNQUOTED=$(printf '%s' "$CMD" \
+  CMD_UNQUOTED=$(printf '%s' "$CMD_NORM" \
     | sed -e "s/\\\$'\\([^']*\\)'/\\1/g" -e "s/'\\([^']*\\)'/\\1/g" -e 's/"\([^"$`]*\)"/\1/g' \
     | perl -0777 -pe 's/<<([A-Za-z_]\w*)\n.*?\n\1(?=\n|\z)//gs')
 
@@ -483,7 +495,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   # quotes so letter-adjacent-quote / quote-adjacent-letter patterns at true
   # command position still match, but interior pipes/ampersands become `x`
   # and stop false-triggering the boundary class.
-  CMD_MASKED=$(printf '%s' "$CMD" \
+  CMD_MASKED=$(printf '%s' "$CMD_NORM" \
     | sed -e "s/\\\$'[^']*'/\$'x'/g" -e "s/'[^']*'/'x'/g" -e 's/"[^"$`]*"/"x"/g')
   HAS_SPLICE=0
   if echo "$CMD_MASKED" | grep -qE "(^|[;&|({)}\`!]|&&|\|\|)[[:space:]]*([A-Za-z_]+['\"\`]|['\"\`][A-Za-z_])"; then
