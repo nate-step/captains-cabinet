@@ -205,7 +205,7 @@ jobs:
           npx tsc --noEmit
 
       - name: Dashboard vitest
-        # FW-050: run vitest test suite for the 3 reference test files.
+        # FW-050: run full vitest test suite (auto-discovers src/**/*.test.ts).
         # vitest.config.ts excludes .next/** mirrors so only real tests run.
         run: |
           cd /opt/founders-cabinet/cabinet/dashboard
