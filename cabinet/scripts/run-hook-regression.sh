@@ -56,13 +56,12 @@ for harness in "${HARNESSES[@]}"; do
   fail_signal=$(grep -cE 'FAIL[[:space:]]*[:=]?[[:space:]]*[1-9]|FAIL\(bypass\)|FAIL\(FP\)' "$log")
 
   # Per-harness tolerance for intentional/documented FAILs:
-  # - fw044-verify.sh: up to 8 "FAILs" (SP1-4, B2, HD1, PA-D1, PA-D2 now block
-  #   per FW-051 Phase 1 — harness labels them "deferred to FW-051" but they
-  #   are closed now).
+  # - fw044-verify.sh: tolerance=0 (FW-051 closures flipped ALLOW→BLOCK in
+  #   harness; SP1-4, B2, HD1, PA-D1, PA-D2 now expect BLOCK. B3 wildcard +
+  #   E3 subshell still legit-deferred but pass because they still return 0).
   # - fw051-baseline.sh: up to 2 "FAILs" (AC-9 VAR-concat non-exploit + AC-3
   #   subshell-eval deferred to FW-040 Phase B).
   case "$harness" in
-    fw044-verify.sh)         tolerate=8; note="FW-051-closures ok" ;;
     fw051-baseline.sh)       tolerate=2; note="AC-9+AC-3 accepted-deferred" ;;
     *)                       tolerate=0; note="" ;;
   esac

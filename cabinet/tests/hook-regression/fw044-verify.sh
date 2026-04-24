@@ -54,11 +54,11 @@ probe 'B3 branch mastership'     'gh api -X DELETE repos/O/R/git/refs/heads/mast
 probe 'B4 branch main-feature'   'gh api -X DELETE repos/O/R/git/refs/heads/main-feature'  ALLOW
 
 echo ""
-echo "=== Splice/BSQ forms (deferred to FW-051 — Layer 1 no CMD_NORM) ==="
-probe 'SP1 quoted-splice gh'     '"gh" api -X DELETE repos/O/R/git/refs/heads/main'        ALLOW
-probe 'SP2 inner-quote gh'       'g"h" api -X DELETE repos/O/R/git/refs/heads/main'        ALLOW
-probe 'SP3 backslash-splice'     '\"gh\" api -X DELETE repos/O/R/git/refs/heads/main'      ALLOW
-probe 'SP4 empty-quote splice'   'gh"" api -X DELETE repos/O/R/git/refs/heads/main'        ALLOW
+echo "=== Splice/BSQ forms (closed by FW-051 — Layer 1 triple-scan) ==="
+probe 'SP1 quoted-splice gh'     '"gh" api -X DELETE repos/O/R/git/refs/heads/main'        BLOCK
+probe 'SP2 inner-quote gh'       'g"h" api -X DELETE repos/O/R/git/refs/heads/main'        BLOCK
+probe 'SP3 backslash-splice'     '\"gh\" api -X DELETE repos/O/R/git/refs/heads/main'      BLOCK
+probe 'SP4 empty-quote splice'   'gh"" api -X DELETE repos/O/R/git/refs/heads/main'        BLOCK
 
 echo ""
 echo "=== Data-position forms (must ALLOW — keyword in grep/echo/cat body) ==="
@@ -80,8 +80,8 @@ probe 'D1 branch-protection'     'gh api -X DELETE repos/O/R/branches/main/prote
 probe 'D1b protection master'    'gh api -X DELETE repos/O/R/branches/master/protection'   BLOCK
 
 echo ""
-echo "=== Adversary bypasses deferred to FW-051 (documented scope-gaps) ==="
-probe 'B2 URL-enc ref'           'gh api -X DELETE repos/O/R/git/refs%2fheads%2fmain'      ALLOW
+echo "=== Adversary bypasses: B2 closed by FW-051; B3/E3 still deferred ==="
+probe 'B2 URL-enc ref'           'gh api -X DELETE repos/O/R/git/refs%2fheads%2fmain'      BLOCK
 probe 'B3 wildcard ref'          'gh api -X DELETE repos/O/R/git/refs/heads/m*'            ALLOW
 probe 'E3 subshell splice'       '$(echo gh) api -X DELETE repos/O/R/git/refs/heads/main'  ALLOW
 
@@ -94,9 +94,9 @@ probe 'ND1 git commit body'      'gh api user && git commit -m "fixed DELETE ref
 probe 'ND2 comment clause'       'gh api user # TODO: -X DELETE refs/heads/main'           ALLOW
 probe 'ND3 pipe to grep'         'gh api user | grep "DELETE refs/heads/main"'             ALLOW
 probe 'WH1 webhook POST'         'gh api -X POST /user/events -f action=DELETE -f ref=refs/heads/main' ALLOW
-probe 'HD1 heredoc body (accept fail-closed)' 'cat <<EOF
+probe 'HD1 heredoc body (fail-closed blocks)' 'cat <<EOF
 gh api -X DELETE refs/heads/main
-EOF'  ALLOW
+EOF'  BLOCK
 
 echo ""
 echo "=== Adversary Pass-2 bypasses (must BLOCK — Pass-3 fix) ==="
@@ -110,9 +110,9 @@ probe 'PA-C2 FOO=bar envvar'      'FOO=bar gh api -X DELETE repos/O/R/git/refs/h
 probe 'PA-C3 2 envvars'           'GH_TOKEN=abc FOO=bar gh api -X DELETE repos/O/R/git/refs/heads/main' BLOCK
 
 echo ""
-echo "=== Adversary Pass-2 deferred to FW-051 (quote-concat) ==="
-probe 'PA-D1 sq-concat DELETE'   'gh api -X '\''DE'\'''\''LETE'\'' repos/O/R/git/refs/heads/main' ALLOW
-probe 'PA-D2 dq-concat DELETE'   'gh api -X "DE""LETE" repos/O/R/git/refs/heads/main'       ALLOW
+echo "=== Adversary Pass-2 closed by FW-051 (quote-concat) ==="
+probe 'PA-D1 sq-concat DELETE'   'gh api -X '\''DE'\'''\''LETE'\'' repos/O/R/git/refs/heads/main' BLOCK
+probe 'PA-D2 dq-concat DELETE'   'gh api -X "DE""LETE" repos/O/R/git/refs/heads/main'       BLOCK
 
 echo ""
 echo "=== Adversary Pass-2 non-bypasses (must ALLOW — legitimate) ==="
