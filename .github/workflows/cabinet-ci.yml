@@ -102,6 +102,14 @@ jobs:
       - name: Shell unit tests — memory.sh
         run: bash /opt/founders-cabinet/cabinet/scripts/test-memory.sh
 
+      - name: Shell unit tests — audit-framework-backlog-drift.sh
+        # Guards the drift auditor (FW-002 safety net) against silent regressions.
+        # 12 fixture scenarios covering fresh/stale × Proposed/Paused × SHIPPED-skip
+        # × no-date-skip × env threshold overrides × missing-file handling × advisory-
+        # exit invariant. If this test breaks, the auditor may still run green in CI
+        # but silently hide drift classes. See scripts/test-audit-framework-backlog-drift.sh.
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-audit-framework-backlog-drift.sh
+
       - name: Python tests — ETL transforms (FW-023)
         run: |
           cd /opt/founders-cabinet/cabinet/scripts/lib
