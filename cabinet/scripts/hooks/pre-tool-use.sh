@@ -781,16 +781,48 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # Hotfix 5 2026-04-24 (FW-040 HIGH — CTO Sonnet crew agent, COO-adversary-rated
     # HIGH severity): Added Pattern 8 (perl -i inplace-edit) + Pattern 9 (tar
     # extract/create touching /workspace/product/).
+    # Hotfix 6 2026-04-24 (FW-040 HIGH — COO Pass-1 adversary on d752992):
+    # - Pattern 9b: added `--file[=[:space:]]+` long-form alt; closes 3 HIGH GNU
+    #   tar `--file=` bypasses (--file=, --file<space>, -c --file=).
+    # - Pattern 8: prefix char class iterated — Pass-1 `[^[:space:]]*` → `[a-z]*`
+    #   (fixes -I/usr/local/lib FP), Pass-2 Sonnet `[a-z]*` → `[^[:space:]Ii]*`
+    #   (restores -Ti/-Wi/-0777i coverage regressed by lowercase-only).
+    # Known scope gaps deferred: (a) `tar -tf|-xf /workspace/product/archive.tar`
+    # read-ops from product archive file (fail-closed FP, low sev); (b) perl
+    # `$^I` special-var inplace inside `-e` body (flag-level regex can't see
+    # body) — filed as FW-051 orthogonal scope-gap.
     #
-    # Pattern 8 (perl -i): `-[^[:space:]]*i[^[:space:]]*` matches any flag token
-    # containing `i` (covers -i, -i.bak, -pi, -ip, -ipe, -ni, -i0 etc.). The two
-    # optional middle groups absorb additional flags between -i and the product path.
-    # Discriminator: requires `-i`-containing flag token AND `/workspace/product/`
-    # as a subsequent argument. Allows: `perl -pe ...` (no -i, stdout-only),
-    # `perl -ne '...' /workspace/product/x` (no -i, read-only), `perl -pi /tmp/f`
-    # (inplace but non-product target). Accepted FP: `echo "perl -i /workspace/product/x"`
-    # (data-position quoted body) — fail-closed per FW-045 FP-1; officer workaround
-    # is to omit product path from echo body or write to /tmp first.
+    # Pattern 8 (perl -i): `-[^[:space:]Ii]*i[^[:space:]]*` matches any flag token
+    # containing `i` where the prefix bundle excludes `I` (the include-path flag)
+    # and `i` itself (since `i` appears at end of prefix). Covers -i, -i.bak, -pi,
+    # -ip, -ipe, -ni, -i0, -Ti (taint+inplace), -Wi (warnings+inplace), -0777i
+    # (record-sep+inplace), -li, -wi, -si, -ai, -lpi etc. The two optional middle
+    # groups absorb additional flags between -i and the product path. Long-form
+    # `--in-place[=suffix]` alternative covers the GNU long alias.
+    # Hotfix-6 Pass-1 (COO 2026-04-24): narrowed prefix class from `[^[:space:]]*`
+    # to `[a-z]*` to fix `-I/usr/local/lib` include-path FP (where greedy absorber
+    # caught `i` in `lib`). Pass-2 (Sonnet 2026-04-24): `[a-z]*` regressed uppercase
+    # (`-Ti`, `-Wi`) and digit-prefixed (`-0777i`) bundles; re-widened to
+    # `[^[:space:]Ii]*` — excludes ONLY the FP-causing `I` char, not the whole
+    # uppercase+digit alphabet. Discriminator: requires `-<bundle>i`-containing
+    # flag token AND `/workspace/product/` as a subsequent argument. Allows:
+    # `perl -pe ...` (no -i, stdout-only), `perl -ne '...' /workspace/product/x`
+    # (no -i, read-only), `perl -pi /tmp/f` (inplace but non-product target),
+    # `perl -I/usr/local/lib -pe ...` (include-path, not inplace),
+    # `perl -Iinclude_dir -pe ...` (relative include path).
+    # Accepted FPs:
+    #   - `echo "perl -i /workspace/product/x"` (data-position quoted body) —
+    #     fail-closed per FW-045 FP-1; workaround: omit product path from echo
+    #     body or write to /tmp first.
+    #   - `perl -e 'BEGIN{$^I=""}...' /workspace/product/f` — scope gap:
+    #     inplace mode enabled via `$^I` special var inside `-e` body, no `-i`
+    #     flag at shell level. Inherent limitation of flag-level regex; would
+    #     require `-e` body inspection (same class as FW-040 Phase B gap #3:
+    #     "Scripting inline-writes via python3 -c / node -e / ruby -e").
+    #     Flat regex alternative (match `\$\^I` textually) is cat-and-mouse
+    #     (attacker variants: `${^I}`, dynamic var name assignment). Left as
+    #     FW-040 Phase B scope-gap. Low operational risk (obscure idiom, Edit/
+    #     Write tools still gated for non-CTO officers via Section 3a).
     #
     # Pattern 9 (tar): Two sub-alternatives:
     #   9a: tar with -C[space|no-space] or --directory[=space] followed by
@@ -798,16 +830,25 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     #       --directory=). GNU tar accepts -C/PATH with no space — Adversary Pass-1
     #       found -C[[:space:]]+ missed -C/PATH; fixed to -C[[:space:]]* to catch
     #       both forms. Catches all extract+create forms.
-    #   9b: tar with -[flags]f[space]/workspace/product/ (archive FILE written to
-    #       product path, e.g. `tar -cf /workspace/product/archive.tar /some/src`).
+    #   9b: tar with `-[flags]f[space]|--file[=|space]` + /workspace/product/
+    #       (archive FILE written to product path, e.g.
+    #       `tar -cf /workspace/product/archive.tar /some/src` OR
+    #       `tar --file=/workspace/product/archive.tar -c /some/src`).
+    #       Hotfix-6 (COO 2026-04-24): added `--file[=[:space:]]+` long-form
+    #       alt — parity with Pattern 9a's `--directory=` alt. Pre-hotfix, GNU
+    #       `tar --file=/workspace/product/x.tar` bypassed short-form-only gate.
     # Allows: `tar -xf archive.tar` (no -C, no product -f), `tar -xf a.tar -C /tmp/`
-    # (non-product -C), `tar -tf archive.tar` (list-only, no -C). Accepted FP:
+    # (non-product -C), `tar -tf archive.tar` (list-only, no -C). Accepted FPs:
     # `tar -czf /tmp/x.tar -C /workspace/product/ .` (-C as SOURCE context for -c
     # where archive is written to /tmp, product is source content) — fail-closed;
     # officer workaround: `cd /workspace/product && tar -czf /tmp/x.tar .`.
+    # `tar -xf /workspace/product/archive.tar` and `tar -tf /workspace/product/x.tar`
+    # (read-op from product archive file) — fail-closed by Pattern 9b; workaround:
+    # copy archive to /tmp first. Low severity (read-ops, not writes); tracked as
+    # FW-040 scope gap for future read-op vs write-op differentiation.
     # Blocks `tar -cf /workspace/product/archive.tar /some/src` (archive written
     # TO product path — correct BLOCK). Pattern 9b gates on archive -f path position.
-    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+(([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]]([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*)?[[:space:]]+["'\'']?/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|perl[[:space:]]+([^;&|]*[[:space:]])?-[^[:space:]]*i[^[:space:]]*(([[:space:]]([^;&|]*[[:space:]])?)|([[:space:]]([^;&|]*[[:space:]])?)?)[[:space:]]*["'\'']?/workspace/product/|tar[[:space:]]+([^;&|]*[[:space:]]+)?(-C[[:space:]]*|--directory[=[:space:]]+)["'\'']?/workspace/product/|tar[[:space:]]+([^;&|]*[[:space:]]+)?-[^[:space:]]*f[[:space:]]+["'\'']?/workspace/product/)'; then
+    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+(([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]]([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*)?[[:space:]]+["'\'']?/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|perl[[:space:]]+([^;&|]*[[:space:]])?(-[^[:space:]Ii]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)(([[:space:]]([^;&|]*[[:space:]])?)|([[:space:]]([^;&|]*[[:space:]])?)?)[[:space:]]*["'\'']?/workspace/product/|tar[[:space:]]+([^;&|]*[[:space:]]+)?(-C[[:space:]]*|--directory[=[:space:]]+)["'\'']?/workspace/product/|tar[[:space:]]+([^;&|]*[[:space:]]+)?(-[^[:space:]]*f[[:space:]]+|--file[=[:space:]]+)["'\'']?/workspace/product/)'; then
       echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi
