@@ -178,6 +178,16 @@ jobs:
         # regression net for cross-Cabinet comms.
         run: python3 /opt/founders-cabinet/cabinet/mcp-server/test_server.py
 
+      - name: Python tests — MCP host-tools (Spec 035 Phase A, CoS-only)
+        # 38 tests pinning args-validation + ConnectionError translation
+        # across all 6 host_* handlers, streaming reassembly for tail_logs
+        # + read_file, and the JSON-RPC dispatcher (initialize / tools-list
+        # / tools-call success+unknown+handler-raise / unknown-method).
+        # Surface is CoS-only and gates root-level host operations — any
+        # regression in args-validation or error translation leaks opaque
+        # errors to the daemon. Standalone unittest, no pytest dep.
+        run: python3 /opt/founders-cabinet/cabinet/mcp-server/test_host_tools.py
+
       - name: Python tests — Host-agent (Spec 035 Phase A)
         # 49 tests: auth protocol, error codes, log-before-exec, timeout,
         # peer-cred rejection, pause flag, self-restart-forbidden, file-too-large,
