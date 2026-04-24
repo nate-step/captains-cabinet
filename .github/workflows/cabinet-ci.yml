@@ -129,6 +129,17 @@ jobs:
                        head -1 "$ff" 2>/dev/null | grep -qE '^#!.*bash' && echo "$ff"
                      done)
 
+      - name: shellcheck hooks + lib (severity=error)
+        # FW-054: static analysis gate for the 12 hook + lib scripts.
+        # --severity=error catches genuine bugs (SC2064 trap-in-subshell,
+        # SC2090 array-quoting, SC2094 read/write same file, etc.) without
+        # noise from style warnings. ubuntu-latest has shellcheck pre-installed.
+        run: |
+          shellcheck --version
+          shellcheck --severity=error --shell=bash \
+            /opt/founders-cabinet/cabinet/scripts/hooks/*.sh \
+            /opt/founders-cabinet/cabinet/scripts/lib/*.sh
+
       - name: Shell unit tests — triggers.sh
         run: bash /opt/founders-cabinet/cabinet/scripts/test-triggers.sh
 
