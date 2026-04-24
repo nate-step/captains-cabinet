@@ -271,32 +271,88 @@ def write_unresolved_log(entries: List[Dict[str, Any]], path: Optional[Path] = N
 
 
 # ---------------------------------------------------------------------------
-# Library archive — JSONL-per-issue snapshot to disk
+# Library archive — two modes
 # ---------------------------------------------------------------------------
 # Spec §5.8 (Q_archive=KEEP): raw Linear/GH API response per issue archived
-# as a migration snapshot. Full MCP ingestion is deferred — we write one JSON
-# file per external_ref under instance/archive/039-migration-snapshots/.
-# CoS/CPO ingest these into Library MCP post-ETL via the dashboard once the
-# Python-side MCP adapter lands (tracked as FW-* framework item).
+# as a migration snapshot.
+#
+# FW-020 added MCP mode: when LIBRARY_MCP_ENABLED=true the snapshot lands
+# as a Library record (space='etl-snapshots') via the Python MCP client
+# (library-mcp-client.py). The MCP call spawns the TS server subprocess on
+# first use and reuses it for the rest of the ETL run; cleanup is registered
+# at atexit. On any LibraryMcpError we fall back to the JSONL-on-disk path
+# so ETL doesn't block if the MCP layer is unavailable.
+#
+# Default remains JSONL-on-disk for safe rollout — flip LIBRARY_MCP_ENABLED
+# per-env once the `etl-snapshots` Space has been verified in dashboard.
+
+# Module-level MCP client singleton (lazy; None until first archive_to_library
+# call opts into MCP mode). Shared across all ETL source modules in one run.
+_mcp_client: Optional[Any] = None
+_mcp_space_ensured: bool = False
+_MCP_SNAPSHOT_SPACE = "etl-snapshots"
+
+
+def _get_mcp_client():
+    """Lazily import + spawn the MCP client; register atexit close."""
+    global _mcp_client
+    if _mcp_client is not None:
+        return _mcp_client
+    import atexit
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location(
+        "library_mcp_client",
+        Path(__file__).parent / "library-mcp-client.py",
+    )
+    if _spec is None or _spec.loader is None:
+        raise RuntimeError("cannot load library-mcp-client.py")
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    client = _mod.LibraryMcpClient(officer=os.environ.get("OFFICER_NAME", "etl"))
+    client.__enter__()
+    atexit.register(lambda: client.close())
+    _mcp_client = client
+    return _mcp_client
+
+
+def _ensure_snapshot_space(client: Any) -> None:
+    """One-shot: create `etl-snapshots` Space if missing. Idempotent."""
+    global _mcp_space_ensured
+    if _mcp_space_ensured:
+        return
+    spaces = client.list_spaces()
+    if not any(sp.get("name") == _MCP_SNAPSHOT_SPACE for sp in spaces):
+        client.create_space(
+            name=_MCP_SNAPSHOT_SPACE,
+            description=(
+                "Spec 039 ETL migration snapshots — raw Linear/GH API responses "
+                "per external_ref. One record per upserted task; labels by source."
+            ),
+            starter_template="blank",
+        )
+    _mcp_space_ensured = True
+
 
 def archive_to_library(
     conn: Any,
     source_record: Dict[str, Any],
     dry_run: bool = False,
 ) -> None:
-    """Write one JSON file per source row under instance/archive/039-migration-snapshots/.
+    """Archive one source-API response per upserted task.
 
-    Filename: `<external_source>-<external_ref>.json`. File contains the raw
-    source API response as-is. Gated by `ARCHIVE_TO_LIBRARY` env (default
-    'true' per spec §5.8 Q_archive=KEEP). Idempotent — overwrites existing
-    file so ETL re-runs land the latest snapshot.
+    Two modes:
+      - LIBRARY_MCP_ENABLED=true → writes to Library MCP space 'etl-snapshots'
+        via the Python adapter. Falls back to JSONL-on-disk on any MCP error.
+      - default → writes `<external_source>-<external_ref>.json` under
+        `instance/archive/039-migration-snapshots/`. Idempotent — overwrites
+        existing file so ETL re-runs land the latest snapshot.
+
+    Gated by `ARCHIVE_TO_LIBRARY` env (default 'true' per spec §5.8 Q_archive=KEEP).
 
     Call AFTER a successful upsert so dry-runs + upsert failures don't leak
     ghost snapshots (PR-3 H-1 review finding).
 
-    conn is currently unused but kept in the signature so a future MCP
-    adapter (tracked as FW-* framework item) can swap in without touching
-    every caller.
+    conn is unused but kept in the signature for backward compatibility.
     """
     if dry_run:
         return
@@ -309,9 +365,6 @@ def archive_to_library(
         return
 
     ext_source = source_record.get("external_source") or _infer_source(source_record)
-    base = Path(__file__).resolve().parents[3]
-    archive_dir = base / "instance" / "archive" / "039-migration-snapshots"
-    archive_dir.mkdir(parents=True, exist_ok=True)
 
     # Defensive sanitization — ext_ref values come from trusted APIs (Linear
     # IDs like 'SEN-247', GH refs like 'FW-024') but defense-in-depth blocks
@@ -324,7 +377,29 @@ def archive_to_library(
         .replace("\x00", "_")
         .lstrip("-")
     ) or "unknown"
-    out = archive_dir / f"{ext_source}-{safe_ref}.json"
+    title = f"{ext_source}-{safe_ref}"
+
+    if os.environ.get("LIBRARY_MCP_ENABLED", "false").lower() == "true":
+        try:
+            client = _get_mcp_client()
+            _ensure_snapshot_space(client)
+            body = json.dumps(source_record, default=str, indent=2, sort_keys=True)
+            client.create_record(
+                space=_MCP_SNAPSHOT_SPACE,
+                title=title,
+                content_markdown=body,
+                labels=ext_source,
+            )
+            return
+        except Exception as exc:  # noqa: BLE001 — fall through to JSONL on any MCP error
+            logger.warning(
+                "archive_to_library: MCP call failed (%s); falling back to JSONL", exc
+            )
+
+    base = Path(__file__).resolve().parents[3]
+    archive_dir = base / "instance" / "archive" / "039-migration-snapshots"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    out = archive_dir / f"{title}.json"
     with out.open("w", encoding="utf-8") as fh:
         json.dump(source_record, fh, default=str, indent=2, sort_keys=True)
 
