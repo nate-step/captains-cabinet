@@ -177,7 +177,7 @@ while true; do
         fi
       fi
 
-      # PERMISSION-PROMPT DETECT (FW-020) — alert Captain when an officer is
+      # PERMISSION-PROMPT DETECT (FW-053) — alert Captain when an officer is
       # stuck on a Claude Code approval prompt. Officers in bypass-permissions
       # mode never show this; only default-permission officers can block here.
       # Lesson (2026-04-20): CTO stuck 27h on "Do you want to create .mcp.json?"

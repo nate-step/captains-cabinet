@@ -990,3 +990,16 @@ _(none)_
 - **Owner:** CTO (shipped).
 - **Follow-ups:** Deferred bypass classes above go into a v3.8 scope if any becomes observed in the wild; otherwise rolled into FW-040 Phase B (shell-parse-aware coverage).
 - **Source:** Captain directive post-FW-043 to tighten Section 3. Multiple adversary passes (regex-internals + shell-parser Sonnet agents) + 1 pre-push Sonnet code-reviewer + COO concurrent adversary Pass-1 on v3.7 that caught the BSQ class bypass.
+
+---
+
+### FW-053 — Officer permission-prompt wedge detection (supervisor alert)
+- **Status:** SHIPPED 2026-04-20 (commit `9840b91`). Retroactive backlog entry filed 2026-04-24 — the supervisor fix shipped under the ad-hoc tag "(FW-020)" in its source comment, but FW-020 was subsequently assigned to the Library MCP Python adapter on 2026-04-21 (backlog entry commit `c17629c`). This FW-053 entry resolves the ID collision by giving the supervisor fix its own tracking slot; supervisor comment updated 2026-04-24 to reference FW-053.
+- **Problem:** An officer in default-permission mode that hit a Claude Code approval prompt (e.g., `Do you want to create .mcp.json?`) would block indefinitely on that prompt — tmux pane shows the question, but the officer's Claude process is quiesced waiting for human input. Lesson from the 2026-04-20 incident: CTO was stuck for 27 hours on an `.mcp.json` create prompt because CTO (unlike CoO/CPO/CRO at the time) wasn't in bypass-permissions mode. Heartbeat was green (supervisor's `tmux send-keys` keepalive ticked), so nothing externally surfaced the wedge. Captain had to manually notice + approve.
+- **Fix shipped:** `officer-supervisor.sh` now watches each officer's tmux pane tail every 2 min for the signature `Esc to cancel · Tab to amend` (unique to Claude Code approval prompts). On first detection, alerts Captain via the primary officer's Telegram bot with the prompt text (first match of `^(Do you want|Allow)` line, 200-char cap) and suggests either manual approval via pane OR `shift+tab` to toggle bypass-permissions mode. Rate-limited to one alert per 30 min per officer via `cabinet:supervisor:last-prompt-alert:$officer` (EX 1800).
+- **Where it lives:** `cabinet/scripts/officer-supervisor.sh:180-205`.
+- **Counter metric:** `cabinet:supervisor:prompt-alert-count:$officer` increments on each alert; surfaces in org-health audits.
+- **Out of scope:** Auto-pressing the approval (would bypass the human-in-the-loop safety contract). Operators either approve in-pane or enable bypass-permissions mode explicitly.
+- **Follow-ups (none planned):** Heartbeat semantics — currently supervisor `send-keys` keepalives tick regardless of whether Claude is processing; this FW-053 fix is the explicit wedge-surfacing mechanism while heartbeat stays as liveness-only (see `feedback_officer_wedge_diagnosis` memory: "Heartbeat lies (supervisor writes it for idle)").
+- **Owner:** CTO.
+- **Source:** 2026-04-20 CTO 27h wedge incident on `.mcp.json` create prompt.
