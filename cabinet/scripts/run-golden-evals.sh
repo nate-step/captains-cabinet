@@ -1712,15 +1712,21 @@ EV22_PRE_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh"
 EV22_EVAL_SCRIPT="$0"
 
 # Check 1: if post-tool-use.sh has '\'' inside a grep -E pattern, verify
-# EVAL-011 and EVAL-013 are NOT using the old sed extractor for it.
+# EVAL-011, EVAL-013, and EVAL-017 are NOT using the old sed extractor for it.
+# (FW-052: EV17 extends FW-037 class — post-tool-use.sh infra-gate anchor
+# extraction at run-golden-evals.sh:1416 still uses fragile sed pattern.
+# Current post-hook anchors contain no '\''  so extractor works today; this
+# check fires if a future edit adds one AND EV17 hasn't migrated.)
 if grep -qF "grep -qE '" "$EV22_POST_HOOK" 2>/dev/null; then
   if grep -E "grep -qE '([^']+)'\''[^']*'" "$EV22_POST_HOOK" > /dev/null 2>&1; then
     # Hook has '\'' inside grep -qE — verify evals are migrated.
     if grep -qF "sed -E \"s/.*grep -qE '([^']+)'.*/\\1/\"" "$EV22_EVAL_SCRIPT" 2>/dev/null; then
       # Check if any remaining sed extractor is scoped to post-tool-use.sh context
-      # (i.e., EV11 or EV13 scope — these were the ones touching post-tool-use.sh).
-      if grep -B5 "sed -E \"s/.*grep -qE '([^']+)'.*/\\1/\"" "$EV22_EVAL_SCRIPT" 2>/dev/null | grep -qE "EV11_|EV13_|post-tool-use"; then
-        EV22_FAILURE="AC-4: post-tool-use.sh has '\\''  inside a grep -qE pattern AND EVAL-011/013 still uses the fragile sed extractor. The extractor will silently truncate the regex — migrate EVAL-011/013 to direct hook invocation (FW-046 pattern)."
+      # (EV11/EV13/EV17 all touch post-tool-use.sh; the -B5 context grep
+      # picks up their variable prefixes. `post-tool-use` catch-all covers
+      # any future additions that reference the hook path directly.)
+      if grep -B5 "sed -E \"s/.*grep -qE '([^']+)'.*/\\1/\"" "$EV22_EVAL_SCRIPT" 2>/dev/null | grep -qE "EV11_|EV13_|EV17_|post-tool-use"; then
+        EV22_FAILURE="AC-4: post-tool-use.sh has '\\''  inside a grep -qE pattern AND EVAL-011/013/017 still uses the fragile sed extractor. The extractor will silently truncate the regex — migrate EVAL-011/013/017 to direct hook invocation (FW-046 pattern; see FW-052 for EV17 scope)."
       fi
     fi
   fi
