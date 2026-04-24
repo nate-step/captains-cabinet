@@ -1049,6 +1049,39 @@ fi
 # Branch disambiguation via terminator [[:space:];&|(){}<>'"`!#\^~/?] — trailing
 # char `l`/`.`/`-`/`s` NOT in set so mainline/main.md/main-feature/mastership
 # correctly pass through.
+# FW-044 hotfix-1 (2026-04-24): close 14 HIGH bypasses from COO Pass-1
+# adversary across two root causes:
+#   ROOT CAUSE 1 (PA-F class, 11 bypasses): Phase 2b prefix-absorber was a
+#     strict SUBSET of Phase 1's — Phase 2b only absorbed VAR_ASSIGN plus
+#     env-var-only prefix, so AND-composed gate `phase1 && (phase2a||phase2b)`
+#     fired false on every wrapper Phase 1 absorbed but Phase 2b didn't
+#     (`eval`, `bash -c`, `sh -c`, `nohup`, `time`, `exec`, `sudo`, `env CMD`,
+#     `timeout 5`, `command`, `stdbuf -o0` before `gh api -X DELETE
+#     refs/heads/main`). Fix: replace narrow Phase 2b prefix absorber with
+#     full Phase 1 alternation (sudo/env/timeout/exec/time/nohup/nice/ionice/
+#     coproc/stdbuf/unbuffer/setsid/command/builtin/VAR_ASSIGN/shell-c/eval/
+#     redirect/then-do).
+#   ROOT CAUSE 2 (PA-E class, 3 bypasses): VAR_ASSIGN value class
+#     `[^[:space:]]+` truncated quoted values at the first space —
+#     `PATH="foo bar" gh api -X DELETE refs/heads/main` broke Phase 1 at
+#     the `foo` → `bar` boundary. Fix: widen value class to
+#     `('...'|"..."|[^[:space:]]+)` then extend to include ANSI-C quoting
+#     `\'...'` (Pass-2 P2-A2). Applied at Phase 1 AND Phase 2b for parity.
+# Hotfix-1 Pass-2 adversary: 1 additional bypass closed (ANSI-C quoted
+# VAR_ASSIGN value). 15 total HIGH bypasses closed in hotfix-1. Remaining
+# deferrals to FW-051:
+#   - `FOO=''hello world''` bash adjacent-quoted-string concatenation
+#     (Pass-2 P2-A1) — same class as `-X 'DE''LETE'` quote-concat. No
+#     CMD_NORM preprocessing at Layer 1.
+#   - `eval "PATH=\"foo bar\" gh api -X DELETE refs/heads/main"` (Pass-1
+#     CA1) — backslash-escaped quotes inside quoted eval body need
+#     CMD_NORM preprocessing; same class.
+# Hotfix-1 Pass-3 identified 3 orthogonal scope-gaps also deferred to
+# FW-051:
+#   - full-path shell `/bin/bash -c "..."` (shell alternation has no slash)
+#   - fused flag `bash -lc "..."` (no `-lc` branch; only `-c`)
+#   - wrapper indirection `./wrapper.sh` / `$(command -v gh)` (no
+#     indirection absorber)
 # Deferred to FW-051: Layer 1 quoted-splice (`"gh" api`), subshell-eval splice
 # (`$(echo gh) api`), URL-encoded refs (`refs%2fheads%2fmain`), wildcard refs
 # (`refs/heads/m*`), heredoc body scan, Pass-2 MEDIUM-D quote-concat DELETE
@@ -1056,9 +1089,9 @@ fi
 # not apply CMD_NORM.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=('\''[^'\'']*'\''|"[^"]*"|[^[:space:]]+)[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=(\$'\''[^'\'']*'\''|'\''[^'\'']*'\''|"[^"]*"|[^[:space:]]+)[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
      { echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}<>'\''"`!#\\^~]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*pr[[:space:]]+merge' || \
-       echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=('\''[^'\'']*'\''|"[^"]*"|[^[:space:]]+)[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*api[[:space:]]|curl([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]|wget([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]])[^;&|#]*((-X|--method|--request)[=[:space:]]*["'\'']?[Dd][Ee][Ll][Ee][Tt][Ee]["'\'']?[^;&|#]*(refs/heads/(main|master)([[:space:];&|(){}<>'\''"`!#\\^~/?]|$)|branches/(main|master)/protection([[:space:];&|(){}<>'\''"`!#\\^~?]|$))|(refs/heads/(main|master)([[:space:];&|(){}<>'\''"`!#\\^~/?]|$)|branches/(main|master)/protection([[:space:];&|(){}<>'\''"`!#\\^~?]|$))[^;&|#]*(-X|--method|--request)[=[:space:]]*["'\'']?[Dd][Ee][Ll][Ee][Tt][Ee]["'\'']?)'; }; then
+       echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=(\$'\''[^'\'']*'\''|'\''[^'\'']*'\''|"[^"]*"|[^[:space:]]+)[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*api[[:space:]]|curl([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]|wget([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]])[^;&|#]*((-X|--method|--request)[=[:space:]]*["'\'']?[Dd][Ee][Ll][Ee][Tt][Ee]["'\'']?[^;&|#]*(refs/heads/(main|master)([[:space:];&|(){}<>'\''"`!#\\^~/?]|$)|branches/(main|master)/protection([[:space:];&|(){}<>'\''"`!#\\^~?]|$))|(refs/heads/(main|master)([[:space:];&|(){}<>'\''"`!#\\^~/?]|$)|branches/(main|master)/protection([[:space:];&|(){}<>'\''"`!#\\^~?]|$))[^;&|#]*(-X|--method|--request)[=[:space:]]*["'\'']?[Dd][Ee][Ll][Ee][Tt][Ee]["'\'']?)'; }; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
       echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
@@ -1078,7 +1111,7 @@ fi
 # "...pulls/42/merge..."` bodies cannot pass Phase 1.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=('\''[^'\'']*'\''|"[^"]*"|[^[:space:]]+)[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=(\$'\''[^'\'']*'\''|'\''[^'\'']*'\''|"[^"]*"|[^[:space:]]+)[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
      echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then

@@ -630,7 +630,7 @@ _(none)_
 - **Follow-ups filed:** FW-044 (`gh api -X DELETE refs/heads/main` Phase 2 scope), FW-040 addendum (6 write-tool scope gaps — perl/tar/gawk/ruby/ln/ex/install/truncate/dd/touch/mkdir/awk-redirect — SEPARATE from FW-043 anchor work).
 
 ### FW-044 — `gh api -X DELETE refs/heads/main` Phase 2 scope (MEDIUM)
-- **Status:** SHIPPED 2026-04-24 (3-round adversary: Sonnet Pass-1 on first-pass 3-grep AND — 9 bypasses + concurrent Sonnet FP-review — 8 FPs; Pass-2 unified positional regex closes 6/8 HIGH FPs + all 8 FW-044-scoped bypasses; Sonnet Pass-2 post-fix adversary — 4 new bypass classes on unified regex; Pass-3 fix adds `?` terminator + wget anchor + env-var prefix wrapper, closes 3/4; Pass-2 MEDIUM-D quote-concat deferred to FW-051).
+- **Status:** SHIPPED 2026-04-24 (3-round adversary: Sonnet Pass-1 on first-pass 3-grep AND — 9 bypasses + concurrent Sonnet FP-review — 8 FPs; Pass-2 unified positional regex closes 6/8 HIGH FPs + all 8 FW-044-scoped bypasses; Sonnet Pass-2 post-fix adversary — 4 new bypass classes on unified regex; Pass-3 fix adds `?` terminator + wget anchor + env-var prefix wrapper, closes 3/4; Pass-2 MEDIUM-D quote-concat deferred to FW-051). **Hotfix-1 2026-04-24**: COO Pass-1 empirical adversary on ship `b9fe882` found 14 HIGH bypasses across two root causes — Phase 2b prefix-asymmetry (11 forms) + VAR_ASSIGN quoted-value truncation (3 forms). Hotfix-1 Pass-2 Sonnet added 1 ANSI-C bypass close (15 total). Committed this PR.
 - **Symptom:** `gh api -X DELETE repos/OWNER/REPO/git/refs/heads/main` passes Phase 1 (`gh api` is in the subcommand alternation) but Phase 2 action regex `pr[[:space:]]+merge` doesn't match — command is `gh api`, not `gh pr merge`. Result: destructive ref-deletion against main silently bypasses Layer 1 review gate.
 - **Blast radius:** MEDIUM. Deletes the `main` branch ref (arguably more severe than a push — but prerequisite is attacker-crafted CTO command, not common workflow). Not amplification; straight bypass. Severity MEDIUM vs HIGH because the attack form is unusual and requires explicit `gh api -X DELETE` — not a natural mistyping.
 - **Fix applied:** Phase 2b unified positional regex (OR-alternative to existing Phase 2a). Single `grep -qE` with:
@@ -672,6 +672,30 @@ _(none)_
   - PA-C3: `GH_TOKEN=abc FOO=bar gh api -X DELETE …` → exit=2. ✓ (multi-var stack)
   - PA-E1: `gh api -X DELETE repos/O/R/git/refs/heads/MAIN` → exit=0 (ALLOW — `MAIN` is a valid separate ref, not main/master). ✓
   - PA-E2: `gh api -X DELETE repos/O/R/git/refs/heads/MASTER` → exit=0 (ALLOW — same rationale). ✓
+- **Hotfix-1** (COO Pass-1 empirical on ship `b9fe882` — 14 HIGH, 2 root causes):
+  - **ROOT CAUSE 1 — Phase 2b prefix asymmetry (PA-F class, 11 bypasses):** Phase 2b prefix-absorber was `([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*` only — a strict SUBSET of Phase 1's `(sudo|env|timeout|exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin|VAR_ASSIGN|shell-c|eval|redirect|then-do)` alternation. AND-composed gate `phase1 && (phase2a||phase2b)` fires false on every wrapper Phase 1 absorbs but Phase 2b doesn't, because Phase 2b anchor requires immediate `gh|curl|wget` after optional narrow prefix — but with `eval gh api …` Phase 1 matched, Phase 2b saw `eval gh api …` but couldn't absorb `eval`, so anchor matched neither side-by-side nor after a narrow prefix.
+    - PA-F1: `eval "gh api -X DELETE refs/heads/main"` → exit=2. ✓
+    - PA-F2: `eval 'gh api -X DELETE refs/heads/main'` → exit=2. ✓
+    - PA-F3: `bash -c "gh api -X DELETE refs/heads/main"` → exit=2. ✓
+    - PA-F4: `sh -c "gh api -X DELETE refs/heads/main"` → exit=2. ✓
+    - PA-F5: `nohup gh api -X DELETE refs/heads/main` → exit=2. ✓
+    - PA-F6: `time gh api -X DELETE refs/heads/main` → exit=2. ✓
+    - PA-F7: `exec gh api -X DELETE refs/heads/main` → exit=2. ✓
+    - PA-F8: `sudo gh api -X DELETE refs/heads/main` → exit=2. ✓ (Phase 1 sudo branch caught pre-hotfix, Phase 2b catches post-hotfix for consistency)
+    - PA-F9: `env GH_TOKEN=abc gh api -X DELETE refs/heads/main` → exit=2. ✓ (bare `env CMD` form, not `VAR=val gh api`)
+    - PA-F10: `timeout 5 gh api -X DELETE refs/heads/main` → exit=2. ✓
+    - PA-F11: `command gh api -X DELETE refs/heads/main` → exit=2. ✓
+    - PA-F12: `stdbuf -o0 gh api -X DELETE refs/heads/main` → exit=2. ✓
+  - **ROOT CAUSE 2 — VAR_ASSIGN quoted-value truncation (PA-E class, 3 bypasses):** `[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+` value class stops at the first space, so `PATH="foo bar" gh api -X DELETE refs/heads/main` breaks: regex consumed `PATH="foo` then hit space, anchor required space-delimited end of prefix, saw quoted `bar" gh…` start with `b`, not `gh`. Phase 1 same flaw. Canonical POSIX assignment idiom with quoted-space value is natural bash usage.
+    - PA-E1 (hotfix-1): `PATH="foo bar" gh api -X DELETE refs/heads/main` → exit=2. ✓
+    - PA-E2 (hotfix-1): `GH_HOST='api example com' gh api -X DELETE refs/heads/main` → exit=2. ✓
+    - PA-E3 (hotfix-1): `MSG="hello world foo" gh api -X DELETE refs/heads/main` → exit=2. ✓
+  - **Fix 1 (Phase 2b prefix parity):** Replaced narrow VAR-only absorber with full Phase 1 alternation — same flag-tolerant branches for `sudo|env|timeout|exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin|VAR_ASSIGN|shell-c|eval|redirect|then-do`. Phase 2b now absorbs the same prefix surface as Phase 1 so AND-gate is symmetric.
+  - **Fix 2 (VAR_ASSIGN value widening):** `[^[:space:]]+` → `('[^']*'|"[^"]*"|[^[:space:]]+)` (quoted-string OR unquoted-non-space). Applied at Phase 1 AND Phase 2b for parity. Later extended to `(\$'[^']*'|'[^']*'|"[^"]*"|[^[:space:]]+)` to cover ANSI-C `$'...'` quoting (Hotfix-1 Pass-2 P2-A2).
+  - **Hotfix-1 Pass-2 Sonnet adversary** (post-fix): 1 additional HIGH close (P2-A2 ANSI-C `FOO=$'hello world' gh api -X DELETE refs/heads/main`). P2-A1 `FOO=''hello world''` bash adjacent-quoted-string concat deferred to FW-051 (same preprocessing-class root as `-X 'DE''LETE'` quote-concat). 18/19 adversary probes BLOCK + 15/15 FP controls ALLOW.
+  - **Hotfix-1 Pass-3 Sonnet adversary** (orthogonal scope-gaps): 3 deferred to FW-051 — full-path shell (`/bin/bash -c`, shell alternation has no slash), fused-flag `bash -lc` (only `-c` branch exists), wrapper indirection (`./wrapper.sh`, no indirection absorber).
+  - **Combined adversary CA1**: `eval "PATH=\"foo bar\" gh api -X DELETE refs/heads/main"` — backslash-escaped quotes inside eval body deferred to FW-051 (CMD_NORM-preprocessing class; same as SP1-SP4 quoted-splice).
+  - **Hotfix-1 regression**: 15 COO Pass-1 bypasses + 19 Hotfix-1 Pass-2 adversary probes + 15 FP controls + 60/61 on pre-existing fw044-verify.sh (1 HD1 heredoc pre-existing, not regression). FW-041 phase2 21/21, FW-041 hf3 prod 33/33, FW-041 hf3 pass5 50/50, FW-042 v3.7.2 BSQ 18/18, FW-043 adversary 24/27 (baseline), FW-045 pass7 61/61, FW-042 pass2 44/46 (baseline).
 - **Regression/adversary pins:**
   - `/tmp/fw044-verify.sh` 61-probe harness (Pass-3 extended): **60/61 PASS** (HD1 heredoc multi-line body pre-existing scope-gap, accept-fail-closed → FW-051).
   - Pass-3 FP sanity 10-probe sweep: 10/10 ALLOW (wget download, wget -O dash, wget --method=GET, `GIT_TRACE=1 git log`, `FOO=bar echo`, `GH_TOKEN=abc gh pr view 42`, `API_KEY=xxx curl`, `?` in doc body, wget token in grep body, env var in commit msg).
@@ -831,7 +855,13 @@ _(none)_
   - **B3 wildcard refs**: `gh api -X DELETE repos/O/R/git/refs/heads/m*` — unclear if GitHub expands wildcard; likely rejected by server but worth validating. LOW severity.
   - **HD1 multi-line heredoc body**: `cat <<EOF\n<attack>\nEOF` — $CMD is captured with embedded newlines; grep scans line-by-line so attack line matches as standalone command. Fires fail-closed (MC3 echo-body FP class applied to heredoc). Accept-fail-closed status per FW-045 F1/F2 precedent.
   - **PA-D1/PA-D2 quote-concat DELETE** (FW-044 Pass-2 adversary MEDIUM-D): `gh api -X 'DE''LETE' repos/O/R/git/refs/heads/main` + `gh api -X "DE""LETE" repos/…` — bash concatenates adjacent quoted strings at runtime into a single `DELETE` token, but the regex sees `'DE''LETE'` / `"DE""LETE"` literally with internal quote pairs. Same preprocessing-class root as SP1-SP4 (quote-normalization required before pattern match).
-- **Blast radius:** MEDIUM. All sub-classes require attacker-crafted CTO command with explicit intent to bypass (SP1-SP4 quote-splice, $(…) subshell, %2f URL-encoding, `*` glob, quote-concat). Not natural mistyping. Same severity rationale as FW-044 parent. No amplification; straight bypass.
+  - **CA1 eval-body-with-escaped-quotes** (FW-044 hotfix-1 COO Pass-1): `eval "PATH=\"foo bar\" gh api -X DELETE refs/heads/main"` — backslash-escaped inner quotes inside quoted eval body require CMD_NORM to collapse `\"`→`"` before pattern match. Same preprocessing-class root as SP1-SP4 quoted-splice.
+  - **P2-A1 adjacent-quoted-string concat in VAR_ASSIGN value** (FW-044 hotfix-1 Pass-2): `FOO=''hello world'' gh api -X DELETE refs/heads/main` — bash concatenates adjacent empty-quoted + unquoted + empty-quoted tokens into a single `hello world` token at runtime, but the regex sees `''hello world''` literally. Same preprocessing-class root as PA-D1/PA-D2 quote-concat DELETE.
+- **Orthogonal (regex-extension, not preprocessing) scope-gaps — filed here for bundling (FW-044 hotfix-1 Pass-3 Sonnet):**
+  - **Full-path shell invocation**: `/bin/bash -c "gh api -X DELETE refs/heads/main"` — shell alternation `(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)` has no leading-slash-optional branch. Fix: add `(/(usr/)?bin/)?(bash|sh|…)` or `([^[:space:]]*/)?(bash|sh|…)` path-prefix optional.
+  - **Fused flag `-lc`**: `bash -lc "gh api -X DELETE refs/heads/main"` — shell-c branch requires literal `-c` but `-lc` is common bash idiom (login-shell + command). Fix: `-[a-zA-Z]*c` allowing multi-letter-fused-flag (e.g., `-lc`, `-xc`, `-vxc`). Alt: expand `-c` alternation to `(-c|-lc|-xc|-vc|-rc|-nc|-ec|--command)` explicit.
+  - **Wrapper-script indirection**: `./wrapper.sh` / `./bin/push.sh` / `$(command -v gh)` — hook can't read wrapper contents; same dataflow-decoupled class as FW-045 dot-source / xargs-stdin. Fix: fold into FW-040 Phase B (shell-parse-aware write-gate) — not fixable by flat regex.
+- **Blast radius:** MEDIUM. All sub-classes require attacker-crafted CTO command with explicit intent to bypass (SP1-SP4 quote-splice, $(…) subshell, %2f URL-encoding, `*` glob, quote-concat, escape-eval, full-path shell, fused-flag, wrapper indirection). Not natural mistyping. Same severity rationale as FW-044 parent. No amplification; straight bypass.
 - **Proposed fix:** Apply FW-042 v3.7.2 preprocessing chain to Layer 1. Specifically:
   - Derive `CMD_NORM` at Layer 1 entry: `echo "$CMD" | sed 's/\\"/"/g; s/\\'"'"'/'"'"'/g'` (collapses backslash-escaped quotes).
   - Derive `CMD_UNQUOTED` at Layer 1 entry: strip quote-adjacent characters that bash concatenates at runtime.
@@ -847,7 +877,11 @@ _(none)_
   - AC-5: `cat <<EOF\ngh api user\nEOF` (benign heredoc) → exit=0 (regression — MUST NOT fire on data-position heredoc that doesn't match current Phase 2b).
   - AC-6: `gh api -X 'DE''LETE' repos/O/R/git/refs/heads/main` → exit=2 (quote-concat sq).
   - AC-7: `gh api -X "DE""LETE" repos/O/R/git/refs/heads/main` → exit=2 (quote-concat dq).
-  - AC-8: Full regression: all FW-041/042/043/044/045 harnesses unchanged PASS.
+  - AC-8: `eval "PATH=\"foo bar\" gh api -X DELETE refs/heads/main"` → exit=2 (CA1 escape-eval).
+  - AC-9: `FOO=''hello world'' gh api -X DELETE refs/heads/main` → exit=2 (P2-A1 VAR-concat).
+  - AC-10: `/bin/bash -c "gh api -X DELETE refs/heads/main"` → exit=2 (full-path shell).
+  - AC-11: `bash -lc "gh api -X DELETE refs/heads/main"` → exit=2 (fused flag `-lc`).
+  - AC-12: Full regression: all FW-041/042/043/044/045 harnesses unchanged PASS (including FW-044 hotfix-1 harness).
 - **Effort:** M (~2-3h — CMD_NORM derivation at Layer 1 entry, subshell-eval stripping regex, 20+ probe harness, 2 Sonnet adversary passes, regression sweep).
 - **Owner:** CTO.
 - **Source:** FW-044 ship 2026-04-24. Parent FW-044 scope was "close `gh api -X DELETE refs/heads/main` Phase 2 scope" — unified positional regex approach handled all FW-044-scoped attack forms + FP avoidance, but deferred the 5 preprocessing-class bypasses to this ticket. Pattern: FW-042 was the Section 3b analog; FW-051 extends to Layer 1 for consistency.
