@@ -28,6 +28,9 @@ officers/
 memory/logs/*.jsonl
 memory/logs/*.log
 
+# Hook-regression runner outputs (overwritten on every run-hook-regression.sh)
+cabinet/tests/hook-regression/.last-run/
+
 # Per-officer session state (resets between runs)
 instance/memory/tier2/**/.session-state.json
 
