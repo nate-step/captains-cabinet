@@ -96,6 +96,19 @@ jobs:
             bash -n "$f"
           done
 
+      - name: Bash syntax check — scripts top-level
+        # 56 scripts at cabinet/scripts/*.sh (create-officer, resume-officer,
+        # notify-officer, record-experience, org-health-audit, etc.) are on the
+        # hot path for officer provisioning + day-to-day comms. Prior coverage
+        # was hooks/ + lib/ only — top-level syntax regressions would slip
+        # through every other step (which reads config via these scripts).
+        run: |
+          set -e
+          for f in /opt/founders-cabinet/cabinet/scripts/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
       - name: Shell unit tests — triggers.sh
         run: bash /opt/founders-cabinet/cabinet/scripts/test-triggers.sh
 
