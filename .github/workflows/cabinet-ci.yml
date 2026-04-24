@@ -143,6 +143,16 @@ jobs:
         # but silently hide drift classes. See scripts/test-audit-framework-backlog-drift.sh.
         run: bash /opt/founders-cabinet/cabinet/scripts/test-audit-framework-backlog-drift.sh
 
+      - name: Shell unit tests — pre-push hook (FW-007 + FW-025)
+        # 14 scenarios / 31 assertions covering the safety-critical pre-push hook:
+        # non-master fast-paths, legit fast-forward + first-create, force-overwrite
+        # + delete refusal, every is_announced() rejection branch (malformed TS,
+        # future TS, >300s stale, log missing, log is symlink, TS absent from log),
+        # and the full success path. Eval gate (FW-025) is stubbed per-fixture.
+        # Hook guards master branch integrity — regressions here would silently
+        # allow force-push/delete on master. See test-pre-push-hook.sh.
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-pre-push-hook.sh
+
       - name: Python tests — ETL transforms (FW-023)
         run: |
           cd /opt/founders-cabinet/cabinet/scripts/lib
