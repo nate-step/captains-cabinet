@@ -5,7 +5,7 @@
 #
 # Usage: reply-to-captain.sh "Your reply message"
 
-MESSAGE="${1:?Usage: reply-to-captain.sh \"message\" [\"captain's message for voice context\"]}"
+MESSAGE="${1:?Usage: reply-to-captain.sh \"message\" [\"captain message for voice context\"]}"
 CAPTAIN_CONTEXT="${2:-}"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN not set}"
 CAPTAIN_TELEGRAM_ID="${CAPTAIN_TELEGRAM_ID:?CAPTAIN_TELEGRAM_ID not set}"
