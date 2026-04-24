@@ -136,9 +136,14 @@ _(none)_
 ---
 
 ### FW-020 — Library MCP Python adapter (replace Spec 039 JSONL-on-disk archive)
-- **Status:** Proposed (deferred from Spec 039 PR-3 scope, 2026-04-21).
+- **Status:** SHIPPED 2026-04-24 — commit c4e41f8 on master; Cabinet CI arming.
 - **Problem:** Spec 039 archive strategy (§7.4) originally targeted Library MCP for Linear + GH snapshots. PR-3 shipped a JSONL-on-disk fallback at `instance/archive/039-migration-snapshots/` because the Library MCP is TypeScript-only; Python ETL can't call it. On-disk JSONL works but: (a) fragmented from other archives (briefs, specs) that DO live in Library, (b) no full-text search, (c) manual cleanup when wet-run superseded by Gate 4 prod cutover.
-- **Desired end state:** Python shim (`cabinet/scripts/lib/library-mcp-client.py`) that speaks the same MCP stdio protocol as the TS client. ETL `archive_to_library` calls `library.create_record(space='etl-snapshots', body=...)` instead of writing JSONL. Existing on-disk snapshots migrate via one-time backfill script.
+- **Fix shipped:**
+  - `cabinet/scripts/lib/library-mcp-client.py` (457 LOC): sync Python MCP client speaking NDJSON JSON-RPC 2.0 to `bun run library-mcp/index.ts`. 6 public methods (create_record, list_records, search, get_record, list_spaces, create_space) + `ensure_space` helper. Queue+background-thread I/O so per-call deadlines are enforceable.
+  - `cabinet/scripts/lib/etl-common.py archive_to_library` (+92/-17): module-level singleton + atexit cleanup (amortizes ~500ms bun spawn). `LIBRARY_MCP_ENABLED=true` env gate for opt-in rollout; any exception falls through to existing JSONL writer → ETL never drops a record.
+  - `cabinet/scripts/lib/tests/test_library_mcp_client.py` (993 LOC): pytest harness with `_BlockingStdout` (threading.Condition) for real pipe semantics. Covers all 6 methods + 7 error paths (incl. timeout, stale-reply discard, notification discard) + 7 archive_to_library integration scenarios (dry-run, disabled-env, JSONL default, MCP happy path, auto-space, MCP-error fallback, path-escape sanitization).
+  - Backfill unnecessary: `instance/archive/039-migration-snapshots/` was empty (Gate 4 cutover superseded wet-run).
+- **Sonnet adversary review:** 3 H + 4 M found pre-commit, all addressed: H-1 (stale-reply poisoning after timeout) → monotonic-deadline loop discards `resp_id < expected_id`; H-2 (server notifications with null id crashed client) → notifications discarded rather than raising ProtocolError; H-3 (tests fragile when server path absent) → `patch.object(Path, "is_file", return_value=True)` in harness. M-1 (blank-line recursion) → while-loop. 1 L was accepted as a minor follow-up hygiene item.
 - **Out of scope:** Replacing the Library MCP entirely. Keep TS server; add Python client.
 - **Effort:** ~1 day CTO. Small surface (stdio JSON-RPC, 3-4 methods needed).
 - **Owner:** CTO.
