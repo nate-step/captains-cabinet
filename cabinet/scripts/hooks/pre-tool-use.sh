@@ -475,8 +475,18 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   # letter-then-quote positions. Data-position quotes (preceded by space,
   # never by operator) don't match this pattern. STRICT_KW_START runs only
   # if HAS_SPLICE=1 — else we stay on CMD_STRIPPED's existing gates.
+  #
+  # v3.7.1 post-review fix (BUG-A): HAS_SPLICE runs on CMD_MASKED (quoted
+  # interiors replaced with literal `x`) rather than raw CMD. Raw CMD exposes
+  # boundary chars (|, &, ;) inside quoted strings, falsely triggering the
+  # splice signal on `grep -E "foo|docker" file`. CMD_MASKED keeps the outer
+  # quotes so letter-adjacent-quote / quote-adjacent-letter patterns at true
+  # command position still match, but interior pipes/ampersands become `x`
+  # and stop false-triggering the boundary class.
+  CMD_MASKED=$(printf '%s' "$CMD" \
+    | sed -e "s/\\\$'[^']*'/\$'x'/g" -e "s/'[^']*'/'x'/g" -e 's/"[^"$`]*"/"x"/g')
   HAS_SPLICE=0
-  if echo "$CMD" | grep -qE "(^|[;&|({)}\`!]|&&|\|\|)[[:space:]]*([A-Za-z_]+['\"\`]|['\"\`][A-Za-z_])"; then
+  if echo "$CMD_MASKED" | grep -qE "(^|[;&|({)}\`!]|&&|\|\|)[[:space:]]*([A-Za-z_]+['\"\`]|['\"\`][A-Za-z_])"; then
     HAS_SPLICE=1
   fi
 
@@ -615,7 +625,12 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   # v3.7 H11 fix: `rm -rf "/"` — CMD_STRIPPED wipes the quoted "/" entirely so
   # the slash vanishes before RM_FLEX scans. RM_FLEX_QS targets CMD (raw) and
   # tolerates quote chars wrapping the slash (`"/", '/', `/`).
-  RM_FLEX_QS='rm[[:space:]]+((-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?)[[:space:]]+)*(-[[:alnum:]]*[rR][[:alnum:]]*|--recursive)([[:space:]]+(-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?))*[[:space:]]+['\''"`]+/'
+  # v3.7.1 post-review fix (BUG-B): terminal constraint `\**['"`]*([space];&|)]|$)`
+  # so pattern matches only when `/` is FOLLOWED by optional `*`, optional closing
+  # quote(s), then terminator/end. Prevents FP on legitimate `rm -rf '/tmp/build'`
+  # where the slash begins a non-root path. Still matches `rm -rf "/"`, `rm -rf '/'`,
+  # `rm -rf "/*"`, `rm -rf '/' && echo done`.
+  RM_FLEX_QS='rm[[:space:]]+((-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?)[[:space:]]+)*(-[[:alnum:]]*[rR][[:alnum:]]*|--recursive)([[:space:]]+(-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?))*[[:space:]]+['\''"`]+/\**['\''"`]*([[:space:];&|)]|$)'
 
   # Destructive filesystem: rm with recursive flag targeting / (+ flag-order variants)
   if echo "$CMD_STRIPPED" | grep -qE "${CMD_PREAMBLE}${PATH_PREFIX}${RM_FLEX}(\*|[[:space:]]|$)" \
