@@ -818,7 +818,7 @@ _(none)_
 ---
 
 ### FW-050 — Dashboard vitest wire-up: remove tsc exclude + CI test step (MEDIUM)
-- **Status:** Proposed 2026-04-23 by CTO during FW-048 follow-up survey.
+- **Status:** SHIPPED 2026-04-24 (PR #46 squashed to master as `bb9c801`). Local verification: `npx vitest run` 110/110 pass, `npx tsc --noEmit` exit 0 after tsconfig exclude removal. CI run `24872510326` green (Dashboard vitest step + typecheck both green on feature branch). Rebase notes: Crew agent worktree forked from pre-FW-048 base (ff11e85) — CTO rebased in-worktree onto master (3a8fff6), resolved CI workflow conflict (kept agent's vitest step after master's typecheck step), added AC-2 tsconfig exclude removal that agent missed, amended + force-pushed with explicit SHA lease before merge. Originally Proposed 2026-04-23 by CTO during FW-048 follow-up survey.
 - **Context:** FW-048 shipped `tsc --noEmit` in CI by excluding `**/*.test.ts` + `**/*.test.tsx` from `cabinet/dashboard/tsconfig.json`. The 3 reference test files (`botfather.test.ts`, `provisioning/flow.test.ts`, `provisioning/state-machine.test.ts`) import vitest, which is not in `devDependencies`. Spec 034 scaffolded them as vitest-syntax reference specs with the assumption that a "PR 5" would wire vitest + execute them in CI.
 - **Local discovery (CTO 2026-04-23 FW-048 follow-up):**
   - `npm install --save-dev vitest` + `npx vitest run` surfaces **6 test files, 92 total cases, 52 fail + 40 pass**. Failures stem from:
