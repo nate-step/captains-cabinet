@@ -109,6 +109,26 @@ jobs:
             bash -n "$f"
           done
 
+      - name: Bash syntax check — remaining subdirs (git-hooks, gates, cutover)
+        # Catches bash scripts in deeper subdirs the earlier globs miss:
+        # - git-hooks/pre-commit + pre-push (no .sh extension, safety rails for
+        #   force-push refusal + checkpoint-review gate, FW-007 + FW-019)
+        # - gates/*.sh (library-write gates, FW-021 idempotency-hash)
+        # - cutover/*.sh (Spec 039 migration tooling)
+        # Selects by shebang instead of extension so new subdirs are caught too.
+        # -mindepth 2 avoids re-checking top-level (covered by previous step).
+        run: |
+          set -e
+          while IFS= read -r f; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done < <(find /opt/founders-cabinet/cabinet/scripts -mindepth 2 \
+                     \( -path '*/hooks/*' -o -path '*/lib/*' \) -prune -o \
+                     -type f -print \
+                   | while IFS= read -r ff; do
+                       head -1 "$ff" 2>/dev/null | grep -qE '^#!.*bash' && echo "$ff"
+                     done)
+
       - name: Shell unit tests — triggers.sh
         run: bash /opt/founders-cabinet/cabinet/scripts/test-triggers.sh
 
