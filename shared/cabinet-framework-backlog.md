@@ -442,14 +442,25 @@ _(none)_
 - **Owner:** CTO when Phase A ships and operational data confirms any under-match hurts.
 
 ### FW-037 — EVAL-015 extractor fragility (single-quoted grep regex limitation)
-- **Status:** Proposed 2026-04-21 (Sonnet adversary Finding #10 on FW-032 Phase A).
-- **Symptom:** `run-golden-evals.sh:1006` extracts the FW-032 anchor regex via `sed -E "s/.*grep -qE '([^']+)'.*/\1/"` — this matches the shortest text between single quotes, so if the live anchor ever contains a literal `'` (via bash `'"'"'` embedding trick) the extractor truncates at the first inner quote and returns a partial regex. Phase A Finding #1 fix initially tried to add `['"'"']?` to match single-quoted filenames and broke the extractor; worked around by dropping single-quote support.
-- **Blast radius:** Test infrastructure only. No production impact. Future maintainers adding `'` to the anchor will silently break EVAL-015 until they realize.
-- **Proposed fix:** Two options:
-  1. Switch anchor to a double-quoted `grep -qE "..."` with escape for `$` → then `'` needs no escape in the anchor text; simplify extractor to `sed -E 's/.*grep -qE "([^"]+)".*/\1/'`.
-  2. Extract the anchor via a different channel — e.g., a comment-delimited block `# FW-032-ANCHOR-START...# FW-032-ANCHOR-END` with the pattern on its own line.
-- **Effort:** XS (~15min, one of the two options).
-- **Owner:** CTO when extending the anchor.
+- **Status:** SUPERSEDED-BY-FW-046 2026-04-24 (narrow scope closed). EVAL-015's sed extractor was replaced with direct hook invocation + observable-side-effect probe (`ev15_hook_probe()` at run-golden-evals.sh:1148) as part of FW-046 migration (commit bundle landing EV11/13/15/16). EVAL-022 Check 3 pins the migration by failing if any of the 4 eval's variable assignments re-introduce the fragile `sed -E "s/.*grep -qE '([^']+)'.*/\1/"` pattern.
+- **Residual latent risk:** EVAL-017 (FW-035 infra-gate anchor, run-golden-evals.sh:1416) still uses the same fragile sed extractor — same class, not in FW-046's migration scope. Current post-tool-use.sh infra-gate anchor (line 497) contains no `'\''` shell-escape so the extractor works today, but a future edit that adds `'\''` (e.g., to match single-quoted filenames) would silently truncate the extracted regex → EV17 would false-pass while the gate silently lost coverage.
+- **Follow-up tracking:** Filed as FW-052 (this backlog, below) — "Migrate EVAL-017 to FW-046 direct-invocation pattern". Pending operational trigger (post-tool-use.sh infra-gate gains `'\''`) OR eager migration at next CTO maintenance window.
+- **Historic symptom:** `run-golden-evals.sh:1006` extracted the FW-032 anchor regex via `sed -E "s/.*grep -qE '([^']+)'.*/\1/"` — matched shortest text between single quotes, so if the live anchor ever contained a literal `'` (via bash `'"'"'` embedding trick) the extractor truncated at the first inner quote. Phase A Finding #1 fix initially tried to add `['"'"']?` to match single-quoted filenames and broke the extractor; FW-032 Phase A worked around by dropping single-quote support; FW-046 closed the class permanently by replacing extraction with direct invocation.
+- **Original fix options (now documented as FW-046 pattern):** The permanent fix chosen was **Option 3**: replace regex extraction with direct hook invocation + observable-side-effect probe (TG rate key for EV15; analogous Redis key or stdout capture for EV17). Options 1 (double-quoted anchor) and 2 (comment-delimited block) were superseded — direct invocation is more robust and doesn't require hook-side cooperation.
+- **Effort:** DONE for EVAL-015 (superseded by FW-046). See FW-052 for EVAL-017 residual.
+- **Owner:** CTO (narrow scope closed 2026-04-24). FW-052 owner: CTO when extending FW-035 infra-gate OR at next maintenance window.
+
+### FW-052 — FW-046 migration Phase B: EVAL-017 infra-gate anchor extractor migration (LOW, DEFERRED)
+- **Status:** Proposed 2026-04-24 (CTO proactive cleanup during FW-037 backlog hygiene).
+- **Symptom:** `run-golden-evals.sh:1416` extracts the FW-035 infra-gate anchor via `sed -E "s/.*grep -qE '([^']+)'.*/\1/"` — same fragile class closed for EVAL-011/013/015/016 via FW-046. Current `post-tool-use.sh:497` infra-gate anchor contains no `'\''` so the extractor works today; the latency is that any future edit growing a `'\''` (e.g., single-quoted filename support) silently truncates the extracted regex and EVAL-017 false-passes.
+- **Blast radius:** Test infrastructure only. EVAL-017 guards FW-035 infra-gate stdout behavior. A silent truncation would leave a real FW-035 anchor regression unguarded until operationally observed. No production bypass.
+- **EVAL-022 coverage gap:** Check 3's `for ev_prefix in EV11 EV13 EV15 EV16` loop does NOT include EV17 (by design — Check 3 asserts the 4 FW-046-migrated evals stayed migrated). Check 1 (line 1716-1727) DOES fire on post-tool-use.sh having `'\''` inside grep -qE + any surviving sed extractor with `post-tool-use` context, so EV17 is partially guarded — but the error message names EVAL-011/013 specifically, which would be misleading if EV17 is the trigger.
+- **Proposed fix:** Two sub-scopes:
+  1. **Migrate EVAL-017 extractor → direct hook invocation** (FW-046 pattern). Replace line 1416 sed extraction + positive/negative matrix loops at lines 1422-1470 with a `ev17_hook_probe()` function that invokes `post-tool-use.sh` directly and asserts on the infra-gate stdout marker ("cabinet infra review required" or similar — see post-tool-use.sh:497 emit block).
+  2. **Extend EVAL-022 Check 3 loop to include EV17** as a belt-and-suspenders regression guard against re-introducing the fragile extractor during future edits. Also update Check 1's error message scope from `EVAL-011/013` to `EVAL-011/013/017` once EV17 is migrated.
+- **Effort:** S (~30-40min: EV17 rewrite to direct invocation + EVAL-022 extension + harness verification on current green state).
+- **Owner:** CTO. Priority: LOW (current usage zero; only bites if FW-035 infra-gate anchor gains `'\''`). Operational trigger OR maintenance-window eager migration both acceptable.
+- **Context:** Filed after FW-037 narrow-scope close (FW-046 pattern validated). Part of gradually extending FW-046 migration coverage to remaining sed-extraction evals.
 
 ### FW-038 — cross-hook prefix-wrapper class sweep (nohup / exec / stdbuf / subshell / brace / pipe-first)
 - **Status:** SECURITY-CRITICAL PATHS CLOSED 2026-04-24 via FW-045/FW-041/FW-043/FW-051 ship chain (empirically verified by CTO). Layer 1 + CI Green + Section 3b all block wrapper forms today. Nudge/display anchors (FW-028/032/033/035 cosmetic branches) still have the gap but are fail-safe direction — deferred pending operational data.
