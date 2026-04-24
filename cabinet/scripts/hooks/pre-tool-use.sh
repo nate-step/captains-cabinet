@@ -994,10 +994,42 @@ fi
 # AND-composed so both must pass to trip the gate.
 # Action regex covers BOTH `main` (Sensed product repo) and `master`
 # (framework repo default) — CTO pushes to both.
+# FW-044 (2026-04-24): Phase 2b — unified positional regex.
+# Covers `gh api <DELETE> refs/heads/(main|master)` + branch-protection
+# endpoint + curl DELETE + wget DELETE analogs. Structure: statement-boundary
+# anchor (^|[;&|({)}`!]) on gh/curl/wget prevents the pattern from matching
+# inside quoted echo bodies (`gh api user && echo "gh api -X DELETE refs/heads/main"`
+# → inside `"…"`, no boundary char precedes the inner `gh api` → no match).
+# Env-var prefix wrapper `([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*`
+# absorbs inline POSIX assignments before gh/curl/wget (`GH_TOKEN=abc gh api
+# -X DELETE refs/heads/main` — Pass-2 MEDIUM-C fix, canonical auth-override).
+# Clause-exclusion [^;&|#]* between anchor and DELETE/ref signals stops at
+# `;`/`&`/`|`/`#` → compound-command FPs (`gh api user && git commit -m
+# "…DELETE refs/heads/main…"`) don't cross clauses. Case-insensitive
+# [Dd][Ee][Ll][Ee][Tt][Ee] + fused flag `(-X|--method|--request)[=[:space:]]*`
+# covers -XDELETE, -X DELETE, -X=DELETE, --method DELETE, --method=DELETE,
+# --request DELETE, and quoted "DELETE"/'DELETE' variants (adversary A2/A5/A6).
+# Trailing-slash `(main|master)/?` handles ref with/without trailing slash
+# (Pass-1 B1). Branch-protection endpoint
+# `branches/(main|master)/protection` — same destructive verb class — blocked
+# as OR-alternative (Pass-1 D1). curl + wget anchors handle raw REST calls
+# that bypass gh (Pass-1 C3 + Pass-2 HIGH-B wget --method=DELETE).
+# Terminator set includes `?` (Pass-2 HIGH-A: `?v=1` query string on ref URL).
+# Order-agnostic: flag-before-ref AND ref-before-flag both covered by the two
+# top-level alternatives inside the trailing group.
+# Branch disambiguation via terminator [[:space:];&|(){}<>'"`!#\^~/?] — trailing
+# char `l`/`.`/`-`/`s` NOT in set so mainline/main.md/main-feature/mastership
+# correctly pass through.
+# Deferred to FW-051: Layer 1 quoted-splice (`"gh" api`), subshell-eval splice
+# (`$(echo gh) api`), URL-encoded refs (`refs%2fheads%2fmain`), wildcard refs
+# (`refs/heads/m*`), heredoc body scan, Pass-2 MEDIUM-D quote-concat DELETE
+# (`-X 'DE''LETE'`). Same root class as FW-042 pre-v3.7.2 BSQ — Layer 1 does
+# not apply CMD_NORM.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
   if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
-     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}<>'\''"`!#\\^~]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*pr[[:space:]]+merge'; then
+     { echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}<>'\''"`!#\\^~]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*pr[[:space:]]+merge' || \
+       echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*(gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*api[[:space:]]|curl([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]|wget([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]])[^;&|#]*((-X|--method|--request)[=[:space:]]*["'\'']?[Dd][Ee][Ll][Ee][Tt][Ee]["'\'']?[^;&|#]*(refs/heads/(main|master)([[:space:];&|(){}<>'\''"`!#\\^~/?]|$)|branches/(main|master)/protection([[:space:];&|(){}<>'\''"`!#\\^~?]|$))|(refs/heads/(main|master)([[:space:];&|(){}<>'\''"`!#\\^~/?]|$)|branches/(main|master)/protection([[:space:];&|(){}<>'\''"`!#\\^~?]|$))[^;&|#]*(-X|--method|--request)[=[:space:]]*["'\'']?[Dd][Ee][Ll][Ee][Tt][Ee]["'\'']?)'; }; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
       echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
