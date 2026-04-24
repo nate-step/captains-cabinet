@@ -529,6 +529,13 @@ _(none)_
   2. **Quoted-string literal false-positive** — `echo "text > /workspace/product/x" > /tmp/y` false-blocks because regex treats the `>` inside the echo string as a real redirect. Common with commit messages, docs, error messages referencing product paths.
   3. **Scripting inline-writes (HIGH)** — `python3 -c 'open("/workspace/product/x","w").write(...)'`, `node -e 'fs.writeFileSync("/workspace/product/x", ...)'`, `ruby -e`. Bypasses entirely; regex can't inspect inline program semantics.
   4. **Additional write tools** — `awk '{print > "/workspace/product/x"}' file`, `dd of=/workspace/product/x`, `touch /workspace/product/x`, `mkdir /workspace/product/newdir`, `truncate /workspace/product/x`, `sqlite3 /workspace/product/x.db ".save..."`. All bypass current Phase A regex.
+  4a. **COO adversary addendum 2026-04-24 (6 write-tool classes not in existing Phase B list):**
+    - **perl -i / perl -e (HIGH)**: `perl -i -pe 's/x/y/' /workspace/product/src/file.ts` — inplace edit, directly modifies file. `perl -e 'open(F,">","/workspace/product/x"); print F "…"'` — arbitrary open+write via inline program. Severity HIGH per COO (hotfix consideration warranted; perl is ubiquitous on dev envs).
+    - **tar -xf -C / tar --directory= (HIGH)**: `tar -xf archive.tar -C /workspace/product/` — extracts archive content into product tree. `tar -xf archive.tar --directory /workspace/product/src/`. Bypasses Phase A regex entirely (no `>`/`sed -i`/`tee`/`cp`/`mv`/`rsync`/`patch` token). Severity HIGH per COO (hotfix consideration; archive-extraction over-writes arbitrary file set).
+    - **gawk -i inplace (MEDIUM)**: `gawk -i inplace '{gsub(/x/,"y")} 1' /workspace/product/x` — gawk has an `-i inplace` extension that edits files in-place. Uses extension file include so grep for `-i` + `inplace` needed. Severity MEDIUM.
+    - **ruby -i (MEDIUM)**: `ruby -i -pe 'gsub(/x/,"y")' /workspace/product/x` — inplace edit via `-i` flag (identical to perl). Severity MEDIUM.
+    - **ln -sf (MEDIUM)**: `ln -sf /etc/passwd /workspace/product/passwd.md` — force-symlink variant of #5 below. Covered separately because `-sf` bundle is a common single-flag idiom; current regex would miss both `-s` and `-sf`. Severity MEDIUM.
+    - **ex -s -c (LOW)**: `ex -s -c 'g/pat/d|x' /workspace/product/x` — vim's scripting mode, edits file + `:x` writes. Severity LOW (rarely used).
   5. **`ln -s` symlink attack (HIGH)** — `ln -s /etc/passwd /workspace/product/passwd.md` creates an in-repo symlink to arbitrary system files. Not a write to product content but does surface protected content through product repo. Worth blocking.
   6. **Subshell / process-substitution / heredoc** — `(cp src /workspace/product/dst)`, `$(cp src /workspace/product/dst)`, `cat <<EOF > /workspace/product/x`. Subshell currently blocks via substring serendipity; process-sub and heredoc do not.
   7. **Backtick and `eval`** — `eval "cp src /workspace/product/dst"`, `` `cp src /workspace/product/dst` ``. Bypass entirely.
@@ -550,7 +557,7 @@ _(none)_
   - Phase A (FW-034) landed 2026-04-22 as prerequisite baseline.
   - Component 2 (allow-list) requires audit of every officer's cabinet/scripts/ write history to derive permitted-path set — couples to FW-007 officer-capability audit work.
 - **Owner:** CTO (implementation + Component selection), defers to COO adversary before commit per standing review discipline.
-- **Source:** CTO Sonnet adversary round 1 (2026-04-22 pre-FW-034 Phase A commit, 15 findings × 3-way triage) + round 2 (2026-04-22 post-Phase-A-v2 regex: single-quote dest + no-space-semicolon bypasses found, both folded into Phase A). Phase B is the explicitly deferred remainder.
+- **Source:** CTO Sonnet adversary round 1 (2026-04-22 pre-FW-034 Phase A commit, 15 findings × 3-way triage) + round 2 (2026-04-22 post-Phase-A-v2 regex: single-quote dest + no-space-semicolon bypasses found, both folded into Phase A). Phase B is the explicitly deferred remainder. 2026-04-24 COO adversary addendum added 6 write-tool classes (#4a) not previously named — perl -i + tar -xf -C warrant hotfix consideration per COO severity rating.
 
 ### FW-041 — FW-029 Layer 1 Phase 1 anchor: `git -C` / `gh -R` global-flag bypass (HIGH)
 - **Status:** SHIPPED 2026-04-23 Phase 1. Known MEDIUM scope-gap (quoted-space flag value) filed as FW-041 Phase 2 below. Originally Proposed 2026-04-22 (CTO Sonnet background audit of all hook-surface regexes against FW-034 Rule 4 class, same pre-tool-use.sh file).
