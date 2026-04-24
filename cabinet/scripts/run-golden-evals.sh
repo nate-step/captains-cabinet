@@ -943,6 +943,13 @@ else
     # guard: RAW $CMD prong preserves escape-aware atom semantics (FW-041 hf4),
     # CMD_L1_NORM prong catches empty-quote-pair bypass, HAS_SPLICE-gated
     # CMD_L1_UNQUOTED prong catches command-position quoted splice.
+    # FW-051 Sonnet adversary Pass A (2026-04-24, same ship): 4 additional pins —
+    # ADV-1 env path-prefix (`/usr/bin/env bash -c "git push origin main"` —
+    # CRITICAL, required env atom extension to `([^[:space:]]*/)?env(...`);
+    # ADV-2 backtick splice (`` `gh` api -X DELETE refs/heads/main `` — HIGH,
+    # required backtick-strip `s/\`[^\`]*\`/...` in CMD_L1_NORM/UNQUOTED sed chain);
+    # ADV-3 short-path env (`/bin/env bash -c "gh api -X DELETE …"`);
+    # ADV-4 Section 7 backtick splice (`` `gh` api pulls/42/merge ``).
     for cmd in \
       "git push origin main" \
       "git push origin master" \
@@ -1032,7 +1039,11 @@ else
       "gh api -X \"DE\"\"LETE\" repos/O/R/git/refs/heads/main" \
       "eval \"PATH=\\\"foo bar\\\" gh api -X DELETE refs/heads/main\"" \
       "/bin/bash -c \"gh api -X DELETE refs/heads/main\"" \
-      "bash -lc \"gh api -X DELETE refs/heads/main\""; do
+      "bash -lc \"gh api -X DELETE refs/heads/main\"" \
+      "/usr/bin/env bash -c \"git push origin main\"" \
+      "/bin/env bash -c \"gh api -X DELETE refs/heads/main\"" \
+      "\`gh\` api -X DELETE refs/heads/main" \
+      "\`gh\` api pulls/42/merge"; do
       ev14_hook_probe "$cmd"
       if [ $? -ne 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate FAILED to fire on legitimate push/merge: $cmd (hook exit $? — expected 2). Real push would slip past Crew-review requirement."
