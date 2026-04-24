@@ -12,22 +12,7 @@
  *   cd cabinet/dashboard && npx vitest src/lib/provisioning/state-machine.test.ts
  */
 
-// vitest is not yet installed in this package — these tests are authoritative
-// reference specs. Add "vitest" to devDependencies to run them.
-// The globals below resolve at runtime when vitest is present.
-/* global describe, it, expect */
-declare function describe(name: string, fn: () => void): void
-declare function it(name: string, fn: () => void): void
-declare const expect: (val: unknown) => {
-  toBe: (expected: unknown) => void
-  toBeUndefined: () => void
-  toBeDefined: () => void
-  toContain: (expected: unknown) => void
-  toHaveLength: (n: number) => void
-  not: { toContain: (expected: unknown) => void; toBeNull: () => void }
-  toBeNull: () => void
-  toBeGreaterThan: (n: number) => void
-}
+import { describe, it, expect } from 'vitest'
 import {
   canTransition,
   isTimedOut,

@@ -11,8 +11,6 @@
  *   - generateBotFatherLink produces correct URLs
  */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — vitest not yet installed (PR 5 wires test runner); remove when vitest added to devDeps
 import { describe, it, expect } from 'vitest'
 import {
   extractTokenFromForward,
@@ -25,42 +23,44 @@ import {
 // ---------------------------------------------------------------------------
 // Regex: valid tokens
 // ---------------------------------------------------------------------------
+// NOTE: All tokens below use 35-char secrets to satisfy BOT_TOKEN_RE {35,}
+// (Telegram spec: exactly 35 base64url chars after the colon).
+// The original reference spec used shorter example tokens — extended here
+// with padding chars to match the regex requirement (FW-050 wire-up).
 describe('extractTokenFromForward — valid tokens', () => {
   it('extracts token from full BotFather message', () => {
     const msg =
       "Done! Congratulations on your new bot. You will find it at t.me/mybot. " +
-      "Use this token to access the HTTP API:\n1234567890:AAFabcdefghijKLMNO_pqrstuvwxyz123\n\nKeep your token secure."
+      "Use this token to access the HTTP API:\n1234567890:AAFabcdefghijKLMNO_pqrstuvwxyxxz123\n\nKeep your token secure."
     const result = extractTokenFromForward(msg)
     expect(result).not.toBeNull()
-    expect(result!.token).toBe('1234567890:AAFabcdefghijKLMNO_pqrstuvwxyz123')
+    expect(result!.token).toBe('1234567890:AAFabcdefghijKLMNO_pqrstuvwxyxxz123')
     expect(result!.lastFour).toBe('z123')
   })
 
   it('extracts token when message is just the token', () => {
-    const msg = '987654321:ABCdef_GHIjklMNOpqr-STUvwxyz1234'
+    const msg = '987654321:ABCdef_GHIjklMNOpqr-STUvwxyzxxx1234'
     const result = extractTokenFromForward(msg)
     expect(result).not.toBeNull()
-    expect(result!.token).toBe('987654321:ABCdef_GHIjklMNOpqr-STUvwxyz1234')
+    expect(result!.token).toBe('987654321:ABCdef_GHIjklMNOpqr-STUvwxyzxxx1234')
   })
 
   it('handles 12-digit bot ID (upper bound)', () => {
-    const msg = '123456789012:AAFabcdefghijKLMNO_pqrstuvwxy'
-    // 30 chars in secret portion — still valid if >= 35 per lenient regex
-    // but strict requires exactly 35, let's test a valid 35-char secret
-    const msg2 = '123456789012:AAFabcdefghijKLMNO_pqrstuvwxyz1'
+    // 35-char secret with 12-digit bot ID
+    const msg2 = '123456789012:AAFabcdefghijKLMNO_pqrstuvwxxxxxyz1'
     const result = extractTokenFromForward(msg2)
     expect(result).not.toBeNull()
   })
 
   it('handles 8-digit bot ID (lower bound)', () => {
-    const msg = '12345678:ABCdef_GHIjklMNOpqr-STUvwxyz1234'
+    const msg = '12345678:ABCdef_GHIjklMNOpqr-STUvwxyzxxx1234'
     const result = extractTokenFromForward(msg)
     expect(result).not.toBeNull()
-    expect(result!.token).toBe('12345678:ABCdef_GHIjklMNOpqr-STUvwxyz1234')
+    expect(result!.token).toBe('12345678:ABCdef_GHIjklMNOpqr-STUvwxyzxxx1234')
   })
 
   it('handles token with hyphens and underscores in secret', () => {
-    const token = '99988877:_abcDEF-ghiJKL_mnoPQR-stuVWX_yz1'
+    const token = '99988877:_abcDEF-ghiJKL_mnoPQR-stuVWXxxx_yz1'
     const result = extractTokenFromForward(`Here is your token: ${token}`)
     expect(result).not.toBeNull()
     expect(result!.token).toBe(token)
@@ -123,10 +123,10 @@ describe('extractTokenFromForward — edge cases', () => {
   })
 
   it('extracts first token when multiple appear (unlikely in practice)', () => {
-    const msg = '111111111:ABCdef_GHIjklMNOpqr-STUvwxyz1234 and 222222222:XYZdef_GHIjklMNOpqr-STUvwxyz5678'
+    const msg = '111111111:ABCdef_GHIjklMNOpqr-STUvwxyzxxx1234 and 222222222:XYZdef_GHIjklMNOpqr-STUvwxyzxxx5678'
     const result = extractTokenFromForward(msg)
     expect(result).not.toBeNull()
-    expect(result!.token).toBe('111111111:ABCdef_GHIjklMNOpqr-STUvwxyz1234')
+    expect(result!.token).toBe('111111111:ABCdef_GHIjklMNOpqr-STUvwxyzxxx1234')
   })
 })
 
@@ -139,7 +139,7 @@ describe('tokenLastFour', () => {
   })
 
   it('returns last 4 chars when secret ends in underscores', () => {
-    expect(tokenLastFour('123456789:ABCdef_GHIjklMNOpqr-STUvwxyz___')).toBe('x___')
+    expect(tokenLastFour('123456789:ABCdef_GHIjklMNOpqr-STUvwxyz___')).toBe('z___')
   })
 
   it('returns ???? for token missing colon', () => {
