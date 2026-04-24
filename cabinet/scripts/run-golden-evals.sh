@@ -921,7 +921,11 @@ else
     # FW-043 statement-boundary prefixes, FW-045 wrapper/inline-env forms,
     # FW-044 Phase 2b `gh api -X DELETE refs/heads/main` attack forms
     # (flag variants, ref endpoints, wrappers), FW-044 hotfix-1 Phase 2b
-    # prefix-asymmetry fix (wrapper+DELETE, VAR_ASSIGN quoted-space+DELETE).
+    # prefix-asymmetry fix (wrapper+DELETE, VAR_ASSIGN quoted-space+DELETE),
+    # FW-041 hotfix-2 + hotfix-4 flag-value rich atom: ANSI-C `-C $'path space'`,
+    # SQ/DQ embedded-after-eq `-c alias.x='val with space'`, backslash-escape
+    # inside quoted span (hotfix-3 atom), mixed unquoted+quoted `-c key=val'more'`.
+    # Regression guard against d752992-class silent revert of the rich atom.
     for cmd in \
       "git push origin main" \
       "git push origin master" \
@@ -987,7 +991,15 @@ else
       "eval \"gh api -X DELETE refs/heads/main\"" \
       "nohup gh api -X DELETE refs/heads/main" \
       "PATH=\"foo bar\" gh api -X DELETE refs/heads/main" \
-      "GH_HOST='api example com' gh api -X DELETE refs/heads/main"; do
+      "GH_HOST='api example com' gh api -X DELETE refs/heads/main" \
+      "git -C \$'path space' push origin main" \
+      "git -c alias.x='val with space' push origin main" \
+      "git -c alias.x=\"val with space\" push origin main" \
+      "git -c alias.x='va\\'l' push origin main" \
+      "git -c alias.x=\"va\\\"l\" push origin main" \
+      "git -C \$'x\\'y' push origin main" \
+      "git -c key=val'more' push origin main" \
+      "git -c key=val\"more\" push origin main"; do
       ev14_hook_probe "$cmd"
       if [ $? -ne 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate FAILED to fire on legitimate push/merge: $cmd (hook exit $? — expected 2). Real push would slip past Crew-review requirement."
@@ -1016,7 +1028,12 @@ else
       'gh api repos/O/R/git/refs/heads/feature-branch' \
       'gh api -X DELETE repos/O/R/git/refs/heads/MAIN' \
       'PATH="foo bar" echo hi' \
-      'env PATH="a b" ls'; do
+      'env PATH="a b" ls' \
+      'git -c color.ui=always log' \
+      "git -c user.name='Test User' log" \
+      "git -c user.name=\"Test User\" log" \
+      "git -C \$'my project' log" \
+      "git -c user.email=\$'a@b.c' log"; do
       ev14_hook_probe "$cmd"
       if [ $? -eq 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate WRONGLY fires on non-deploy command: $cmd — gate-reviewed key would be consumed without a real push, forcing unnecessary re-SET."
@@ -1029,7 +1046,7 @@ fi
 if [ -n "$EV14_FAILURE" ]; then
   fail "$EV14_FAILURE"
 else
-  pass "FW-029/041/043/044/045 gate anchors classify Layer 1 + CI Green cases correctly (real push/merge/DELETE-ref trips gate, intermediate echoes/commits/harnesses and non-main refs do not)"
+  pass "FW-029/041/043/044/045 + hotfix-4 gate anchors classify Layer 1 + CI Green cases correctly (real push/merge/DELETE-ref + flag-value-rich-atom attacks trip gate, intermediate echoes/commits/harnesses/config-values and non-main refs do not)"
 fi
 
 # ------------------------------------------------------------------
