@@ -52,3 +52,19 @@ probe "COO-F2 grep-empty-pattern" "grep '' /tmp/file" PASS
 probe "COO-F3 config-empty-dq"    'git config user.email ""' PASS
 probe "COO-F4 echo-backtick-user" 'echo "current user: `whoami`"' PASS
 probe "COO-F5 notify-backtick"    'bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh cpo "ci output: `date`"' PASS
+
+echo ""
+# FW-038 wrapper forms — regression guards for coverage shipped in FW-045/FW-041/
+# FW-043/FW-051 chain. The original FW-038 entry named these as "fail-OPEN for
+# Layer 1 + CI Green"; all 9 empirically BLOCK today (2026-04-24 CTO verified).
+# Pin them here so a future hook edit can't silently regress the close.
+echo "=== FW-038 wrapper-class forms — MUST BLOCK (regression guard) ==="
+probe "FW038-W1 nohup-L1"         'nohup git push origin main' BLOCK
+probe "FW038-W2 exec-L1"          'exec git push origin main' BLOCK
+probe "FW038-W3 stdbuf-L1"        'stdbuf -oL git push origin main' BLOCK
+probe "FW038-W4 nohup-S7-pulls"   'nohup gh api pulls/42/merge' BLOCK
+probe "FW038-W5 exec-S7-pulls"    'exec gh api pulls/42/merge' BLOCK
+probe "FW038-W6 nohup-XDELETE"    'nohup gh api -X DELETE repos/O/R/git/refs/heads/main' BLOCK
+probe "FW038-W7 subshell-L1"      '(git push origin main)' BLOCK
+probe "FW038-W8 brace-L1"         '{ git push origin main; }' BLOCK
+probe "FW038-W9 pipe-first-L1"    'true | git push origin main' BLOCK

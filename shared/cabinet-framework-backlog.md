@@ -452,7 +452,18 @@ _(none)_
 - **Owner:** CTO when extending the anchor.
 
 ### FW-038 — cross-hook prefix-wrapper class sweep (nohup / exec / stdbuf / subshell / brace / pipe-first)
-- **Status:** Proposed 2026-04-22 (COO FW-033 Phase A empirical validation — secondary forward-looking SGs).
+- **Status:** SECURITY-CRITICAL PATHS CLOSED 2026-04-24 via FW-045/FW-041/FW-043/FW-051 ship chain (empirically verified by CTO). Layer 1 + CI Green + Section 3b all block wrapper forms today. Nudge/display anchors (FW-028/032/033/035 cosmetic branches) still have the gap but are fail-safe direction — deferred pending operational data.
+- **Empirical verification 2026-04-24 (CTO, live hook invocation):** 9/9 wrapper bypass forms return exit=2 (BLOCKED) on current `pre-tool-use.sh`:
+  - `nohup git push origin main` → BLOCK ✓
+  - `exec git push origin main` → BLOCK ✓
+  - `stdbuf -oL git push origin main` → BLOCK ✓
+  - `nohup gh api pulls/42/merge` → BLOCK ✓ (Section 7 CI Green)
+  - `exec gh api pulls/42/merge` → BLOCK ✓
+  - `nohup gh api -X DELETE repos/O/R/git/refs/heads/main` → BLOCK ✓
+  - `(git push origin main)` → BLOCK ✓ (subshell)
+  - `{ git push origin main; }` → BLOCK ✓ (brace group)
+  - `true | git push origin main` → BLOCK ✓ (pipe-first)
+- **What shipped the close:** FW-045 hotfix-6/7 wrapper-class coverage in Layer 1 Phase 2 (commit bb...), FW-041 flag-tolerant group widening, FW-043 statement-boundary anchors, FW-051 triple-scan architecture (RAW + CMD_L1_NORM + HAS_SPLICE CMD_L1_UNQUOTED) all combined to catch wrapper-prefixed pushes via at least one of the three scan passes.
 - **Context:** The FW-028/029/032/033/035 anchor family (`_ACT_PREFIX` + command-start) has a consistent cross-cut gap: command WRAPPERS that precede the target stem silence every anchor. COO observed this while validating FW-033 Phase A; same class applies to all four hooks.
 - **Wrapper forms that silence all anchors:**
   - `nohup git push origin main` (nohup wrapper)
@@ -462,7 +473,7 @@ _(none)_
   - `{ git push origin main; }` (brace group)
   - `true | git push origin main` (pipe-first)
 - **Root cause:** `_ACT_PREFIX` covers `sudo`/`env`/`timeout` as the universal priv-esc stack but omits the broader "command wrapper" class. Wrappers rearrange the execution tree without being a variable assignment or priv-esc step, so we skipped them at initial scope. Consistent gap across FW-028 (auto-deploy detector), FW-029 (Layer 1 + CI Green gate), FW-032 (telegram whitelist), FW-033 (experience nudge), FW-035 (activity display + infra gate).
-- **Blast radius:** Mixed. Fail-safe for nudge/display (reminder not gate). Fail-safe for whitelist (main-cap enforced). **Fail-OPEN for Layer 1 + CI Green** — real production pushes via wrapper forms skip Crew-review. Zero observed usage today but operational drift possible if officer scripts adopt `nohup` for long-running deploys.
+- **Blast radius:** Mixed. Fail-safe for nudge/display (reminder not gate). Fail-safe for whitelist (main-cap enforced). **Was fail-OPEN for Layer 1 + CI Green** — now CLOSED via FW-045/FW-041/FW-043/FW-051 chain (verified 2026-04-24).
 - **Proposed fix (Phase B):** Prepend a generic wrapper-class to `_ACT_PREFIX`:
   ```
   _WRAP_PREFIX='^[[:space:]]*(nohup[[:space:]]+|exec[[:space:]]+|stdbuf[[:space:]]+(-[a-zA-Z][[:space:]]*[a-zA-Z]+[[:space:]]+)*)?'
