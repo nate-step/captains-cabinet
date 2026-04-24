@@ -46,7 +46,25 @@ def _load_module():
 
 @pytest.fixture
 def dv():
-    return _load_module()
+    """Load delta-verify fresh per test.
+
+    The conftest stubs `requests` as a bare ModuleType with no attributes, but
+    delta-verify.py's main() contains `except requests.RequestException` — Python
+    evaluates each except class when seeking a handler, even for exceptions of
+    unrelated types (e.g., a test that raises RuntimeError inside the try block).
+    Without RequestException on the stub, any such main() call fails with
+    AttributeError before the real exception can be caught.
+
+    We ensure the attribute exists here so every test sees a consistent shape.
+    Tests that want to simulate HTTP failure still override mod.requests via
+    _install_requests_fake, which carries a RequestException of its own.
+    """
+    mod = _load_module()
+    if not hasattr(mod.requests, "RequestException"):
+        mod.requests.RequestException = type(
+            "RequestException", (Exception,), {}
+        )
+    return mod
 
 
 # ── Fakes ────────────────────────────────────────────────────────────────────
