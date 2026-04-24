@@ -1487,6 +1487,37 @@ declare -a EV18_POS=(
   "cp -t/workspace/product/ /tmp/src"
   "mv -t/workspace/product/ /tmp/src"
   "cp -rfvt/workspace/product/ /tmp/src"
+  # FW-040 hotfix-5 Pattern 8 (perl -i inplace-edit) + Pattern 9 (tar write-to-product)
+  # FW-040 hotfix-6 Pass-2 Sonnet regression pins: -Ti (taint+inplace), -Wi (warn+inplace),
+  # -0777i (slurp+inplace) — lowercase-only prefix `[a-z]*` dropped these; `[^[:space:]Ii]*`
+  # restored coverage. Future narrowing that drops these must fail EVAL.
+  "perl -i /workspace/product/x"
+  "perl -i.bak -pe 's/x/y/' /workspace/product/x"
+  "perl -pi /workspace/product/x"
+  "perl -ipe 's/x/y/' /workspace/product/x"
+  "perl -ni -e 's/x/y/' /workspace/product/x"
+  "perl -i0 -pe 's/x/y/' /workspace/product/x"
+  "perl --in-place -pe 's/x/y/' /workspace/product/x"
+  "perl --in-place=.bak -pe 's/x/y/' /workspace/product/x"
+  "perl -Ti /workspace/product/x"
+  "perl -Wi.bak -e 's/x/y/' /workspace/product/x"
+  "perl -0777i.bak -e 's/x/y/gs' /workspace/product/x"
+  "perl -li -e 's/x/y/' /workspace/product/x"
+  "perl -wi /workspace/product/x"
+  "perl -si /workspace/product/x"
+  "perl -ai /workspace/product/x"
+  # Pattern 9a — tar -C / --directory into product (extract+create touch product tree)
+  "tar -C /workspace/product/ -xf /tmp/archive.tar"
+  "tar -C/workspace/product/ -xf /tmp/archive.tar"
+  "tar --directory /workspace/product/ -xf /tmp/archive.tar"
+  "tar --directory=/workspace/product/ -xf /tmp/archive.tar"
+  # Pattern 9b — tar -f / --file archive written to product (hotfix-6 --file= long-form pin)
+  "tar -cf /workspace/product/archive.tar /tmp/src"
+  "tar -czf /workspace/product/archive.tar /tmp/src"
+  "tar -c -f /workspace/product/x.tar /tmp/src"
+  "tar --file=/workspace/product/archive.tar -c /tmp/src"
+  "tar --file /workspace/product/archive.tar -c /tmp/src"
+  "tar -c --file=/workspace/product/x.tar /tmp/src"
 )
 for EV18_CMD in "${EV18_POS[@]}"; do
   EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
@@ -1529,6 +1560,22 @@ if [ -z "$EV18_FAILURE" ]; then
     "sed --posix 's/x/y/' /workspace/product/x"
     "sed 's/<a>/<b>/' /workspace/product/x.html > /tmp/out.html"
     "sed 's|<a>|<b>|' /workspace/product/x.md > /tmp/out.md"
+    # FW-040 hotfix-6 Pattern 8 FP guards (perl non-inplace operations on product)
+    # Future narrowings that mistakenly flag these as inplace (e.g., greedy prefix
+    # absorbing `i` in include path) must fail EVAL.
+    "perl -pe 's/x/y/' /workspace/product/x"
+    "perl -ne 'print' /workspace/product/x"
+    "perl -wn -e 'print' /workspace/product/x"
+    "perl -de1 /workspace/product/x"
+    "perl -I/usr/local/lib -pe 's/x/y/' /workspace/product/x"
+    "perl -Iinclude_dir -pe 's/x/y/' /workspace/product/x"
+    "perl -I./include -pe 's/x/y/' /workspace/product/x"
+    "perl -Ilib -pe 's/x/y/' /workspace/product/x"
+    # Pattern 9 FP guards — non-product tar operations
+    "tar -xf /tmp/archive.tar"
+    "tar -tf /tmp/archive.tar"
+    "tar -xf /tmp/archive.tar -C /tmp/dst"
+    "tar --directory=/tmp/dst -xf /tmp/archive.tar"
   )
   for EV18_CMD in "${EV18_NEG[@]}"; do
     EV18_JSON=$(jq -cn --arg cmd "$EV18_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
@@ -1555,7 +1602,7 @@ fi
 if [ -n "$EV18_FAILURE" ]; then
   fail "$EV18_FAILURE"
 else
-  pass "FW-034 Bash write-target anchor classifies product-write (45 positive — incl rsync/patch/tee long-flags/quoted-dest both kinds/chained-cmd/no-space-semicolon/-t+--target-directory=+>|/sed-i.bak/cp-mv -t bundle/sed HTML+XML bodies/cp-mv -t/DIR no-space/sed multi-expr intra-script semicolon) vs read-with-redirect / tmp-target (27 negative — incl cp -r source/rsync source/patch stdin/multi-arg cp/single-quoted source/sed non-i flags/rsync -rt source/sed --posix/sed HTML body read-redirect) correctly; CTO bypass preserved"
+  pass "FW-034 + FW-040 hotfix-5/hotfix-6 Bash write-target anchor classifies product-write (68 positive — FW-034: rsync/patch/tee/-t bundle + sed HTML/XML/multi-expr; FW-040 h5 Pattern 8 perl -i bundles + Pattern 9 tar -C/--directory + -f; FW-040 h6 Pattern 9b --file= long-form + Pattern 8 Sonnet-Pass-2 regression pins -Ti/-Wi/-0777i/-li/-wi/-si/-ai) vs read-with-redirect / tmp-target (39 negative — FW-034: cp -r source/rsync source/patch stdin/sed non-i/--posix; FW-040 h6 Pattern 8 perl -I/*include* path FP guards + -pe/-ne/-de1 non-inplace + Pattern 9 non-product tar -xf/-tf) correctly; CTO bypass preserved"
 fi
 
 # ------------------------------------------------------------------
