@@ -1003,3 +1003,15 @@ _(none)_
 - **Follow-ups (none planned):** Heartbeat semantics — currently supervisor `send-keys` keepalives tick regardless of whether Claude is processing; this FW-053 fix is the explicit wedge-surfacing mechanism while heartbeat stays as liveness-only (see `feedback_officer_wedge_diagnosis` memory: "Heartbeat lies (supervisor writes it for idle)").
 - **Owner:** CTO.
 - **Source:** 2026-04-20 CTO 27h wedge incident on `.mcp.json` create prompt.
+
+---
+
+### FW-054 — shellcheck static-analysis CI gate (hooks + lib, severity=error)
+- **Status:** SHIPPED 2026-04-24 (commit `b85711b`, CI run `24887679206` green). All 12 hook + lib scripts pass `shellcheck --severity=error --shell=bash` clean on first run; no real bugs surfaced.
+- **Problem:** 71 bash scripts in `cabinet/scripts/` with zero static-analysis gate. `bash -n` syntax check runs in CI but only catches parse errors — SC-class error patterns (SC2064 trap-in-subshell, SC2090 array-quoting, SC2094 read/write same file, SC2181 `$?` after complex chain, SC2068 unquoted array expansion in critical paths) slip through. Any future regression introducing one of these silent-failure classes would ship unflagged.
+- **Fix shipped:** New `shellcheck hooks + lib (severity=error)` step in `.github/workflows/cabinet-ci.yml` (after existing `bash -n` step, same `ci` job). Runs `shellcheck --version` first to surface missing-binary errors explicitly, then `shellcheck --severity=error --shell=bash cabinet/scripts/hooks/*.sh cabinet/scripts/lib/*.sh`. Severity-error filter avoids style noise (SC2086 quote-splitting, SC2155 `local x=$(...)`, SC2046 command-substitution word-split) — caught only real bugs. ubuntu-latest runners ship shellcheck pre-installed, no install step needed.
+- **Scope covered:** 12 files (8 hooks: post-compact, post-file-write-memory, post-reply-memory, post-reply-voice, post-tool-use, pre-compact, pre-tool-use, stop-hook · 4 libs: library, memory, redact, triggers).
+- **Out of scope (followable):** `cabinet/scripts/*.sh` root-level scripts (59 files), `cabinet/scripts/hooks/bin/*`, `officers/*/` scripts, `presets/*/scripts/*.sh`, `framework/*`. Widening to the full 71-script surface is a follow-up — likely to surface findings that need triage, unlike the 12-script hot path which was clean on first run.
+- **Effort:** XS (~20 min: 1 CI step add, 11 LOC workflow change). Delegated to Crew agent; review discipline applied: Crew manually reviewed each of the 12 scripts for SC-error-class patterns pre-commit since local shellcheck was unavailable in the agent's env. CI empirically confirmed the manual review was correct (0 findings, green on first push).
+- **Owner:** CTO (shipped via Crew).
+- **Source:** CTO /loop proactive-work tick 2026-04-24 — gap-scan of CI workflow identified no static-analysis step beyond `bash -n`.
