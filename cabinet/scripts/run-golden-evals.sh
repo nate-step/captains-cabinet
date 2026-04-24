@@ -918,7 +918,10 @@ else
   if [ -z "$EV14_FAILURE" ]; then
     # Layer 1 + CI Green positive matrix — hook MUST exit 2 (gate fires).
     # Covers: FW-029 baseline, FW-041 flag-tolerant (git -C, gh -R),
-    # FW-043 statement-boundary prefixes, FW-045 wrapper/inline-env forms.
+    # FW-043 statement-boundary prefixes, FW-045 wrapper/inline-env forms,
+    # FW-044 Phase 2b `gh api -X DELETE refs/heads/main` attack forms
+    # (flag variants, ref endpoints, wrappers), FW-044 hotfix-1 Phase 2b
+    # prefix-asymmetry fix (wrapper+DELETE, VAR_ASSIGN quoted-space+DELETE).
     for cmd in \
       "git push origin main" \
       "git push origin master" \
@@ -970,7 +973,21 @@ else
       "curl -X PUT https://api.github.com/repos/OWNER/REPO/pulls/42/merge" \
       "gh api repos/OWNER/REPO/pulls/42/merge -X PUT" \
       "cd /tmp && curl -X PUT https://api.github.com/repos/OWNER/REPO/pulls/42/merge" \
-      "(gh api repos/OWNER/REPO/pulls/42/merge -X PUT)"; do
+      "(gh api repos/OWNER/REPO/pulls/42/merge -X PUT)" \
+      "gh api -X DELETE repos/O/R/git/refs/heads/main" \
+      "gh api -X DELETE repos/O/R/git/refs/heads/master" \
+      "gh api -XDELETE repos/O/R/git/refs/heads/main" \
+      "gh api -X=DELETE repos/O/R/git/refs/heads/main" \
+      "gh api -X \"DELETE\" refs/heads/main" \
+      "gh api -X delete refs/heads/main" \
+      "gh api --method DELETE refs/heads/main" \
+      "gh api -X DELETE refs/heads/main/" \
+      "curl -X DELETE https://api.github.com/repos/O/R/git/refs/heads/main" \
+      "gh api -X DELETE repos/O/R/branches/main/protection" \
+      "eval \"gh api -X DELETE refs/heads/main\"" \
+      "nohup gh api -X DELETE refs/heads/main" \
+      "PATH=\"foo bar\" gh api -X DELETE refs/heads/main" \
+      "GH_HOST='api example com' gh api -X DELETE refs/heads/main"; do
       ev14_hook_probe "$cmd"
       if [ $? -ne 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate FAILED to fire on legitimate push/merge: $cmd (hook exit $? — expected 2). Real push would slip past Crew-review requirement."
@@ -994,7 +1011,12 @@ else
       'gh pr list' \
       'gh pr checkout 42' \
       'git log --oneline' \
-      'git status'; do
+      'git status' \
+      'gh api repos/O/R/git/refs/heads/main' \
+      'gh api repos/O/R/git/refs/heads/feature-branch' \
+      'gh api -X DELETE repos/O/R/git/refs/heads/MAIN' \
+      'PATH="foo bar" echo hi' \
+      'env PATH="a b" ls'; do
       ev14_hook_probe "$cmd"
       if [ $? -eq 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate WRONGLY fires on non-deploy command: $cmd — gate-reviewed key would be consumed without a real push, forcing unnecessary re-SET."
@@ -1007,7 +1029,7 @@ fi
 if [ -n "$EV14_FAILURE" ]; then
   fail "$EV14_FAILURE"
 else
-  pass "FW-029 gate anchors classify Layer 1 + CI Green amplification cases correctly (real push/merge trips gate, intermediate echoes/commits/harnesses do not)"
+  pass "FW-029/041/043/044/045 gate anchors classify Layer 1 + CI Green cases correctly (real push/merge/DELETE-ref trips gate, intermediate echoes/commits/harnesses and non-main refs do not)"
 fi
 
 # ------------------------------------------------------------------
