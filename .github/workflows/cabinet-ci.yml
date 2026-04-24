@@ -121,6 +121,13 @@ jobs:
           npm ci
           npx tsc --noEmit
 
+      - name: Dashboard vitest
+        # FW-050: run vitest test suite for the 3 reference test files.
+        # vitest.config.ts excludes .next/** mirrors so only real tests run.
+        run: |
+          cd /opt/founders-cabinet/cabinet/dashboard
+          npm test
+
       - name: Golden evals
         # EVAL-023 (FW-047) runs under CABINET_HOOK_TEST_MODE=1 so trigger_send
         # fan-out is suppressed. This step also exercises the full hook-probe

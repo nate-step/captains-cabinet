@@ -133,7 +133,7 @@ describe('Provisioning flow state transitions', () => {
 
   it('transitions adopting_bot → confirming_token when token received', async () => {
     const { handleMessage, loadState } = await import('./flow')
-    const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvw123'
+    const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvxw123'
 
     // Pre-populate state at adopting_bot step
     const state: ProvisioningState = {
@@ -163,7 +163,7 @@ describe('Provisioning flow state transitions', () => {
 
   it('transitions confirming_token → adopting_bot (next officer) on yes', async () => {
     const { handleMessage, loadState } = await import('./flow')
-    const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvw123'
+    const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvxw123'
 
     const state: ProvisioningState = {
       step: 'confirming_token',
@@ -193,7 +193,7 @@ describe('Provisioning flow state transitions', () => {
 
   it('transitions to polling_status when all bots adopted', async () => {
     const { handleMessage, loadState } = await import('./flow')
-    const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvw123'
+    const RAW_TOKEN = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuvxw123'
 
     const state: ProvisioningState = {
       step: 'confirming_token',
@@ -420,11 +420,11 @@ describe('Token extraction', () => {
   it('extracts token from raw BotFather forward text', async () => {
     const { extractTokenFromForward } = await import('./flow')
 
-    const raw = 'Use this token to access the HTTP API:\n123456789:ABCDEFabcdefghij-KLMNO_pqrstu'
+    const raw = 'Use this token to access the HTTP API:\n123456789:ABCDEFabcdefghij-KLMNO_pqxxxxxxrstu'
     const result = extractTokenFromForward(raw)
 
     expect(result).not.toBeNull()
-    expect(result?.token).toBe('123456789:ABCDEFabcdefghij-KLMNO_pqrstu')
+    expect(result?.token).toBe('123456789:ABCDEFabcdefghij-KLMNO_pqxxxxxxrstu')
     expect(result?.lastFour).toBe('rstu')
   })
 
@@ -437,8 +437,8 @@ describe('Token extraction', () => {
 
   it('shows orphan warning when token overridden', async () => {
     const { handleMessage } = await import('./flow')
-    const TOKEN_1 = '123456789:ABCDEFabcdefghij-KLMNO_pqrstu1234'
-    const TOKEN_2 = '987654321:ZYXWVUzyxwvutsrq-PONML_kjihgf9876'
+    const TOKEN_1 = '123456789:ABCDEFabcdefghij-KLMNO_pqrstuxx1234'
+    const TOKEN_2 = '987654321:ZYXWVUzyxwvutsrq-PONML_kjihgfxx9876'
 
     const state: ProvisioningState = {
       step: 'confirming_token',
