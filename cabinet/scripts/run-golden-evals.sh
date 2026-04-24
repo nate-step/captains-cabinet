@@ -926,6 +926,12 @@ else
     # SQ/DQ embedded-after-eq `-c alias.x='val with space'`, backslash-escape
     # inside quoted span (hotfix-3 atom), mixed unquoted+quoted `-c key=val'more'`.
     # Regression guard against d752992-class silent revert of the rich atom.
+    # FW-041 hotfix-4 COO Pass-3 adversary extensions (2026-04-24, commit daa30c4):
+    # 8 additional escape-aware span probe classes — ANSI-C-in-DQ `$'...'` nested,
+    # multi-`-c` chain, `-C`+`-c` fusion, escaped-quote inside ANSI-C, env+git+-c,
+    # gh `-H` quoted pr merge, nohup wrapper + quoted -c, env prefix + gh api DELETE.
+    # 4 FP adversary guards — benign escaped-space config value, commit-message DQ,
+    # ANSI-C echo body, git -c for non-push subcommand (rebase).
     for cmd in \
       "git push origin main" \
       "git push origin master" \
@@ -999,7 +1005,15 @@ else
       "git -c alias.x=\"va\\\"l\" push origin main" \
       "git -C \$'x\\'y' push origin main" \
       "git -c key=val'more' push origin main" \
-      "git -c key=val\"more\" push origin main"; do
+      "git -c key=val\"more\" push origin main" \
+      "git -c alias.x=\"val \$'x y' stuff\" push origin main" \
+      "git -c alias.a='x y' -c alias.b='z w' push origin main" \
+      "git -C \$'my dir' -c alias.x='a b' push origin main" \
+      "git -c alias.x=\$'val\\'s space' push origin main" \
+      "GIT_TRACE=1 git -c alias.x='a b' push origin main" \
+      "gh -H \"Accept: x y\" pr merge 42 --squash" \
+      "nohup git -c alias.x='a b' push origin main" \
+      "PATH=\"foo bar\" gh api -X DELETE repos/a/b/refs/heads/main"; do
       ev14_hook_probe "$cmd"
       if [ $? -ne 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate FAILED to fire on legitimate push/merge: $cmd (hook exit $? — expected 2). Real push would slip past Crew-review requirement."
@@ -1033,7 +1047,11 @@ else
       "git -c user.name='Test User' log" \
       "git -c user.name=\"Test User\" log" \
       "git -C \$'my project' log" \
-      "git -c user.email=\$'a@b.c' log"; do
+      "git -c user.email=\$'a@b.c' log" \
+      "git config alias.co 'checkout -f'" \
+      "git commit -m \"message with space\"" \
+      "echo \$'benchmark mode'" \
+      "git -c user.name='Me' rebase main"; do
       ev14_hook_probe "$cmd"
       if [ $? -eq 2 ]; then
         EV14_FAILURE="Layer 1 / CI Green gate WRONGLY fires on non-deploy command: $cmd — gate-reviewed key would be consumed without a real push, forcing unnecessary re-SET."
