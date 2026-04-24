@@ -282,19 +282,11 @@ unset _SKIP_MAIN_CAP
 # ============================================================
 if [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+
+  # 3a. Literal multi-word / case-sensitive prohibitions — substring match is
+  # safe here: these phrases are unlikely to appear inside filenames or grep
+  # patterns and are case-sensitive (uppercase SQL verbs, "vercel deploy").
   case "$CMD" in
-    *"rm -rf /"*|*"rm -rf /*"*)
-      echo "BLOCKED: Destructive filesystem operation" >&2
-      exit 2
-      ;;
-    *"docker"*|*"systemctl"*|*"sudo"*)
-      echo "BLOCKED: System-level command not permitted" >&2
-      exit 2
-      ;;
-    *"shutdown"*|*"reboot"*|*"halt"*)
-      echo "BLOCKED: System control command not permitted" >&2
-      exit 2
-      ;;
     *"vercel deploy"*|*"vercel --prod"*)
       echo "BLOCKED: Production deployment requires Captain approval" >&2
       exit 2
@@ -304,6 +296,380 @@ if [ "$TOOL_NAME" = "Bash" ]; then
       exit 2
       ;;
   esac
+
+  # 3b. Word-boundary prohibitions — target must appear in COMMAND POSITION,
+  # not as substring inside filenames, grep patterns, or quoted echo strings.
+  # FW-042: prior substring match (*"docker"*|*"sudo"*|...) silently blocked
+  # legitimate `grep docker file`, `ls docker-compose.yml`, `cat shutdown.md`.
+  #
+  # Approach (v3.3):
+  #  (a) CMD_STRIPPED: remove all `'...'`, `"..."`, `$'...'` spans from CMD, then
+  #      strip heredoc bodies (`<<WORD\n...\nWORD`). Eliminates quote/heredoc
+  #      mention FPs (`grep -E 'sudo|docker'`, `cat <<EOF\ndocker\nEOF`). Real
+  #      direct invocations (`sudo ls`, `{ sudo; }`) survive and are caught by
+  #      CMD_PREAMBLE below.
+  #  (b) CMD_PREAMBLE on STRIPPED: boundary-char anchor, optional shell reserved
+  #      word (then/do/else/elif), optional inline VAR=VAL, then keyword.
+  #  (c) SHELL_C_PREAMBLE / SHELL_HERE_PREAMBLE on RAW: detect `bash -c 'sudo'`,
+  #      `sh <<< 'docker'` etc. across 10 POSIX shells. Explicit shell-binary
+  #      prefix prevents literal `bash -c` inside echo strings from FPing.
+  #  (d) WRAPPER_PREAMBLE on RAW: exec|eval|nohup|time|trap|coproc[[ NAME]].
+  #      coproc NAME accepts `[A-Za-z_][A-Za-z0-9_]*` (bash identifier). Optional
+  #      flags with flag-arg absorber (`[/A-Z][^[:space:]]*` — uppercase/path
+  #      values only, avoids swallowing lowercase keyword as value).
+  #  (e) ENV_PREAMBLE on RAW (v3.3): dedicated because env's arg surface is too
+  #      permissive for WRAPPER's flag-only absorber — env takes arbitrary
+  #      lowercase args (`-u foo`, `--unset=PATH`, SQ/DQ VAR=VAL). Generic-token
+  #      absorber `[^[:space:]|><;&()}]+` stops at shell metachars so `env |
+  #      grep sudo` and `env > file` don't FP.
+  #  (f) COMMAND_PREAMBLE on RAW: only `command -p` is exec'ing (`command -v` is
+  #      introspection — print type). Dedicated so `command -v sudo` PASSes.
+  #  (g) BRACE_AFTER_COMMA: close `{,kw}` empty-first-element brace bypass.
+  #      Paired with `\}` inside keyword match + POST_SUFFIX_BRACE (omits `}`)
+  #      so `{,docker}-compose.yml` (filename brace prefix) doesn't FP.
+  #      Symmetric `{kw,}` caught via POST_SUFFIX's `,` in terminator set.
+  #
+  # v3.3 closes (from v3.2): heredoc-body strip (E22 FP); POST_SUFFIX comma
+  # `{kw,}`; BRACE_AFTER_COMMA `{,kw}`; env/coproc wrappers; A5 filename-brace
+  # FP (`ls {,docker}-compose.yml`); env lowercase flag-args (C1/C9);
+  # env long-flags C3 + env SQ/DQ VAR=VAL C5; coproc lowercase identifier D2.
+  #
+  # v3.4 post-adversary (shell-parse + regex dual-pass, 2026-04-23):
+  #   H1 — eval 'env sudo ls' bypassed: quoted-arg wipe before WRAPPER keyword.
+  #        Fix: EVAL_WRAPPER_PREAMBLE re-enters quoted eval arg. Extended to
+  #        env|nohup|exec|time|trap|coproc (broader probe confirmed leak class).
+  #   H2 — env \sudo ls bypassed: absorber ate `\sudo` as one token. Fix:
+  #        ENV_PREAMBLE absorber excludes `\`; grep branches add `\\?` before kw.
+  #   H3 — command -p -- sudo ls bypassed: no `--` absorber. Fix: COMMAND_PREAMBLE
+  #        now absorbs `(--[[:space:]]+)?` after optional `-p`.
+  #   H4 — {rm,} -rf / bypassed: rm block only caught `{,rm}` form. Fix: symmetric
+  #        `(^|anchor)\{rm,+\}[[:space:]]+-rf` branch added. sudo/shutdown blocks
+  #        already catch via POST_SUFFIX comma terminator.
+  #   BUG 2 — bash -xc/-vc/-ec/-lc/-ic/-xec/--login -c/--norc -c bypassed:
+  #        SHELL_C flag absorber ate `-xc` as single flag, swallowing c-marker.
+  #        Fix: absorber excludes ANY short flag containing `c`, adds `--[A-Za-z]`
+  #        long-flag absorber. c-marker = single-dash cluster with at least one
+  #        `c` anywhere (covers all 9 variants).
+  #   PARITY — SHELL_HERE (`bash --login <<<`) same single-dash-only absorber
+  #        limitation. Fix: added `--[A-Za-z]` long-flag to SHELL_HERE_PREAMBLE
+  #        absorber (no c-marker since `<<<` itself is the trigger).
+  #
+  # v3.5 post-adversary (shell-parse + regex dual-pass #2, 2026-04-23):
+  #   BUG-1 (regex HIGH) — `bash -C -c 'sudo'` bypassed: SHELL_C absorber range
+  #        `[ABD-Z]` excluded uppercase-C (range letter-math), so `-C -c` not
+  #        recognized as absorber+c-marker. Fix: widen to `[A-Zabd-z0-9]` (A-Z
+  #        full, lowercase excludes `c` only).
+  #   BUG-2 (regex HIGH) — `eval "env 'sudo' ls"`, `eval "nohup \"sudo\" ls"`:
+  #        quoted keyword inside wrapper arg. LEAD_PREFIX `['"]?\\*` couldn't
+  #        eat nested escape-quote `\"` or interleaved `'\`. Fix: LEAD_PREFIX
+  #        widened to `(\\|['"])*` — any order/count of backslash+quote chars.
+  #        Also POST_SUFFIX_Q adds `\` for trailing `\"` after keyword.
+  #   BUG-3 (regex MED) — `\eval 'sudo'`, `\nohup sudo`, `\env sudo`: leading
+  #        backslash before wrapper name. Shell treats `\eval` as `eval` (no-op
+  #        escape on non-special char). Fix: all preambles prefix with `\\*`.
+  #   BUG-4 (regex MED) — `eval 'env 2>/dev/null sudo'`, `eval 'nohup 2>&1 reboot'`:
+  #        redirect inside eval-quoted arg. EVAL_WRAPPER absorber excluded `><&`,
+  #        couldn't eat `2>/dev/null` or `2>&1`. Fix: remove `><&` from absorber
+  #        exclusion — allow redirect/background chars. Same applied to ENV.
+  #   H1 (shell-parse HIGH) — `bash <<EOF\nsudo\nEOF`: heredoc body untouched by
+  #        strip (preserved for CMD_STRIPPED), but body content fed to shell is
+  #        direct invocation path. Fix: SHELL_HEREDOC_PREAMBLE detects
+  #        `bash/sh/... <<WORD`, then perl multiline scan of body for keyword.
+  #   H2 (shell-parse HIGH) — `eval 'eval sudo ls'`: double-eval nesting; outer
+  #        EVAL_WRAPPER inner wrapper list omitted `eval` itself. Fix: added
+  #        `eval` to inner wrapper alternation.
+  #   H3 (shell-parse HIGH) — `eval 'bash -c sudo ls'`: eval of shell command.
+  #        Inner wrapper list omitted shell binaries. Fix: added
+  #        `bash|sh|dash|zsh|ksh` to inner wrapper alternation.
+  #   BUG-5 (regex HIGH, v3.5 round 2) — `eval "exec 'rm' -rf /"`: quoted binary
+  #        name splits `rm -rf /` token sequence. Fix: rm EVAL_WRAPPER branch
+  #        uses `[[:space:]'"\\]+` interstitial class (accepts quote/backslash
+  #        between rm→-rf→/).
+  #
+  # v3.6 post-adversary (shell-parse + regex dual-pass #3, 2026-04-24):
+  #   B4 (HIGH) — `bash <<<sudo` (bare, no quote) bypassed: SHELL_HERE_PREAMBLE
+  #        required quote after `<<<`. Fix: `['"]` → `['"]?` (quote optional).
+  #   B5 (HIGH) — `/usr/bin/sudo`, `/sbin/reboot`, `/bin/rm -rf /`: full-path
+  #        invocation. All 7 keywords affected. Fix: PATH_PREFIX variable
+  #        `((/[^[:space:]/]+)+/)?` applied as optional prefix in all 24 grep
+  #        branches (3 kw groups × 8 paths). CMD_PREAMBLE anchor excludes bare
+  #        space so arg-position `echo /usr/bin/sudo` doesn't FP.
+  #   B6 (HIGH) — `bash --rcfile FILE -c 'sudo'`, `--init-file FILE`: long-flag
+  #        takes argument. Old SHELL_C/SHELL_HERE/SHELL_HEREDOC absorbers only
+  #        matched `--[a-z]+` without arg. Fix: optional value absorber
+  #        `([[:space:]]+[^-][^[:space:]]*)?` after each long flag.
+  #   B7/B8/B9 (HIGH) — `rm -fr /`, `rm -f -r /`, `rm --recursive --force /`:
+  #        flag-order variants bypassed literal `-rf` match. Fix: RM_FLEX pattern
+  #        requires rm + at least one recursive-indicator flag (r/R in short
+  #        cluster, or --recursive long) + trailing `/`. Catches all 8 flag
+  #        permutations while rejecting non-recursive `rm file.txt`.
+  #   B10 (HIGH) — `{,sudo,}` trailing comma: BRACE_AFTER_COMMA required `\}`
+  #        immediately after kw. Fix: `(kw)\}` → `(kw),*\}` (allow trailing
+  #        commas before close brace).
+  #   BYPASS 2 (HIGH) — `eval '(sudo)'`, `eval '{ sudo; }'`, `eval '! sudo ls'`:
+  #        subshell/brace-group/negation operators inside eval's quoted arg.
+  #        EVAL_WRAPPER inner wrapper list missed `(`, `{`, `!`. Fix: added
+  #        `[({!]` to wrapper alternation + post-wrapper `[[:space:]]+` →
+  #        `[[:space:]]*` (subshell-open doesn't require following space).
+  #   BYPASS 4 (MED) — `mksh -c 'sudo'`, `ash`, `fish`, `csh`, `tcsh`, `busybox`:
+  #        shell binary enumeration gap. Fix: extended SHELL_C/SHELL_HERE/
+  #        SHELL_HEREDOC/EVAL_WRAPPER shell list to 11 shells.
+  #
+  # Accepted gaps (uncommon, all tracked):
+  #   - redirect prefix: `>/dev/null sudo`, `2>&1 sudo`
+  #   - xargs wrapper:   `echo x | xargs sudo` (dataflow-decoupled, FW-040 Phase B)
+  #   - timeout wrapper: `timeout 10 sudo`
+  #   - process subst:   `<(sudo ...)` / `source <(echo sudo ...)`
+  #   - bare `$'reboot'` (ANSI-C as command) — stripped, no match
+  #   - variable expansion: `X=sudo; $X ls` (FW-040 Phase B)
+  #   - stdin-read shells: `bash <<<"cmd"` outer (string-input form caught; body
+  #     path is FW-040 Phase B class)
+  #   - `{,sudo}}` double-brace-close: bash PARSE-ERROR (not executable);
+  #     empirically verified via `bash -c '{,echo}} MAGIC_OK'` → `}: command not
+  #     found`. Classified SCOPE_GAP, not BUG; regex-adv confirmed non-exploitable.
+
+  # (a) Strip data-context quotes. sed -e runs each independently to survive
+  #     malformed quotes. Order: \$'...' then '...' then "...". Double-quote
+  #     strip preserves spans containing `$` or backtick (code-substitution
+  #     context) so `"$(sudo)"` and `"$(`sudo`)"` survive for RAW scans.
+  # v3.3: perl pipe strips `<<WORD\n...\nWORD` heredoc bodies — their content is
+  # always data, never a direct invocation. Fixes E22 FP (`cat <<EOF\ndocker...\nEOF`).
+  CMD_STRIPPED=$(printf '%s' "$CMD" \
+    | sed -e "s/\\\$'[^']*'//g" -e "s/'[^']*'//g" -e 's/"[^"$`]*"//g' \
+    | perl -0777 -pe 's/<<([A-Za-z_]\w*)\n.*?\n\1(?=\n|\z)//gs')
+
+  # v3.7 post-adversary Finding 2 fix: CMD_UNQUOTED preserves the CONTENT of quoted
+  # spans (unwraps them) instead of wiping them. Defeats quoted-token splice like
+  # `"sudo" ls`, `s"udo" ls`, `"su""do" ls`, `s'udo' ls` — adjacent-quote concat is
+  # a POSIX word-splicing feature; bash emits the fused literal. Scanned against
+  # STRICT_KW_START (boundary-only, no VAR= absorber) so we don't FP on
+  # `echo "sudo ls"` (kw preceded by space, not by operator boundary).
+  CMD_UNQUOTED=$(printf '%s' "$CMD" \
+    | sed -e "s/\\\$'\\([^']*\\)'/\\1/g" -e "s/'\\([^']*\\)'/\\1/g" -e 's/"\([^"$`]*\)"/\1/g' \
+    | perl -0777 -pe 's/<<([A-Za-z_]\w*)\n.*?\n\1(?=\n|\z)//gs')
+
+  # Unquoted-context preamble (runs on STRIPPED). Anchor includes backtick so
+  # `` `sudo` `` and `$(`sudo`)` are caught post-strip.
+  # v3.7 post-adversary Finding 1 fix: absorber now accepts leading/interleaved
+  # redirects (`2>&1`, `>/dev/null`, `<&0`) at command-position. Adversary proved
+  # `2>&1 sudo ls`, `echo hi; 2>&1 sudo ls`, `echo hi && 2>&1 reboot` bypassed
+  # CMD_PREAMBLE because `2>&1` sits between boundary+space and kw but wasn't
+  # consumed by the VAR= absorber. New absorber alt: `[0-9]*[<>]+[&0-9-]*[^[:space:]]*`
+  # covers `N>FILE`, `N<FILE`, `N>&M`, `>FILE`, `<FILE`, `>&-`, `&>FILE` forms.
+  CMD_PREAMBLE='(^|[;&|({)}`!][[:space:]]*|(^|[;&|({)}`!])[[:space:]]*(then|do|else|elif|if|while|until|for|case|select|function)[[:space:]]+)[[:space:]]*(([0-9]*[<>]+[&0-9-]*[^[:space:]]*|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*'
+
+  # v3.7 post-adversary: strict command-start anchor for CMD_UNQUOTED scans.
+  # Only operator boundaries — no VAR= absorber, no reserved-word prefix, no
+  # redirect absorber. Reason: CMD_UNQUOTED already rewrote quote-content in
+  # place; kw at strict cmd-start after unwrap means adversary quoted-splice,
+  # not legitimate arg. Space NOT in leading class — prevents FP on
+  # `echo "sudo ls"` (unwrap → `echo sudo ls`, space-preceded kw).
+  STRICT_KW_START='(^|[;&|({)}`!]|&&|\|\|)[[:space:]]*'
+
+  # HAS_SPLICE gate: STRICT_KW_START scans CMD_UNQUOTED, but UNQUOTED also
+  # exposes kw inside DATA-position quotes like `grep '|docker|' file` (the
+  # `|` inside the regex string matches STRICT_KW_START's `|` boundary).
+  # HAS_SPLICE detects the adversary splice signal specifically: a
+  # command-position token whose body crosses a quote boundary — `"sudo"`,
+  # `s"udo"`, `"s"udo`. Such tokens always appear at boundary-then-quote-or-
+  # letter-then-quote positions. Data-position quotes (preceded by space,
+  # never by operator) don't match this pattern. STRICT_KW_START runs only
+  # if HAS_SPLICE=1 — else we stay on CMD_STRIPPED's existing gates.
+  HAS_SPLICE=0
+  if echo "$CMD" | grep -qE "(^|[;&|({)}\`!]|&&|\|\|)[[:space:]]*([A-Za-z_]+['\"\`]|['\"\`][A-Za-z_])"; then
+    HAS_SPLICE=1
+  fi
+
+  # Shell-wrapper quoted-code paths (runs on RAW). Shell-binary anchor prevents
+  # literal `-c` substrings in echo args from FPing.
+  # v3.4 BUG 2 fix: compound-flag bypass (bash -xc 'sudo', -lc, -xec, --login -c).
+  # Old absorber `(-[A-Za-z][A-Za-z0-9-]*)*` ate `-xc` as one flag, swallowing the
+  # c-marker. New: short-flag absorber excludes ANY cluster containing `c`, long
+  # flag absorber added for `--login`/`--norc`. c-marker = single-dash cluster
+  # with at least one `c` anywhere (covers `-c`, `-xc`, `-cx`, `-xec`, `-lc`).
+  # v3.4 edge: `\\*` before wrapper name catches `\bash -c '\sudo'` escape forms.
+  SHELL_C_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*(bash|sh|dash|zsh|ksh|mksh|ash|fish|csh|tcsh|busybox|su|runuser|script)[[:space:]]+((-[A-Zabd-z0-9][A-Zabd-z0-9-]*([[:space:]]+[^-][^[:space:]]*)?|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]*)?([[:space:]]+[^-][^[:space:]]*)?)[[:space:]]+)*-[A-Za-z0-9]*c[A-Za-z0-9]*[[:space:]]*\$?['\''"]?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=([^[:space:]'\''"]|'\''[^'\'']*'\''|"[^"]*"|\$'\''[^'\'']*'\'')*[[:space:]]+)*'
+  # v3.4 parity fix: `bash --login <<<'sudo ls'` bypassed old single-dash-only
+  # absorber. Added long-flag absorber for `<<<` path. No c-marker needed — `<<<`
+  # itself triggers execution.
+  SHELL_HERE_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*(bash|sh|dash|zsh|ksh|mksh|ash|fish|csh|tcsh|busybox|su|runuser|script)[[:space:]]+((-[A-Za-z][A-Za-z0-9-]*([[:space:]]+[^-][^[:space:]]*)?|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]*)?([[:space:]]+[^-][^[:space:]]*)?)[[:space:]]+)*<<<[[:space:]]*\$?['\''"]?[[:space:]]*'
+
+  # Wrapper keywords that ALWAYS execute (exec|eval|nohup|time|trap). Optional
+  # flags between wrapper and keyword. Optional quote opener for `trap "reboot"`.
+  # v3.7 timeout/duration fix: wrappers like `timeout 30s sudo ls`, `timeout -k 5s 30s
+  # sudo ls` have positional non-flag args between wrapper and target keyword. Added
+  # `[0-9]+[A-Za-z]*` absorber alt for duration-style tokens (30s, 5m, 1h, 100).
+  # v3.7 long-flag + positional fix: chroot /, taskset 0x1, numactl --physcpubind=0.
+  # Added `--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]*)?` for long flags and broad
+  # `[^-][^[:space:]]*` for bare positional args. Grep backtracking ensures bare-pos
+  # doesn't greedy-eat target kw (eval sudo ls → iter 0 match wins).
+  WRAPPER_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*(exec|eval|nohup|time|trap|coproc([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?|setsid|stdbuf|nice|ionice|chrt|taskset|unbuffer|cgexec|doas|pkexec|gosu|su-exec|strace|ltrace|gdb|valgrind|watch|chroot|timeout|numactl)[[:space:]]+((-[A-Za-z][A-Za-z0-9-]*([[:space:]]+[^-][^[:space:]]*)?|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]*)?([[:space:]]+[^-][^[:space:]]*)?|[0-9]*[<>]+[&0-9-]*[^[:space:]]*|[0-9]+[A-Za-z]*|[^-][^[:space:]]*)[[:space:]]+)*\$?['\''"]?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=([^[:space:]'\''"]|'\''[^'\'']*'\''|"[^"]*"|\$'\''[^'\'']*'\'')*[[:space:]]+)*'
+
+  # v3.3 env-dedicated preamble. env takes flag-args (-u VAR, -C DIR, -S STR),
+  # long flags (--unset=PATH), quoted VAR=VAL, and the cmd-to-run. Generic-token
+  # absorber stops at shell metachars (|, >, <, ;, &, (, ), }) so that
+  # `env | grep sudo` and `env > file` don't FP.
+  # v3.4 H2 fix: `env \sudo ls` bypassed because absorber ate `\sudo` as one
+  # token. `\sudo` = `sudo` in bash (backslash quotes next char, no-op on `s`).
+  # Absorber token now excludes `\` so `\keyword` forms surface to the keyword
+  # match. Each token can optionally start with `\`. Keyword match uses `\\?`
+  # prefix (added in grep branches, not here) to consume the leading backslash.
+  ENV_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*env[[:space:]]+(\\*[^[:space:]|;()}\\]+[[:space:]]+)*'
+
+  # `command` wrapper: only `-p` flag executes; `-v`/`-V` are introspection
+  # (resolve path, print type). Dedicated regex allows only `-p` to avoid
+  # FPing `command -v sudo` (standard "does sudo exist?" query).
+  # v3.4 H3 fix: `command -p -- sudo ls` bypassed because old regex had no `--`
+  # absorber. `--` is POSIX end-of-options; `command -p -- sudo` still executes
+  # sudo. Added `(--[[:space:]]+)?` after `(-p[[:space:]]+)?` — also covers
+  # `command -- sudo` (no -p, still exec).
+  COMMAND_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*command[[:space:]]+(-p[[:space:]]+)?(--[[:space:]]+)?\$?['\''"]?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=([^[:space:]'\''"]|'\''[^'\'']*'\''|"[^"]*"|\$'\''[^'\'']*'\'')*[[:space:]]+)*'
+
+  # v3.4 H1 fix: nested eval+wrapper class. `eval 'env sudo ls'`, `eval 'nohup
+  # sudo'`, `eval 'exec sudo'`, `eval 'time sudo'` all bypass both CMD_STRIPPED
+  # (quoted content wiped) and WRAPPER_PREAMBLE (keyword slot sees the nested
+  # wrapper, not the target). Dedicated regex re-enters the eval-quoted arg to
+  # match wrapper + target keyword. Quote optional so `eval env sudo ls`
+  # (unquoted) also caught.
+  EVAL_WRAPPER_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*eval[[:space:]]+(-[A-Za-z][A-Za-z0-9-]*[[:space:]]+)*\$?['\''"]?[[:space:]]*\\*(eval|bash|sh|dash|zsh|ksh|mksh|ash|fish|csh|tcsh|busybox|env|nohup|exec|time|trap|coproc([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?|command|builtin|setsid|stdbuf|nice|ionice|chrt|taskset|unbuffer|cgexec|doas|pkexec|gosu|su-exec|strace|ltrace|gdb|valgrind|watch|chroot|timeout|numactl|su|runuser|script|[({!])[[:space:]]*(\\*[^[:space:]|;()}\\'\''"]+[[:space:]]+)*'
+
+  # v3.7 eval-compound fix: `eval 'echo ok; sudo ls'` — eval's quoted arg has a
+  # compound statement with boundary (`;`/`&`/`|`) separating a benign first kw
+  # from the target kw. Pattern re-enters the eval arg, consumes up to a boundary
+  # char, then matches kw at that compound-position.
+  EVAL_COMPOUND_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*eval[[:space:]]+\$?['\''"][^'\''"]*[;&|]+[[:space:]]*'
+
+  # v3.7 env-S fix: `env -S'sudo ls'` — env's -S flag takes a split-string arg
+  # that env re-parses internally. Attacker glues `-S` to quoted kw with no
+  # space, hiding kw from token absorber. Branch matches env, optional prior
+  # flags/VAR= assignments, literal -S, optional space, quote, LEAD_PREFIX, kw.
+  ENV_S_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*env[[:space:]]+((-[A-Za-z][A-Za-z0-9-]*([[:space:]]+[^-][^[:space:]]*)?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*-S[[:space:]]*['\''"][[:space:]]*'
+
+  # Post-suffix: unquoted (stripped) + quoted (raw). Both include backtick
+  # closing for command-substitution spans.
+  POST_SUFFIX='([[:space:];&|)},<>`]|$)'
+  POST_SUFFIX_Q='([[:space:];&|)},<>'\''"`\\]|$)'
+  # v3.3 A5 fix: POST_SUFFIX_BRACE omits `}` so that `{,docker}-compose.yml`
+  # (filename brace prefix) doesn't FP. Paired with `\}` inside the keyword
+  # match so BRACE branches require the closing brace immediately after kw.
+  POST_SUFFIX_BRACE='([[:space:];&|)<>,`'\''"]|$)'
+
+  # v3.3: BRACE_AFTER_COMMA closes `{,kw}` brace-expansion bypass — empty first
+  # element followed by keyword (e.g. `{,sudo}` runs sudo). POST_SUFFIX adds `,`
+  # to close `{kw,}` symmetric form.
+  # v3.7 nested-brace fix: `{,{,sudo}}` bypassed single-level BRACE_AFTER_COMMA.
+  # Widened to `(\{,+)+` for 1+ empty-leading brace levels. Each branch's closing
+  # pattern also widened from `,*\}` to `(,*\})+` for balanced depth.
+  BRACE_AFTER_COMMA='(^|[;&|({)},`!]|[[:space:]])(\{,+)+'
+
+  # v3.5 H1 fix: unquoted heredoc bypass — `bash <<EOF\nsudo ls\nEOF` escaped
+  # all prior blocks because (a) CMD_STRIPPED strips heredoc body (correct FP
+  # avoidance for `cat <<EOF\ndocker\nEOF`), (b) no preamble ran on RAW body,
+  # (c) `bash` is not a prohibited keyword. SHELL_HEREDOC_PREAMBLE detects
+  # `<shell> <flags>* <<WORD` leader. Then perl multiline scan inspects body
+  # between delimiter lines for target kws (including `rm -rf`). Only unquoted
+  # `<<WORD` (starts with `[A-Za-z_]`) triggers — quoted `<<'EOF'`, `<<"EOF"`,
+  # dash-strip `<<-EOF` all correctly leave body un-stripped, caught by
+  # CMD_PREAMBLE on CMD_STRIPPED.
+  SHELL_HEREDOC_PREAMBLE='(^|[;&|({)}`!]|[[:space:]])[[:space:]]*\\*(bash|sh|dash|zsh|ksh|mksh|ash|fish|csh|tcsh|busybox|su|runuser|script)[[:space:]]+((-[A-Zabd-z0-9][A-Zabd-z0-9-]*([[:space:]]+[^-][^[:space:]]*)?|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]*)?([[:space:]]+[^-][^[:space:]]*)?)[[:space:]]+)*<<[[:space:]]*[A-Za-z_]'
+  if echo "$CMD" | grep -qE "$SHELL_HEREDOC_PREAMBLE"; then
+    if echo "$CMD" | perl -0777 -ne '
+      exit 0 if /<<[A-Za-z_]\w*\n(.*?)\n[A-Za-z_]\w*(?=\n|\z)/s &&
+                $1 =~ /(?:^|[;&|({)}`!]|\s)\s*(?:sudo|docker|systemctl|shutdown|reboot|halt|rm\s+-rf)\b/m;
+      exit 1;
+    '; then
+      echo "BLOCKED: Heredoc to shell binary contains prohibited command" >&2
+      exit 2
+    fi
+  fi
+
+  # v3.5: LEAD_PREFIX — 0+ chars, each either a backslash or a quote (' or ").
+  # Handles three bypass classes:
+  #   BUG-2: `eval "env 'sudo' ls"` — quoted keyword inside eval arg. Token
+  #          absorbers exclude `'`/`"`, so a quoted keyword escapes the absorber
+  #          but arrives at keyword-match position prefixed with a quote that
+  #          the literal keyword cannot consume.
+  #   BUG-2 nested: `eval "nohup \"sudo\" ls"` — escape+quote interleave.
+  #          Alternation eats any mix of `\`, `'`, `"`.
+  #   H2 extended: `env \\sudo ls` — multiple backslashes before kw.
+  # POST_SUFFIX_Q also extended with `\` for trailing escape (e.g. `sudo\" ls`).
+  # Applied as prefix to keyword match in every RAW grep branch. Safe (won't FP
+  # on bare kw — outer preamble already anchored in command position).
+  LEAD_PREFIX='(\\|['\''"])*'
+
+  # v3.6: PATH_PREFIX — optional absolute-path prefix before keyword (e.g.
+  # `/usr/bin/sudo`, `/sbin/reboot`). Applied as optional prefix in all branches
+  # so `/usr/bin/sudo ls` blocks same as `sudo ls`. Leading `/` required (no
+  # relative paths — those would FP on `./grep sudo` etc). Intermediate
+  # segments disallow whitespace and `/`. Trailing `/` connects to keyword.
+  PATH_PREFIX='((~[A-Za-z0-9_+-]*)?/+([^[:space:]/]+/+)*)?'
+
+  # v3.6: RM_FLEX — flexible rm-destructive pattern. Catches v3.5's literal
+  # `-rf` PLUS flag-order variants (-fr, split -f -r, long --recursive/--force).
+  # Logic: rm, optional interstitial flags, mandatory flag containing r or R
+  # (or --recursive), optional trailing flags, slash target. At least one r-flag
+  # required — plain `rm /path` (non-recursive) doesn't match. Ends at `/`;
+  # per-branch suffix controls what follows (strict end for STRIPPED, lax quote
+  # for RAW).
+  RM_FLEX='rm[[:space:]]+((-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?)[[:space:]]+)*(-[[:alnum:]]*[rR][[:alnum:]]*|--recursive)([[:space:]]+(-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?))*[[:space:]]+/'
+  # v3.7 H11 fix: `rm -rf "/"` — CMD_STRIPPED wipes the quoted "/" entirely so
+  # the slash vanishes before RM_FLEX scans. RM_FLEX_QS targets CMD (raw) and
+  # tolerates quote chars wrapping the slash (`"/", '/', `/`).
+  RM_FLEX_QS='rm[[:space:]]+((-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?)[[:space:]]+)*(-[[:alnum:]]*[rR][[:alnum:]]*|--recursive)([[:space:]]+(-[[:alnum:]]+|--[[:alnum:]-]*(=[^[:space:]]*)?))*[[:space:]]+['\''"`]+/'
+
+  # Destructive filesystem: rm with recursive flag targeting / (+ flag-order variants)
+  if echo "$CMD_STRIPPED" | grep -qE "${CMD_PREAMBLE}${PATH_PREFIX}${RM_FLEX}(\*|[[:space:]]|$)" \
+     || echo "$CMD" | grep -qE "${SHELL_C_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}${RM_FLEX}" \
+     || echo "$CMD" | grep -qE "${SHELL_HERE_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}${RM_FLEX}" \
+     || echo "$CMD" | grep -qE "${WRAPPER_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}${RM_FLEX}" \
+     || echo "$CMD" | grep -qE "${COMMAND_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}${RM_FLEX}" \
+     || echo "$CMD" | grep -qE "${BRACE_AFTER_COMMA}${LEAD_PREFIX}${PATH_PREFIX}rm(,*\})+[[:space:]]+-rf[[:space:]]+/" \
+     || echo "$CMD" | grep -qE "(^|[;&|({)}\`!]|[[:space:]])\{${LEAD_PREFIX}${PATH_PREFIX}rm,+\}[[:space:]]+-rf[[:space:]]+/" \
+     || echo "$CMD" | grep -qE "(^|[;&|({)}\`!]|[[:space:]])\{${LEAD_PREFIX}${PATH_PREFIX}rm,[^}]+\}[[:space:]]+-rf[[:space:]]+/" \
+     || echo "$CMD" | grep -qE "${ENV_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}${RM_FLEX}" \
+     || echo "$CMD" | grep -qE "${EVAL_WRAPPER_PREAMBLE}${LEAD_PREFIX}rm[[:space:]'\''\"\\\\]+-rf[[:space:]'\''\"\\\\]+/" \
+     || echo "$CMD" | grep -qE "${EVAL_COMPOUND_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}${RM_FLEX}" \
+     || echo "$CMD" | grep -qE "${ENV_S_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}${RM_FLEX}" \
+     || echo "$CMD" | grep -qE "${CMD_PREAMBLE}${PATH_PREFIX}${RM_FLEX_QS}" \
+     || { [ "$HAS_SPLICE" = "1" ] && echo "$CMD_UNQUOTED" | grep -qE "${STRICT_KW_START}${PATH_PREFIX}${RM_FLEX}(\*|[[:space:]]|$)"; } \
+     || { [ "$HAS_SPLICE" = "1" ] && echo "$CMD_UNQUOTED" | grep -qE "${STRICT_KW_START}${PATH_PREFIX}${RM_FLEX_QS}"; }; then
+    echo "BLOCKED: Destructive filesystem operation" >&2
+    exit 2
+  fi
+
+  # System-level commands: sudo, docker, systemctl
+  if echo "$CMD_STRIPPED" | grep -qE "${CMD_PREAMBLE}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX}" \
+     || echo "$CMD" | grep -qE "${SHELL_C_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${SHELL_HERE_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${WRAPPER_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${COMMAND_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${BRACE_AFTER_COMMA}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)(,*\})+${POST_SUFFIX_BRACE}" \
+     || echo "$CMD" | grep -qE "(^|[;&|({)}\`!]|[[:space:]])\{${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl),[^}]+\}${POST_SUFFIX_BRACE}" \
+     || echo "$CMD" | grep -qE "${ENV_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${EVAL_WRAPPER_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${EVAL_COMPOUND_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${ENV_S_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX_Q}" \
+     || { [ "$HAS_SPLICE" = "1" ] && echo "$CMD_UNQUOTED" | grep -qE "${STRICT_KW_START}${PATH_PREFIX}(sudo|docker|systemctl)${POST_SUFFIX}"; }; then
+    echo "BLOCKED: System-level command not permitted" >&2
+    exit 2
+  fi
+
+  # System control: shutdown, reboot, halt
+  if echo "$CMD_STRIPPED" | grep -qE "${CMD_PREAMBLE}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX}" \
+     || echo "$CMD" | grep -qE "${SHELL_C_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${SHELL_HERE_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${WRAPPER_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${COMMAND_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${BRACE_AFTER_COMMA}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)(,*\})+${POST_SUFFIX_BRACE}" \
+     || echo "$CMD" | grep -qE "(^|[;&|({)}\`!]|[[:space:]])\{${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt),[^}]+\}${POST_SUFFIX_BRACE}" \
+     || echo "$CMD" | grep -qE "${ENV_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${EVAL_WRAPPER_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${EVAL_COMPOUND_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || echo "$CMD" | grep -qE "${ENV_S_PREAMBLE}${LEAD_PREFIX}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX_Q}" \
+     || { [ "$HAS_SPLICE" = "1" ] && echo "$CMD_UNQUOTED" | grep -qE "${STRICT_KW_START}${PATH_PREFIX}(shutdown|reboot|halt)${POST_SUFFIX}"; }; then
+    echo "BLOCKED: System control command not permitted" >&2
+    exit 2
+  fi
 fi
 
 # ============================================================
@@ -361,11 +727,11 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # (`s/a/&&/`). Progression:
     #   - Interim (COO) `([^&]|&[^&])*`: fixed single-& but missed
     #     `&&`-inside-quotes (Sonnet pass 2 HIGH).
-    #   - Interim 2 (quote-balanced) `([^&'"]|'[^']*'|"([^"\\]|\\.)*"|&[^&])*`:
+    #   - Interim 2 (quote-balanced) `([^&'"]|'[^']*'|"[^"]*"|&[^&])*`:
     #     fixed `&&`-in-quotes but broke A2 (escape-out `'\''` idiom)
     #     and A6 (quoted product path `'/workspace/product/x'`) — both
     #     HIGH (Sonnet pass 3).
-    # Final class: `([^&'"]|'[^']*'|"([^"\\]|\\.)*"|'|"|&[^&])*` — balanced-span
+    # Final class: `([^&'"]|'[^']*'|"[^"]*"|'|"|&[^&])*` — balanced-span
     # alternatives absorb `&&`/`;`/`|` inside quotes; solo `'`/`"`
     # fallbacks absorb orphan quotes (escape-out idioms, unmatched
     # trailing quotes); `&[^&]` still consumes sed-literal `&`; outside
@@ -385,7 +751,7 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # touch/mkdir/truncate/sqlite3), python3 -c, node -e, sed `/pat/w PATH`
     # internal-write directive (no -i needed), Pattern 4 last-arg-is-dest
     # assumption violated by `cp -t DEST SOURCE...` ordering.
-    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+(([^&'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|'\''|"|&[^&])*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]]([^&'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|'\''|"|&[^&])*)?[[:space:]]+["'\'']?/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
+    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+(([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]]([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*)?[[:space:]]+["'\'']?/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/)'; then
       echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi
@@ -603,8 +969,8 @@ fi
 # (framework repo default) — CTO pushes to both.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
-     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}<>'\''"`!#\\^~]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?[[:space:]]+)*pr[[:space:]]+merge'; then
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
+     echo "$CMD" | grep -qE 'git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push.*(main|master)([[:space:];&|(){}<>'\''"`!#\\^~]|$)|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*pr[[:space:]]+merge'; then
     REVIEWED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:reviewed" 2>/dev/null)
     if [ -z "$REVIEWED" ] || [ "$REVIEWED" = "(nil)" ]; then
       echo "LAYER 1 GATE: Spawn a Crew agent to review your diff before pushing/merging. After review, run: redis-cli -h redis -p 6379 SET cabinet:layer1:cto:reviewed 1 EX 300" >&2
@@ -624,7 +990,7 @@ fi
 # "...pulls/42/merge..."` bodies cannot pass Phase 1.
 if [ "$OFFICER" = "cto" ] && [ "$TOOL_NAME" = "Bash" ]; then
   CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')([^[:space:]'\''"]|'\''([^'\''\\]|\\.)*'\''|"([^"\\]|\\.)*"|\$'\''([^'\''\\]|\\.)*'\'')*)?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
+  if echo "$CMD" | grep -qE '(^|[;&|({)}`!])[[:space:]]*(sudo[[:space:]]+|env([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|timeout([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+[0-9]+[smhd]?[[:space:]]+|(exec|time|nohup|nice|ionice|coproc|stdbuf|unbuffer|setsid|command|builtin)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+|(bash|sh|zsh|fish|ksh|dash|ash|csh|tcsh|mksh)([[:space:]]+-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?)*[[:space:]]+-c[[:space:]]+(\$?['\''"])?|eval[[:space:]]+['\''"]?|[0-9]?[<>][[:space:]]*[^[:space:]]+[[:space:]]+|(then|do|else|elif)[[:space:]]+)*(git[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*push|gh[[:space:]]+(-[^[:space:]]+([[:space:]]+([^-][^[:space:]]*|'\''[^'\'']*'\''|"[^"]*"))?[[:space:]]+)*(pr[[:space:]]+merge|api)|curl[[:space:]]|wget[[:space:]])' && \
      echo "$CMD" | grep -qE 'pulls/[0-9]+/merge'; then
     CI_VERIFIED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:layer1:cto:ci-green" 2>/dev/null)
     if [ -z "$CI_VERIFIED" ] || [ "$CI_VERIFIED" = "(nil)" ]; then
