@@ -1015,3 +1015,39 @@ _(none)_
 - **Effort:** XS (~20 min: 1 CI step add, 11 LOC workflow change). Delegated to Crew agent; review discipline applied: Crew manually reviewed each of the 12 scripts for SC-error-class patterns pre-commit since local shellcheck was unavailable in the agent's env. CI empirically confirmed the manual review was correct (0 findings, green on first push).
 - **Owner:** CTO (shipped via Crew).
 - **Source:** CTO /loop proactive-work tick 2026-04-24 — gap-scan of CI workflow identified no static-analysis step beyond `bash -n`.
+
+---
+
+### FW-055 — shellcheck severity=error survey of root-level cabinet/scripts/*.sh (57 files)
+- **Status:** Proposed 2026-04-24. Read-only triage entry — no code changes made.
+- **Problem:** FW-054 added a `shellcheck --severity=error --shell=bash` CI gate covering the 12 hot scripts (8 hooks + 4 libs), all of which passed clean. FW-054 explicitly deferred the 57-file root-level `cabinet/scripts/*.sh` surface as a followable. This entry closes that gap with an empirical survey so the CTO can decide whether widening the CI gate would surface real bugs or is zero-risk. Without this data, the CI gate gives false completeness — the hot path is covered but officer lifecycle scripts, cost tooling, and orchestration scripts are ungated.
+- **Findings (empirical — shellcheck v0.10.0, `--severity=error --shell=bash`, run 2026-04-24):**
+
+  | SC code | Count | shellcheck title | Classification | Recommended action |
+  |---------|-------|-----------------|----------------|-------------------|
+  | SC2045 | 2 | Iterating over ls output is fragile. Use globs. | **likely-real-bug** | Fix both instances (trivial one-liner change) |
+
+  **Total: 2 findings across 2 files. 55/57 files are completely clean.**
+
+- **Affected files (both findings are the identical pattern):**
+
+  | File | Line | Finding |
+  |------|------|---------|
+  | `cabinet/scripts/resume-officer.sh` | 70 | `for other in $(ls "$CABINET_ROOT/instance/memory/tier2/" 2>/dev/null)` |
+  | `cabinet/scripts/suspend-officer.sh` | 74 | `for other in $(ls "$CABINET_ROOT/instance/memory/tier2/" 2>/dev/null)` |
+
+  Both loops enumerate officer directories to notify peers during hire/fire events. The fix in each case is `for other in "$CABINET_ROOT/instance/memory/tier2/"*/; do other=$(basename "$other")` (glob + basename). The `2>/dev/null` suppression on the ls call is already handled by a glob naturally producing no matches when the directory is empty.
+
+- **Classification note:** SC2045 is listed as likely-real-bug because filenames with spaces or special characters in the tier2 directory path would cause word-splitting. Officer role names are lowercase ASCII (cos, cto, cpo, etc.) so in practice this is currently safe — but the class of bug is real and the fix is trivial. There are no false-positives and no context-dependent findings.
+
+- **Top 5 files by finding count:** N/A — only 2 files have any findings at all, each with exactly 1 finding.
+
+- **Recommended next action:** **(a) Fix 2 findings, then widen CI step to root scripts.**
+  - Fix: replace `$(ls ...)` with a glob in `resume-officer.sh:70` and `suspend-officer.sh:74` (identical pattern, ~2 LOC change each).
+  - Then extend `.github/workflows/cabinet-ci.yml` shellcheck step to include `cabinet/scripts/*.sh` — the gate now covers 57 + 12 = 69 scripts.
+  - This is zero-risk: 55/57 root scripts are already clean; fixing the 2 SC2045 instances before widening means the expanded gate is green on first run.
+  - No `shellcheck disable` comments needed anywhere in this surface.
+
+- **Effort:** XS (2 one-liner glob fixes + 1 CI step amendment ≈ 15 min).
+- **Owner:** CTO.
+- **Source:** CTO /loop proactive-work tick 2026-04-24 — FW-054 follow-up; static binary (shellcheck v0.10.0) downloaded via Python lzma since apt-get blocked in agent env.
