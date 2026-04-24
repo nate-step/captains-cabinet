@@ -745,3 +745,109 @@ _(none)_
 - **Effort:** S (workflow YAML addition + flow.test.ts resolution + regression pin).
 - **Owner:** CTO.
 - **Source:** CTO self-retro post-PR-A ship; experience record `2026-04-23-cto-1776975201-*`.
+
+---
+
+### FW-050 — Dashboard vitest wire-up: remove tsc exclude + CI test step (MEDIUM)
+- **Status:** Proposed 2026-04-23 by CTO during FW-048 follow-up survey.
+- **Context:** FW-048 shipped `tsc --noEmit` in CI by excluding `**/*.test.ts` + `**/*.test.tsx` from `cabinet/dashboard/tsconfig.json`. The 3 reference test files (`botfather.test.ts`, `provisioning/flow.test.ts`, `provisioning/state-machine.test.ts`) import vitest, which is not in `devDependencies`. Spec 034 scaffolded them as vitest-syntax reference specs with the assumption that a "PR 5" would wire vitest + execute them in CI.
+- **Local discovery (CTO 2026-04-23 FW-048 follow-up):**
+  - `npm install --save-dev vitest` + `npx vitest run` surfaces **6 test files, 92 total cases, 52 fail + 40 pass**. Failures stem from:
+    1. **`.next/standalone/` duplicates** — Next.js build output contains mirrored source copies; vitest picks up `.next/standalone/src/lib/botfather.test.ts` alongside the real `src/lib/botfather.test.ts`. Needs `vitest.config.ts` with `exclude: ['node_modules', '.next', '.next/**']`.
+    2. **Path alias unresolved** — test files import from `@/lib/*` (tsconfig paths). Vitest doesn't read Next.js tsconfig paths natively; needs `vite-tsconfig-paths` plugin or explicit `resolve.alias` block in vitest config.
+    3. **Mock scaffolding incomplete** — `flow.test.ts` uses extensive `vi.mock(...)` patterns that reference un-imported modules (redis, send-message API, Telegram client). Per the file comment: "Mocks — these will be wired up when vitest is integrated."
+    4. **Assertion typo** — `botfather.test.ts:142` expects `'x___'` where `tokenLastFour` returns `'z___'` on the input token (ends in `z___`, not `x___`). Real test bug.
+  - Investigation reverted (`npm uninstall vitest` + `git checkout package-lock.json`) — no commits to main.
+- **Proposed fix (single PR):**
+  1. Install vitest + vite-tsconfig-paths as devDeps: `npm install --save-dev vitest vite-tsconfig-paths`.
+  2. Add minimal `vitest.config.ts` (exclude `.next`, plugin `tsconfigPaths()`).
+  3. Fix `botfather.test.ts:142` assertion (`z___` not `x___`).
+  4. Wire `flow.test.ts` mocks — import + `vi.mock()` the real modules.
+  5. Add `"test": "vitest run"` + `"test:watch": "vitest"` scripts to `cabinet/dashboard/package.json`.
+  6. Add CI step `Dashboard vitest` after `Dashboard typecheck`: `cd cabinet/dashboard && npm test`.
+  7. Remove `**/*.test.ts` + `**/*.test.tsx` from `tsconfig.json` exclude (tests now typecheck under the same pass).
+- **ACs:**
+  - AC-1: `cd cabinet/dashboard && npx vitest run` exits 0 locally (all 3 test files green).
+  - AC-2: `npx tsc --noEmit` still exits 0 after exclude removal (tests typecheck).
+  - AC-3: CI adds a green `Dashboard vitest` step; regression visible pre-merge.
+  - AC-4: Golden evals unaffected (Python-only surface).
+- **Blast radius:** LOW. Pure coverage-expansion; no runtime behavior change. `tsc` exclude becomes obsolete (can be removed), which is strictly net-positive (tests retain type checking).
+- **Effort:** M (~1-2h — mostly wiring + mock scaffolding completion for flow.test.ts).
+- **Owner:** CTO. Defers to CPO if spec changes needed (state-machine.test.ts declares its own global types — minor friction with vitest's implicit globals).
+- **Source:** CTO local FW-048 follow-up investigation 2026-04-23. FW-048 commit `ed829ea` documented the exclude as "tracked as Spec 034 PR 5 follow-up" — this backlog entry is the formal follow-up.
+- **Dependencies:** FW-048 (SHIPPED). No blockers.
+
+### FW-049 — Host cron scheduler silently degraded — briefings + research-sweep not firing (HIGH)
+- **Status:** Filed 2026-04-23 20:58 UTC by CoS during autonomy-mode investigation (task #75).
+- **Symptom:** Host cron hasn't been firing scheduled Cabinet triggers reliably since at least 2026-04-16. Evidence:
+  - Last successful morning briefing key update: `cos:morning-briefing` = **2026-04-17T05:16:37Z** (6 days stale as of filing).
+  - Last successful evening briefing key update: `cos:evening-briefing` = **2026-04-16T19:09:59Z** (7 days stale); `cos:briefing-evening` = 2026-04-20T16:59:20Z (3 days stale — key-naming inconsistency contributes to ambiguity, see AC-4).
+  - Cos trigger stream has ZERO cron-sender entries in retained window (XLEN=5, all from 2026-04-23 19:26+ UTC — post-incident). MAXLEN cap is ~100 so light traffic would preserve cron triggers if they fired; none present.
+  - CRO stream retains back to 2026-04-13; only ONE genuine cron trigger found (`2026-04-14 11:13:07 UTC Scheduled reflection`). Research-sweep cron similarly stale (task #56 already open).
+  - Prior CoS→CRO trigger `2026-04-21 06:46:20 UTC` explicitly asked: *"Check if 4h cron is firing on host (your stream last-delivered-id = 2026-04-20 13:11 UTC)."* — same diagnosis surfaced days ago but never root-caused.
+- **Symptomatic impact:**
+  1. **Captain-facing briefing gap:** 07:00 + 19:00 CEST briefings not delivered to Warroom on schedule. Captain observed the gap and filed as task #75 ("19:00 CEST briefing cron + 2h Captain msg delivery gap"). Contributed to Captain's msg 1647 ("where are we at?") after the token-exhaustion window — no proactive status landed for ~24h before Cabinet came back online because no briefing cron fired either.
+  2. **Research-sweep gap:** CRO 4h research sweep not firing; CRO flagged to CoS on 2026-04-21 via trigger.
+  3. **Reflection + retro cadence drift:** Same underlying cron degradation affects every scheduled trigger script in `/opt/founders-cabinet/cabinet/cron/` (briefing.sh, backlog-refine.sh, research-sweep.sh, retrospective.sh, retro-trigger.sh).
+- **Root-cause candidates (NOT YET DIAGNOSED):**
+  1. Host crontab wiped or edited without re-install (no `install-cron.sh` script found in repo — initial install path opaque).
+  2. Cron daemon on host stopped/crashed (requires host shell to verify `systemctl status cron` — blocked for CoS container).
+  3. Path regression in cron invocation (e.g. `/opt/founders-cabinet/cabinet/cron/briefing.sh` no longer resolvable from cron's restricted env).
+  4. Redis URL/password env drift breaking `trigger_send` call from cron context (cron inherits minimal env; /etc/environment.cabinet may be missing or incomplete).
+  5. CoS-side: briefings do fire but last-run keys aren't being updated consistently (4 different key naming patterns exist: `cos:briefing`, `cos:briefing-evening`, `cos:morning-briefing`, `cos:evening-briefing`). Lower-probability given parallel CRO/retro evidence.
+- **Why HIGH:** Silent degradation of every scheduled Cabinet cadence. Captain-visible (missing briefings). Undermines accountability (overdue founder-action reminders don't fire). Compounds token-exhaustion incidents (no proactive resumption signal).
+- **Proposed fix (Phase A — diagnostic):**
+  1. From host shell: `crontab -l` (user cabinet) + `crontab -l -u root` to inventory current cron entries.
+  2. If absent: commit `cabinet/scripts/install-cron.sh` that installs the correct entries + reports status. Add to bootstrap-host.sh.
+  3. Test `redis-cli PING` from inside cron-invoked script to verify env inheritance; source `/etc/environment.cabinet` explicitly at script top (briefing.sh already does — verify others).
+  4. Add a canary cron (e.g. `* * * * * redis-cli SET cabinet:cron:canary "$(date -u +%s)"`) → CoS post-tool-use hook reads canary age every 50 calls; if >10min stale, surfaces WARN.
+- **Proposed fix (Phase B — robustness):**
+  5. Normalize CoS last-run key naming to a single canonical form (spec says `cabinet:schedule:last-run:<role>:<task>`; enforce `<task>` ∈ `{morning-briefing, evening-briefing}`). Delete deprecated variants.
+  6. Golden eval similar to existing `eval-006-briefings-on-schedule.md` that asserts: canary key age < 90s across a 3-minute window. Empirical gate, not just config-check.
+- **Acceptance criteria:**
+  - **AC-1:** Host cron runs both briefings on time (±60s) for 3 consecutive days; last-run keys update each run.
+  - **AC-2:** Research-sweep cron (CRO, 4h) fires on time; unblocks task #56.
+  - **AC-3:** Canary key mechanism live + surfaced to CoS via post-tool-use (≤50-call-lag WARN).
+  - **AC-4:** Single canonical last-run key per briefing (old variants deleted or aliased); CoS updates it atomically on briefing completion.
+  - **AC-5:** `install-cron.sh` committed + documented in HOST-SETUP.md; golden eval added and passes.
+- **Effort:** M (diagnostic + install-cron + canary + eval + key normalization).
+- **Owner:** CTO (infra), CoS (key normalization + eval validation).
+- **Blocks:** None in progress — but unblocks reliable briefing cadence + founder-accountability reminders + research-sweep.
+- **Related:** task #75 (this investigation), task #56 (research-sweep cron confirmation), FW-047 (trigger-storm incident unrelated but exposed stream retention dynamics used in this diagnosis).
+- **Source:** CoS autonomy-mode task-#75 investigation 2026-04-23 20:55-20:58 UTC. Evidence trail in `instance/memory/tier2/cos/briefing-draft-2026-04-21-evening.md` (this session's append).
+
+### FW-042 — pre-tool-use Section 3: substring-match → word-boundary prohibited-command gates ✓ SHIPPED v3.7.2
+- **Status:** SHIPPED 2026-04-24 (commits `716fb96` v3.7 + `261f2f1` v3.7.1 hotfix + `e94ca39` v3.7.2 hotfix) after 4 adversary passes + 1 review-agent round + COO Pass-1 BSQ finding.
+- **Why:** Original Section 3 used shell-glob substring match (`*"docker"*`, `*"sudo"*`) which silently blocked any command containing the keyword ANYWHERE — including `grep docker file`, `ls docker-compose.yml`, `cat shutdown.md`, `echo "docker runs the world"`. Surface hit officer productivity daily.
+- **Approach:** Two-context scan on each CMD:
+  - **CMD_STRIPPED** = raw with quoted spans (`'...'`, `"..."`, `$'...'`) + heredoc bodies wiped. Scanned by `CMD_PREAMBLE` (operator-boundary anchor + optional reserved-word prefix + optional VAR=VAL and redirect absorber).
+  - **CMD_UNQUOTED** = raw with quoted spans UNWRAPPED (content preserved via sed backref). Scanned by `STRICT_KW_START` (strict boundary-only) gated by **HAS_SPLICE** — which fires only when a command-position adjacent-quote pattern is present. HAS_SPLICE runs on `CMD_MASKED` (quoted interiors replaced with literal `x`, outer quotes preserved) to avoid tripping on interior pipe/ampersand/semicolon inside data quotes.
+- **Iteration history (all dates 2026-04-23/04-24):**
+  - **v3.0–v3.3**: initial word-boundary design + `CMD_STRIPPED` + heredoc-body strip + env/coproc/BRACE_AFTER_COMMA wrappers.
+  - **v3.4**: closed 4 shell-parse adversary findings (eval+wrapper nest, `\sudo` escape, `command -- sudo`, `{rm,}` brace-reverse).
+  - **v3.5**: closed 3 regex-internals findings (wide-range SHELL_C absorber, quoted kw inside wrapper arg, backslash before wrapper name, in-eval redirect) + heredoc-body shell-parse scan + quote-interstitial rm class.
+  - **v3.6**: closed 7 shell-parse findings (bare `<<<`, full-path PATH_PREFIX, `bash --rcfile FILE -c`, rm flag-order variants, `{,sudo,}` trailing comma, subshell/brace-group inside eval, 11-shell binary enumeration).
+  - **v3.7**: closed 2 shell-parse findings — **Finding 1 (leading-redirect)**: `2>&1 KW`, `>/dev/null KW`, `echo hi; 2>&1 KW` — CMD_PREAMBLE absorber extended to consume `[0-9]*[<>]+[&0-9-]*[^[:space:]]*`. **Finding 2 (quoted-token splice)**: `"sudo" ls`, `s"udo" ls`, `"s"udo`, `s'udo' ls` — POSIX adjacent-quote concat fuses to literal kw; CMD_UNQUOTED + STRICT_KW_START + HAS_SPLICE gate introduced.
+  - **v3.7.1** (review hotfix): Sonnet review agent found 2 HIGH FPs — **BUG-A** (grep regex with pipe+kw): HAS_SPLICE ran on raw CMD so interior pipes inside quotes falsely triggered; fix: HAS_SPLICE scans CMD_MASKED. **BUG-B** (rm -rf on quoted non-root path): RM_FLEX_QS had no post-slash constraint; fix: terminal `\**['\''"`]*([[:space:];&|)]|$)`.
+  - **v3.7.2** (COO Pass-1 hotfix): COO adversary (parallel to review-agent round) found HIGH class bypass — **BSQ** (backslash-escaped quoted-splice): `echo hi;\"sudo\" ls`, `(\"sudo\" ls)`, `{ \"sudo\" ls; }` — 14/15 variants bypassed HAS_SPLICE because `\` between boundary and quote hides quote-adjacent-letter signal. Bash treats `\"` in unquoted context as literal `"` (adjacent-quote concat still fuses at runtime). Fix: **CMD_NORM** pre-processing stage normalizes `\"`→`"` and `\'`→`'` before CMD_STRIPPED / CMD_UNQUOTED / CMD_MASKED derivation, collapsing BSQ to already-defended quoted-splice class. Single-point normalization, no surface missed.
+- **Test coverage:** 358 probes across 11 harnesses, 0 FAIL as of v3.7.2 ship.
+  - `fw042-v33-delta-harness.sh` (99) — v3.3/v3.4 coverage + FP controls
+  - `fw042-v35-adv-validation.sh` (52) — v3.5 adversary fixes
+  - `fw042-v36-adv-validation.sh` (55) — v3.6 adversary fixes
+  - `fw042-v37-adv-validation.sh` (86) — v3.7 adversary fixes + full regression
+  - `fw042-v37-has-splice-check.sh` (20) — HAS_SPLICE gate + FP controls
+  - `fw042-v37-has-splice-edge.sh` (17) — HAS_SPLICE edge cases (splice-after-sep, letter-splice, mixed data, mixed-case)
+  - `fw042-v37-fp-repro.sh` (11) — v3.7.1 regression controls for BUG-A + BUG-B
+  - `fw042-bsq-verify.sh` (18) — v3.7.2 BSQ class closure (14 attack + 4 FP) + COO 19-probe BSQ sweep
+- **Deferred to v3.8 / FW-040 Phase B (all low-frequency, officer-callable alternatives exist):**
+  - `H3` dot/source file reparse (hook has no file-content visibility — reads target script)
+  - `M5` readarray `<<<` array-assignment with kw content
+  - `M6` ANSI-C `\n` inside eval single-quoted arg (existing known gap)
+  - `H1/H2` pipe-to-shell `echo kw | bash`, process-substitution `bash <(echo kw)` (dataflow-decoupled reparse class)
+  - `M7` tilde-parent `rm -rf ~/../../` (RM_FLEX path-traversal class)
+  - `H4/H6/M1/M3` var-assignment + param-expansion (`v=sudo; $v ls`, `${!cmd} ls`, IFS-splice, alias) — requires detector for bash-semantic replay
+- **Acceptance criteria:** ✓ all harnesses green · ✓ v3.6→v3.7 adversary findings both closed · ✓ v3.7.1 FPs both closed · ✓ v3.7.2 BSQ class closed · ✓ review agent approved after hotfix · ✓ deployed to production hook · ✓ pushed to master · 358/358 passes, 0 regressions.
+- **Effort:** L (23 iterations across v3.0→v3.7.2 — heavy regex + adversary-testing surface).
+- **Owner:** CTO (shipped).
+- **Follow-ups:** Deferred bypass classes above go into a v3.8 scope if any becomes observed in the wild; otherwise rolled into FW-040 Phase B (shell-parse-aware coverage).
+- **Source:** Captain directive post-FW-043 to tighten Section 3. Multiple adversary passes (regex-internals + shell-parser Sonnet agents) + 1 pre-push Sonnet code-reviewer + COO concurrent adversary Pass-1 on v3.7 that caught the BSQ class bypass.
