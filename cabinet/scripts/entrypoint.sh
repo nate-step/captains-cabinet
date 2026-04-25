@@ -14,6 +14,13 @@ chown -R cabinet:cabinet /home/cabinet/.claude/ 2>/dev/null || true
 chown -R cabinet:cabinet /home/cabinet/.claude-channels/ 2>/dev/null || true
 echo "Permissions fixed."
 
+# Pre-bake Claude Code trust state so onboarding/trust prompts are skipped
+# on every officer launch. Survives image rebuilds (which wipe ~/.claude.json
+# since the volume mount only covers ~/.claude/, not the file in home root).
+echo "Preparing Claude state (trust + onboarding)..."
+su cabinet -s /bin/bash -c 'bash /opt/founders-cabinet/cabinet/scripts/prepare-claude-state.sh' || \
+  echo "WARNING: prepare-claude-state failed — trust prompts may appear on first officer start"
+
 # Everything below runs as cabinet user
 exec su cabinet -s /bin/bash -c '
   # Start tmux server

@@ -74,22 +74,43 @@ tmux send-keys -t "cabinet:$WINDOW" \
   "export OFFICER_NAME=$OFFICER TELEGRAM_STATE_DIR=$STATE_DIR TELEGRAM_BOT_TOKEN=$BOT_TOKEN TELEGRAM_HQ_CHAT_ID=$TELEGRAM_HQ_CHAT_ID && cd $OFFICER_DIR && $CLAUDE_CMD" \
   Enter
 
-# Wait for Claude Code to initialize, then send boot prompt
+# Wait for Claude Code to initialize, auto-confirm any startup prompts,
+# then send the boot prompt.
 (
-  # Step 1: confirm the "--dangerously-load-development-channels" warning prompt
-  # that Claude Code shows whenever we load server:redis-trigger-channel. Prompt
-  # offers "1. I am using this for local development / 2. Exit" with Enter to confirm.
-  # Option 1 is pre-selected; a single Enter confirms. Without this, the session
-  # hangs at the prompt until a human presses Enter — which used to be every
-  # restart's manual step. Automating it means officer restarts are hands-free.
-  sleep 3
-  tmux send-keys -t "cabinet:$WINDOW" Enter
+  # Smart prompt detection: capture the tmux pane and respond to whichever
+  # startup gates Claude Code shows us. Replaces fragile fixed sleeps —
+  # poll the pane for known prompts and Enter through them, then break out
+  # once we see the stable input prompt.
+  #
+  # Known prompts we auto-confirm (default = Enter):
+  #   1. "--dangerously-load-development-channels" warning
+  #      ("I am using this for local development" / "Exit")
+  #   2. Resume conversation prompt when --continue is used
+  #      ("Continue as-is" / "Summarize and continue") — defaults to as-is
+  #   3. Folder/hook trust dialogs — should be pre-suppressed by
+  #      prepare-claude-state.sh on container start, but handled defensively
+  #      in case the .claude.json template missed this officer's path
+  PANE="cabinet:$WINDOW"
+  PROMPT_REGEX="(I am using this for local development|Continue (as-is|conversation)|Summari[sz]e|Trust the (files|hooks)|Do you trust|Choose your theme|Welcome to Claude)"
+  DEADLINE=$(($(date +%s) + 45))   # 45s budget for all startup prompts
 
-  # Step 2: wait for Claude Code to finish loading (post-confirmation)
-  sleep 20
+  while [ $(date +%s) -lt $DEADLINE ]; do
+    sleep 2
+    pane_output=$(tmux capture-pane -t "$PANE" -p 2>/dev/null | tail -30)
+    if echo "$pane_output" | grep -qE "$PROMPT_REGEX"; then
+      tmux send-keys -t "$PANE" Enter
+      sleep 1   # let the UI redraw before checking again
+    elif echo "$pane_output" | grep -qE "(Try.*for new ideas|tab.*complete|Bypassing Permissions|^\s*>\s*$)"; then
+      # Stable prompt indicators — Claude Code is ready for user input
+      break
+    fi
+  done
 
-  # Step 3: send boot prompt — tells the officer to initialize and announce
-  tmux send-keys -t "cabinet:$WINDOW" "You are $OFFICER. Read your role definition at .claude/agents/$OFFICER.md and your session start checklist. Read your foundation skills in memory/skills/. Read your tier 2 notes in instance/memory/tier2/$OFFICER/. Then announce yourself on the warroom: bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh '<b>$OFFICER online.</b> Session started. Checking for pending work.' — then check for pending triggers and overdue work immediately." Enter
+  # Brief settle window before sending the boot prompt
+  sleep 2
+
+  # Send boot prompt — tells the officer to initialize and announce
+  tmux send-keys -t "$PANE" "You are $OFFICER. Read your role definition at .claude/agents/$OFFICER.md and your session start checklist. Read your foundation skills in memory/skills/. Read your tier 2 notes in instance/memory/tier2/$OFFICER/. Then announce yourself on the warroom: bash /opt/founders-cabinet/cabinet/scripts/send-to-group.sh '<b>$OFFICER online.</b> Session started. Checking for pending work.' — then check for pending triggers and overdue work immediately." Enter
 
   # No permanent /loop needed — Redis Trigger Channel delivers all triggers
   # and scheduled work instantly. /loop is available for ad-hoc use only.
