@@ -11,7 +11,7 @@ RestartSec=3
 
 # Run as root — agent needs to exec privileged docker/git commands
 User=root
-Group=root
+Group=cabinet
 
 # Ensure the runtime socket directory exists (tmpfs survives reboots via this)
 RuntimeDirectory=cabinet
