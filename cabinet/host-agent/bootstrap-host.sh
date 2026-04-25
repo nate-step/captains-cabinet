@@ -312,14 +312,16 @@ print_summary() {
   echo "  Audit log:  ${AUDIT_LOG} (append-only)"
   echo "  Admin bot:  ${ENV_FILE} (mode 0600)"
   echo
-  echo "  Next steps:"
-  echo "  1. Update docker-compose.yml CoS service with:"
-  echo "       user: \"${CABINET_UID}:${CABINET_GID}\""
+  echo "  Next steps (Phase B):"
+  echo "  1. UID alignment is now baked into Dockerfile.officer at image build time."
+  echo "     Do NOT add 'user:' override to docker-compose.yml — that broke the entrypoint"
+  echo "     in Phase A (commit 974de04). Phase B aligns UID via the Dockerfile instead."
+  echo "  2. Verify /run/cabinet socket bind mount is in docker-compose.yml officers service:"
   echo "       volumes:"
   echo "         - /run/cabinet:/run/cabinet:ro"
-  echo "  2. docker compose down && docker compose up -d"
-  echo "     (so CoS picks up the new UID)"
-  echo "  3. Send /cos ping to your admin bot to verify."
+  echo "  3. Rebuild officers container:"
+  echo "       docker compose -f cabinet/docker-compose.yml up -d --build officers"
+  echo "  4. Send /cos ping to your admin bot to verify."
   echo
   echo "  Service status:"
   systemctl status --no-pager --lines=3 "${HOST_AGENT_UNIT}" 2>&1 || true

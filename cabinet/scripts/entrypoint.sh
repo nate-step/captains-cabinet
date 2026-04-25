@@ -6,6 +6,16 @@ echo " Founder's Cabinet — Officer Container Starting"
 echo " $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "============================================"
 
+# Invariant: cabinet user must be UID 60001 + GID 60000 for host-agent SO_PEERCRED auth
+# AND for /run/cabinet/ directory traversal (mode 0750 root:cabinet GID 60000).
+# Catches future regressions where the Dockerfile UID alignment is silently dropped.
+CABINET_UID=$(id -u cabinet 2>/dev/null || echo "")
+CABINET_GID=$(id -g cabinet 2>/dev/null || echo "")
+if [ "$CABINET_UID" != "60001" ] || [ "$CABINET_GID" != "60000" ]; then
+  echo "FATAL: cabinet user UID/GID is '$CABINET_UID:$CABINET_GID', expected 60001:60000 (host-agent SO_PEERCRED + /run/cabinet group access)"
+  exit 1
+fi
+
 # Fix ownership on mounted volumes (runs as root)
 echo "Fixing volume permissions..."
 chown -R cabinet:cabinet /opt/founders-cabinet/memory/ 2>/dev/null || true
