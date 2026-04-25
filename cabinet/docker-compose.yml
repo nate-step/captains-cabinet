@@ -33,6 +33,17 @@ services:
       # Spec 035 Phase A: host-agent socket (read-only mount).
       - /run/cabinet:/run/cabinet:ro
     working_dir: /opt/founders-cabinet
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cabinet-net
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: ${CABINET_PREFIX:-cabinet}-postgres
