@@ -19,6 +19,8 @@ LOG_DIR="${REGRESSION_DIR}/.last-run"
 mkdir -p "$LOG_DIR"
 
 HARNESSES=(
+  "fw040-hotfix5.sh"
+  "fw040-h6-v2.sh"
   "fw041-phase2.sh"
   "fw042-v37-adversary.sh"
   "fw043-adversary.sh"
@@ -26,6 +28,8 @@ HARNESSES=(
   "fw045-pass7-adversary.sh"
   "fw051-baseline.sh"
   "fw051-adversary.sh"
+  "fw056-baseline.sh"
+  "fw056-adversary.sh"
 )
 
 OVERALL_FAIL=0

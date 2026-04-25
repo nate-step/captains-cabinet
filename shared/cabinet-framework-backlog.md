@@ -1051,3 +1051,34 @@ _(none)_
 - **Effort:** XS (2 one-liner glob fixes + 1 CI step amendment ≈ 15 min).
 - **Owner:** CTO.
 - **Source:** CTO /loop proactive-work tick 2026-04-24 — FW-054 follow-up; static binary (shellcheck v0.10.0) downloaded via Python lzma since apt-get blocked in agent env.
+
+---
+
+### FW-056 — Promote /tmp FW-040 hotfix harnesses + close tar Pattern 9a/9b bypasses
+- **Status:** SHIPPED 2026-04-25 (CTO /loop proactive-work tick — baselining FW-040 ad-hoc /tmp harness against current production hook surfaced 11 real bypasses; 2-pass adversary review found 3 more for total 14 closed).
+- **Problem:** Task #141 (Promote /tmp FW-0xx harnesses to permanent cabinet/tests/hook-regression/) shipped 2026-04-24 but missed 7 ad-hoc FW-040 harness scripts in /tmp — they were never wired into `run-hook-regression.sh`. Running them against the current production hook surfaced **11 real bypasses** in tar write-gates (Pattern 9a extract-into-product, Pattern 9b write-archive-to-product). Sonnet adversary pass-1 found 2 more bug classes (10 forms): fC-bundle ordering + metachar-anchor gap. Opus pass-2 self-probe found 3 more letters-between-f-and-C variants. Total 14 closed forms, all empirically verified.
+- **Bypass surface (closed):**
+  1. **No-trailing-slash path forms** (e.g., `tar -xf a.tar -C /workspace/product`, `tar -cf /workspace/product /tmp/src`) — old anchor `/workspace/product/` required slash; new anchor `(/|[[:space:];&|<>"'\'']|$)` accepts slash, whitespace, shell metachars, or end-of-string.
+  2. **Bundled `-xC`/`-vxC` forms** (e.g., `tar -xC /workspace/product/ -f a.tar`) — old C-atom `-C[[:space:]]*` only matched bare `-C`; new atom `-[a-zA-Z]*C[a-zA-Z]*[[:space:]]*` matches arbitrary letters around C.
+  3. **Long-form `--directory` no-slash** (e.g., `tar -x --directory /workspace/product`) — covered by anchor extension above.
+  4. **`-cf/path` no-space form** (e.g., `tar -cf/workspace/product/leak.tar`) — old 9b atom required `[[:space:]]+` after f; new `[[:space:]]*` accepts no-space.
+  5. **fC-bundle (f-then-C with archive arg between)** (e.g., `tar -fC /tmp/a.tar /workspace/product/`, `-xfC`, `-vxfC`, `-zxfC`, `-jxfC`) — completely missed by old regex (C-arg is 2nd positional, not adjacent). New 9a sub-atom: `-[a-zA-Z]*f[a-zA-Z]*C[a-zA-Z]*[[:space:]]+[^;&|[:space:]]+[[:space:]]+` matches f-anywhere-before-C with archive-arg interpolation.
+  6. **f-with-letters-before-C variants** (e.g., `-fxC`, `-xfzC`, `-fzxC`) — Sonnet pass-1 only covered f-adjacent-to-C; Opus pass-2 widened to allow arbitrary letters between.
+  7. **Metachar-anchor evasion** (e.g., `... -C /workspace/product;echo`, `&&`, `|`, `<`, `>`) — old anchor only had whitespace + quote + `/`; new anchor includes `;&|<>` (matching the middle group's `[^;&|]` exclusion class for symmetry).
+- **Diff scope:** 1 line in `cabinet/scripts/hooks/pre-tool-use.sh` (Section 3, line 851 — Pattern 9a + 9b atoms within the big alternation). 2 atoms changed, 2 trailing anchors broadened. Other 9 gates (`>`, sed, tee, cp/mv/rsync, cp/mv -t, --target-directory, patch, perl) untouched per scope discipline. Plus 4 new permanent harnesses in `cabinet/tests/hook-regression/`: `fw040-hotfix5.sh` (48 probes), `fw040-h6-v2.sh` (30), `fw056-baseline.sh` (29), `fw056-adversary.sh` (29). `run-hook-regression.sh` HARNESSES array updated 7→11.
+- **Verification:** 158 probes (29 baseline + 51 adversary 2-pass + 78 FW-040 regression). 0 failures, 0 unexpected ALLOWs (real bypasses), 0 unexpected BLOCKs (FPs). Full regression suite via `bash cabinet/scripts/run-hook-regression.sh` returns 11/11 harnesses GREEN. CI workflow `cabinet-ci.yml` calls `run-hook-regression.sh` so the new gates ride existing CI.
+- **Phase B scope-gaps still open:** (filed as FW-040 backlog continuation, not regressions from FW-056)
+  1. **`cd /workspace/product && tar -xf a.tar`** — pwd-based extract bypasses Pattern 9 entirely (no `-C` flag visible). Class: shell-parse-aware needed.
+  2. **`-Cf dir archive`** (C-arg 1st, f-arg 2nd, both potentially product) — when product is in 2nd positional position, neither 9a nor 9b's "path immediately after atom" anchor catches it.
+  3. **Quoted-path scope-gap** (e.g., `tar -xC "/workspace/product/" -f a.tar`) — pre-existing FW-040 Phase B gap, not introduced by FW-056.
+  All three remain accepted via fail-closed boundary + Edit/Write tool gating.
+- **Discipline gates honored (per `feedback_security_regex_authoring`):**
+  - ≥2 adversary passes (Sonnet + Opus self-probe).
+  - Harness-first-EVAL-second (probes built before fixes; 22→29 probes added across pass-1 and pass-2).
+  - Re-sync comment block: comment block at lines 827–850 retained accurately; new bug classes documented in this entry rather than expanding inline comments.
+  - Anchor-start enumeration covered shell metachars `;&|<>` symmetric with middle group `[^;&|]` exclusion.
+  - Per-tool flag semantics respected: GNU tar's bundled-flag arg ordering verified for fC, Cf, fxC, etc.
+  - Mask-quoted-interior approach used for FP probes (e.g., `meta-FP-L1 echo str no cmd` allows ALLOW correctly).
+- **Effort:** S (~3h: probe + diff + 2 adversary passes + harness writeup + suite wire-up).
+- **Owner:** CTO.
+- **Source:** CTO /loop proactive-work tick 2026-04-25 — gap discovered by running stale /tmp FW-040 hotfix harness against production hook (h6-v2 was only 28/30 PASS, surfacing bugs in original baseline). Also closes the long-standing dependency that let those /tmp harnesses live exclusively in ephemeral storage.
