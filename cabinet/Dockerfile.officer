@@ -46,7 +46,9 @@ RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
 
 # Create non-root user for Claude Code
-RUN useradd -m -s /bin/bash cabinet
+# UID 60001 + GID 60000 required for host-agent SO_PEERCRED auth (Spec 035 Phase B).
+RUN groupadd -g 60000 cabinet && \
+    useradd -m -s /bin/bash -u 60001 -g 60000 cabinet
 USER cabinet
 WORKDIR /home/cabinet
 
