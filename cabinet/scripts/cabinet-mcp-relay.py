@@ -185,8 +185,10 @@ def parse_peers_yml() -> dict[str, dict[str, Any]]:
 def post_to_peer(peer: dict[str, Any], payload: dict[str, Any]) -> tuple[bool, str]:
     """POST a JSON-RPC request to the peer's /mcp endpoint with bearer auth.
 
-    Returns (success, error_message). success=True iff HTTP 200 AND the JSON-RPC
-    response has no top-level "error" field.
+    Returns (success, error_message). success=True iff HTTP 200, no JSON-RPC
+    top-level error, AND the inner tool result's status is in the success set
+    (queued | delivered). Anything else (unknown_peer, refused, error) leaves
+    the message in queue for retry on next run.
     """
     secret_ref = peer.get("shared_secret_ref", "")
     secret = os.environ.get(secret_ref) if secret_ref else None
@@ -219,6 +221,23 @@ def post_to_peer(peer: dict[str, Any], payload: dict[str, Any]) -> tuple[bool, s
                 return False, f"non_json_response={resp_body[:200]!r}"
             if "error" in resp_json:
                 return False, f"jsonrpc_error={resp_json['error']}"
+            # FW-005 relay defense: HTTP 200 + JSON-RPC result is not enough — the
+            # tool may return `status=unknown_peer` or `refused` inside the result
+            # envelope. Parse the MCP content[0].text payload and only declare
+            # success when the inner status is in the success set. Anything else
+            # stays in queue for retry.
+            inner_status = "unknown"
+            try:
+                content = (resp_json.get("result") or {}).get("content") or []
+                if content and isinstance(content[0], dict):
+                    inner_text = content[0].get("text", "{}")
+                    inner = json.loads(inner_text)
+                    inner_status = inner.get("status", "unknown")
+            except (json.JSONDecodeError, IndexError, AttributeError):
+                inner_status = "parse_failed"
+            success_states = {"queued", "delivered"}
+            if inner_status not in success_states:
+                return False, f"send_message_status={inner_status}"
             return True, ""
     except urllib.error.HTTPError as e:
         return False, f"http_error={e.code} body={e.read().decode('utf-8', 'replace')[:200]}"

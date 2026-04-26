@@ -388,6 +388,42 @@ def tool_send_message(params: dict) -> dict:
     reply_to = params.get("reply_to")
     if not (to_cabinet and from_agent and content):
         return {"status": "error", "message": "to_cabinet, from_agent, content required"}
+
+    # FW-005 relay-inbound delivery path: the cross-Cabinet relay (cabinet-mcp-relay.py)
+    # POSTs queued outbound entries to the peer's HTTP sidecar by re-calling send_message
+    # with to_cabinet=<destination cabinet id>. From the receiver's perspective, that
+    # value equals its own this_cabinet_id() — meaning "deliver this incoming message
+    # locally", NOT "queue this for outbound to a peer." The original peer_by_id check
+    # below would reject (cabinet not in its own peer list) and the relay would lose
+    # the message. Detect self-delivery here and route to a local trigger stream.
+    if to_cabinet == this_cabinet_id():
+        from_cabinet = params.get("from_cabinet") or params.get("_relay_origin_cabinet") or "unknown"
+        # Default delivery target: CoS — coordinates cross-Cabinet inbound by design
+        # (matches "Officer → Officer (Redis push)" pattern in CLAUDE.md). Future
+        # extension: honor an explicit `to_role` param when relays carry it.
+        target_role = params.get("to_role", "cos")
+        try:
+            out = subprocess.run(
+                [
+                    "redis-cli", "-h", REDIS_HOST, "-p", REDIS_PORT,
+                    "XADD", f"cabinet:triggers:{target_role}", "*",
+                    "source", "cross-cabinet",
+                    "from_cabinet", from_cabinet,
+                    "from_agent", from_agent,
+                    "content", content,
+                    "reply_to", str(reply_to or ""),
+                    "ts", str(int(time.time())),
+                ],
+                capture_output=True, text=True, timeout=5,
+            )
+            msg_id = out.stdout.strip()
+            if not msg_id or msg_id.startswith("(error"):
+                return {"status": "error", "message": f"redis XADD failed: {out.stderr}"}
+            sys.stderr.write(f"[cabinet-mcp] send_message DELIVERED inbound to_role={target_role} from_cabinet={from_cabinet} from_agent={from_agent} msg_id={msg_id}\n")
+            return {"status": "delivered", "to_role": target_role, "message_id": msg_id}
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            return {"status": "error", "message": f"redis unreachable: {e}"}
+
     peer = peer_by_id(to_cabinet)
     if not peer:
         return {"status": "unknown_peer", "peer_id": to_cabinet}
