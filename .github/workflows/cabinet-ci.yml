@@ -129,8 +129,13 @@ jobs:
                        head -1 "$ff" 2>/dev/null | grep -qE '^#!.*bash' && echo "$ff"
                      done)
 
-      - name: shellcheck hooks + lib (severity=error)
+      - name: shellcheck hooks + lib + scripts root (severity=error)
         # FW-054: static analysis gate for the 12 hook + lib scripts.
+        # FW-055: extended to cover the 57 root-level cabinet/scripts/*.sh files
+        # (officer lifecycle, cost tooling, orchestration). 2 SC2045 instances
+        # found in the FW-055 survey 2026-04-24 (resume-officer.sh + suspend-
+        # officer.sh) were fixed in PR #48 (commit 677275e) before this gate
+        # widening so the expanded surface is green on first run.
         # --severity=error catches genuine bugs (SC2064 trap-in-subshell,
         # SC2090 array-quoting, SC2094 read/write same file, etc.) without
         # noise from style warnings. ubuntu-latest has shellcheck pre-installed.
@@ -138,7 +143,8 @@ jobs:
           shellcheck --version
           shellcheck --severity=error --shell=bash \
             /opt/founders-cabinet/cabinet/scripts/hooks/*.sh \
-            /opt/founders-cabinet/cabinet/scripts/lib/*.sh
+            /opt/founders-cabinet/cabinet/scripts/lib/*.sh \
+            /opt/founders-cabinet/cabinet/scripts/*.sh
 
       - name: Shell unit tests — triggers.sh
         run: bash /opt/founders-cabinet/cabinet/scripts/test-triggers.sh
