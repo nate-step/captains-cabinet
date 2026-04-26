@@ -1019,7 +1019,7 @@ _(none)_
 ---
 
 ### FW-055 — shellcheck severity=error survey of root-level cabinet/scripts/*.sh (57 files)
-- **Status:** Proposed 2026-04-24. Read-only triage entry — no code changes made.
+- **Status:** **SHIPPED 2026-04-26** — 2 SC2045 fixes landed via PR #48 (commit 677275e) + cabinet-ci.yml shellcheck-step extension follows in a small follow-up PR (this commit). Original survey landed 2026-04-24.
 - **Problem:** FW-054 added a `shellcheck --severity=error --shell=bash` CI gate covering the 12 hot scripts (8 hooks + 4 libs), all of which passed clean. FW-054 explicitly deferred the 57-file root-level `cabinet/scripts/*.sh` surface as a followable. This entry closes that gap with an empirical survey so the CTO can decide whether widening the CI gate would surface real bugs or is zero-risk. Without this data, the CI gate gives false completeness — the hot path is covered but officer lifecycle scripts, cost tooling, and orchestration scripts are ungated.
 - **Findings (empirical — shellcheck v0.10.0, `--severity=error --shell=bash`, run 2026-04-24):**
 
@@ -1082,3 +1082,61 @@ _(none)_
 - **Effort:** S (~3h: probe + diff + 2 adversary passes + harness writeup + suite wire-up).
 - **Owner:** CTO.
 - **Source:** CTO /loop proactive-work tick 2026-04-25 — gap discovered by running stale /tmp FW-040 hotfix harness against production hook (h6-v2 was only 28/30 PASS, surfacing bugs in original baseline). Also closes the long-standing dependency that let those /tmp harnesses live exclusively in ephemeral storage.
+
+---
+
+### FW-057 — pre-tool-use.sh over-blocks notify-officer.sh argv on command-name tokens (MEDIUM)
+- **Status:** Proposed 2026-04-25 (CTO reflection finding post-FW-018 Phase B + PostHog Phase-0 ship). 3+ live blocks observed during cross-officer coordination this session.
+- **Problem:** When sending an officer-to-officer message via `bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh <officer> '<body>'`, command-name tokens inside the quoted body (e.g., `chown`, `chmod`, `chgrp`, `sudo`, `usermod`, `git push`) trigger `BLOCKED: System-level command not permitted`. The body is structurally an argv to bash invoking notify-officer.sh — data-position, not command-position — but the hook's outer regex appears to scan the whole bash command string and flags keywords regardless of context. This is asymmetric: officers can mention these concepts freely in Telegram replies but not in officer-to-officer triggers, even though both are pure-data communication channels.
+- **Repro count this session (2026-04-25):** 3 separate notify-officer.sh sends blocked. All resolved by rephrasing the body in plain English without command tokens — slow + lossy + paraphrastic.
+- **Class:** scope-gap of FW-042 v3.7.1 word-boundary fix. Per memory `feedback_pre_tool_use_substring_globs`, data-position keywords for cat/echo/grep are now permitted; notify-officer.sh argv body should join that list but evidently doesn't yet.
+- **Recommended fix:** Section-3 (or earlier) pre-check in pre-tool-use.sh — when bash command starts with `bash /opt/founders-cabinet/cabinet/scripts/notify-officer.sh` (or a small whitelist of officer-comm scripts that take a quoted-string argv as their last argument), treat that trailing argv as opaque data and skip command-position keyword scanning. Symmetric with how Telegram reply tool already handles its message field. Whitelist starting set: `notify-officer.sh`, `send-to-group.sh`, `record-experience.sh` (the fields-as-argv pattern).
+- **Test plan:** Add adversary harness `cabinet/tests/hook-regression/fw057-notify-officer-argv.sh` covering: (a) plain message ALLOW (regression guard), (b) chown/chmod/chgrp/sudo/usermod inside argv → ALLOW, (c) actual `chown` in command-position outside notify-officer.sh → still BLOCK (regression guard for non-whitelist case), (d) the same script-path string inside a regular echo body → still subject to existing rules.
+- **Effort:** S (~1h: design whitelist regex carefully to avoid bypass via clever argv smuggling, write harness, ship). Discipline gate (≥2 adversary passes) applies — security-critical.
+- **Owner:** CTO.
+- **Source:** CTO reflection 2026-04-25 post FW-018 Phase B Stream A milestone. Surfaced to CoS via notify trigger 20:23 UTC; CoS asked to file as FW-NNN backlog at convenience.
+
+---
+
+### FW-058 — Crew agent prompt template gap: Captain-coordinated config values + schema-validated configs (LOW)
+- **Status:** **SHIPPED 2026-04-25** (CTO reflection finding post-PostHog Phase-0 ship; addendum landed in `memory/skills/evolved/crew-prompt-template.md` "External service integrations + schema-validated configs" section the same evening). 2 occurrences observed this session.
+- **Problem:** Sonnet Crew agents implementing well-spec'd integrations sometimes bake configuration constants from generic-default sources without confirming Captain's account-level provisioning, OR add comment-style escapes to schema-validated config files where they're forbidden. Examples this session:
+  1. **PostHog region default-US vs Captain-EU:** Crew defaulted `lib/analytics.ts` POSTHOG_HOST to `https://us.i.posthog.com` per official docs — Captain provisioned the EU region. Required 2 host-flip commits post-PR-open (analytics.ts + smoke-test). ~10min wall-clock + Captain notification roundtrip + CI re-run.
+  2. **eas.json schema violation:** Crew added `_note_posthog` underscore-prefix key to `build.base` as a fake comment for the PostHog provisioning note — EAS schema rejects unknown keys, blocking Captain's build trigger entirely with "is not allowed". Required direct-to-main hotfix (commit 2bd1e25).
+- **Class:** Crew prompt-template gap. Crew agents are great at well-spec'd implementation but lose track of:
+  - External service config that depends on Captain's account choice (region, project ID, env-specific keys)
+  - Schema-validated config files (eas.json, vercel.json, package.json) where comment-style escapes are forbidden
+- **Recommended addendum to memory/skills/evolved/crew-prompt-template.md:** New section "External service + schema-validated configs" with two rules:
+  1. Before baking any URL constant, project ID, or static config value for an external service, list dependencies on Captain provisioning (region, project ID, account tier) and either confirm via a question to CTO before locking, or document explicit assumptions inline so the reviewer notices.
+  2. For schema-validated configs (eas.json, vercel.json, package.json, app.config.js, etc.), do NOT use underscore-prefix keys as comments — JSON has no comments; put descriptive notes in adjacent .env.example or README files instead.
+- **Effort:** XS (~30min: write addendum, point existing crew-prompt-template.md to it, optional: add example "checklist before locking constants" template).
+- **Owner:** CTO.
+- **Source:** CTO reflection 2026-04-25 post PostHog Phase-0 SEN-567 ship. Both incidents required ~30min combined of post-merge rework that an upfront question to Captain would have prevented. Surfaced to CoS via notify trigger 20:23 UTC; CoS asked to file as FW-NNN backlog at convenience.
+
+---
+
+### FW-059 — FW-018 Phase B: entrypoint chown surface needs broader coverage (LOW)
+- **Status:** Proposed 2026-04-25 (CTO + CRO reflection finding post-FW-018 Phase B Stream A rebuild). Both officers hit the same gap within minutes of first-rebuild.
+- **Problem:** FW-018 Phase B Stream A entrypoint chown covered `/opt/founders-cabinet/memory/`, `shared/`, `~/.claude/`, `~/.claude-channels/` to UID 60001 — but missed `instance/memory/tier2/<officer>/`, `cabinet/scripts/`, `cabinet/.env`, `.git/`, `secrets/`. Container post-rebuild can't write tier2 notes, can't push git, can't read host-dropped secrets without an out-of-band cabinet-group + mode-640 routing pattern (see memory/skills/evolved/cross-uid-host-container-routing.md).
+- **Tonight's resolution:** CoS performed a host-side chgrp-cabinet sweep across the missed paths (her task #97). Files now group-cabinet writable; container reads + writes resolve. CRO independently flagged the same gap to CoS within minutes of CTO's flag.
+- **Recommended:** extend the entrypoint chown to cover the broader surface (or document the host-side ownership-transition step explicitly in 035-phase-b runbook so future Cabinet bring-ups don't rediscover the gap by accident at first-rebuild time).
+  - Option A (entrypoint extension): add `chown -R cabinet:cabinet /opt/founders-cabinet/instance/memory/ cabinet/scripts/ cabinet/.env secrets/ .git/ 2>/dev/null || true` to entrypoint.sh. Risk: chown -R on .git/ during a git operation could interfere; usually fine since entrypoint runs before any officer git activity.
+  - Option B (host-side runbook): document a one-time host-side chown-recursive of the missed paths to UID 60001 + GID 60000 right after PR #47-equivalent merge. Cleaner separation since these paths are bind-mounted from host, not in volumes.
+- **Effort:** XS (~15min: pick A or B, ship, test on next first-rebuild scenario).
+- **Owner:** CTO (option A) or CoS (option B + runbook update).
+- **Source:** CTO reflection 2026-04-25 post-rebuild discovery; CRO independently filed same finding 20:19 UTC.
+
+---
+
+### FW-060 — Personal Cabinet sidecar identify() returns capacity=work (cosmetic, post-launch) (LOW)
+- **Status:** Proposed 2026-04-26 (CoS observation during FW-005 Option C smoke test). Cosmetic; does not affect cross-Cabinet HTTP function.
+- **Problem:** Personal Cabinet's `mcp-server` sidecar identify() roundtrip returns `cabinet_id=personal` (correct) but `capacity=work` (wrong — should be `personal`). Likely root cause: `cabinet/mcp-server/server.py` `this_cabinet_capacity()` reads from a config source (active-preset, env var, or peers.yml self-reference) that is not propagating the Personal-side capacity when the sidecar starts. Possible candidates to investigate: `instance/config/active-preset` is `personal` on Personal but the sidecar may be reading `presets/work/` defaults if the preset loader isn't fully wired in HTTP-transport context; OR `CABINET_CAPACITY` env var is not set in Personal's `.env`; OR `peers.yml` self-reference is missing on Personal side.
+- **Investigation surface:**
+  1. `cabinet/mcp-server/server.py:197` `this_cabinet_capacity()` — read this function's source-of-truth lookup chain.
+  2. `instance/config/peers.yml` schema — does it expect a `self:` block? Currently only peers; capacity may need to come from elsewhere.
+  3. Personal `.env` for `CABINET_CAPACITY=personal` env var setting.
+  4. `load-preset.sh` — does it export capacity from active preset?
+- **Impact:** zero functional impact on FW-005 — `cabinet_id` is the routing identifier; `capacity` is informational metadata for trust-policy decisions. But it's confusing in the Cabinet topology view.
+- **Effort:** XS (~15min once investigation finds the source-of-truth gap).
+- **Owner:** CTO (server.py fix) or CoS (config wiring fix) depending on root cause.
+- **Source:** CoS smoke-test trigger 2026-04-26 09:09 UTC during FW-005 Option C inbound AC-1 verification.
