@@ -67,7 +67,10 @@ bash "$CABINET_ROOT/cabinet/scripts/start-officer.sh" "$OFFICER"
 
 # === Notify other officers ===
 source "$CABINET_ROOT/cabinet/scripts/lib/triggers.sh" 2>/dev/null
-for other in $(ls "$CABINET_ROOT/instance/memory/tier2/" 2>/dev/null); do
+# FW-055: glob over directories instead of $(ls ...) — robust to whitespace/special chars + shellcheck-clean (SC2045).
+for other_dir in "$CABINET_ROOT/instance/memory/tier2/"*/; do
+  [ -d "$other_dir" ] || continue  # nullglob guard — empty dir = literal pattern
+  other=$(basename "$other_dir")
   [ "$other" = "$OFFICER" ] && continue
   EXPECTED=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "cabinet:officer:expected:$other" 2>/dev/null)
   [ "$EXPECTED" = "active" ] && OFFICER_NAME=supervisor trigger_send "$other" "OFFICER RE-HIRED: ${OFFICER^^} is back online. Check exit record for context on what they were doing before suspension."

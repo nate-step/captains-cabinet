@@ -194,7 +194,7 @@ def upsert_task(conn: Any, row: Dict[str, Any]) -> Tuple[str, int]:
             %(pr_url)s, %(created_at)s, %(updated_at)s,
             %(completed_at)s, %(cancelled_at)s
         )
-        ON CONFLICT (external_source, external_ref)
+        ON CONFLICT (external_source, external_ref) WHERE external_ref IS NOT NULL
         DO UPDATE SET
             officer_slug        = EXCLUDED.officer_slug,
             title               = EXCLUDED.title,
