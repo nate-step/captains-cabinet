@@ -57,28 +57,34 @@ fi
 # Lowercase text for case-insensitive scan.
 REPLY_LOWER="$(printf '%s' "$REPLY_TEXT" | tr '[:upper:]' '[:lower:]')"
 
-# Gate-language phrases. Spec 043 §H1 names 6; expanded here to cover the
-# variants enumerated in memory/skills/evolved/captain-autonomy-discipline.md
-# which is the canonical source of truth for this rule (built from 3
-# Captain corrections — msg 1791, 1935, 1968). Substring match,
-# case-insensitive. FP-data will sharpen the list.
-PHRASES=(
-  "for your sign-off"
-  "awaiting your sign-off"
-  "awaiting your reply"
-  "awaiting your decision"
-  "ok to proceed?"
-  "ok to ship?"
-  "ready for your review"
-  "ready for your read"
-  "want me to wait"
-  "want me to hold"
-  "pending your sign-off"
-  "pending your green light"
-  "let me know if you want"
-  "let me know how to proceed"
-  "go-ahead"
-)
+# Gate-language phrases — sourced at run-time from the canonical skill at
+# memory/skills/evolved/captain-autonomy-discipline.md per Spec 043 §H1
+# amendment. Adding a new phrase to the skill's "Pre-send gate-language
+# detector" section automatically propagates to this hook without code or
+# spec edits. Falls back to a hardcoded 6 if the skill file is missing.
+SKILL_FILE="$REPO_ROOT/memory/skills/evolved/captain-autonomy-discipline.md"
+PHRASES=()
+if [ -r "$SKILL_FILE" ]; then
+  # Extract every double-quoted string from the gate-language detector
+  # section. awk pulls the section between "## Pre-send gate-language
+  # detector" and the next "## ..." heading; grep extracts the quoted
+  # phrases; tr lowercases for case-insensitive comparison; sort -u dedupes.
+  while IFS= read -r phrase; do
+    [ -n "$phrase" ] && PHRASES+=("$phrase")
+  done < <(awk '/^## Pre-send gate-language detector/{flag=1; next} /^## /{flag=0} flag' "$SKILL_FILE" \
+    | grep -oE '"[^"]+"' | tr -d '"' | tr '[:upper:]' '[:lower:]' | sort -u)
+fi
+# Fallback: spec's original 6 phrases (case-insensitive substring).
+if [ ${#PHRASES[@]} -eq 0 ]; then
+  PHRASES=(
+    "for your sign-off"
+    "awaiting your reply"
+    "ok to proceed?"
+    "ready for your review"
+    "want me to wait"
+    "pending your sign-off"
+  )
+fi
 
 MATCHED=""
 for phrase in "${PHRASES[@]}"; do
