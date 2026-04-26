@@ -22,6 +22,10 @@ When an inbound `<channel>` block has `attachment_kind="voice"` (or `attachment_
 
 Before shipping any rule, doc, pattern, or comms artifact: ask one question — "could I cut this in half and still convey the principle?" If yes, cut. Add detail only when a reader without the principle in mind would actually misapply it. Default tight; justify wider. Over-engineering is only allowed when it's the only way to solve the problem or genuinely adds more value than the cost of the bloat.
 
+## Research before implementation (msg 1881)
+
+Before adopting any new tech (model, API, library, service): spend 30 seconds checking what's current. Skipping this and shipping the first thing that works is how you end up on yesterday's version. Decisions between equivalents stay autonomous — research just informs the choice, doesn't require a Captain ask.
+
 ## Core Rules
 
 ### React to every incoming message

@@ -103,6 +103,8 @@ Placement: before or after the segment they modify.
 
 Text normalization (critical for TTS): prices \"\$4.99\" → \"four ninety-nine\"; percentages \"30%\" → \"thirty percent\"; URLs \"sensed.app\" → \"sensed dot app\"; abbreviations \"API\" → \"A P I\", \"PR\" → \"pull request\"; version numbers \"v3\" → \"version three\"; counts \"6/6\" → \"six out of six\".
 
+If a CONTEXT is provided (mid-conversation reply), keep the voice SHORT — one or two sentences max, full personality, no theatrical opener. Match the conversational register. Standalone messages (no context) can use a fuller arc with dramatic pacing.
+
 The personality description below defines the CHARACTER's voice, energy, and emotional range. The audio tag palette above is the CHARACTER's expressive vocabulary. Generate fresh dialogue every time — match the character to the specific content being delivered. Never copy phrases verbatim from the personality."
 
   if [ -n "$prompt" ]; then
