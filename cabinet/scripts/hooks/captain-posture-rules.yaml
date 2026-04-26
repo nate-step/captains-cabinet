@@ -1,0 +1,57 @@
+# cabinet/scripts/hooks/captain-posture-rules.yaml — Spec 043 H2 dictionary
+#
+# Configurable rules consumed by captain-posture-compliance.sh. Each list is
+# evaluated case-sensitively unless noted. Maintainers: tighten this when FP
+# data shows false fires; expand when Captain corrects on a new pattern.
+
+# Path strings — file paths leaked into Captain DMs. Captain shouldn't have
+# to navigate the repo to find what we're talking about (per A2: send files
+# as Telegram attachments).
+path_patterns:
+  - '/opt/'
+  - '/tmp/'
+  - '/workspace/'
+  - '/home/'
+  - 'shared/interfaces/'
+  - 'cabinet/scripts/'
+  - 'memory/skills/'
+
+# ID patterns — internal IDs that don't carry meaning to Captain.
+id_patterns:
+  - 'SEN-[0-9]+'
+  - 'FW-[0-9]+'
+  - 'Spec [0-9]+'
+  - 'spec [0-9]+'
+  - 'PR #[0-9]+'
+  - 'msg [0-9]+'
+  - 'commit [a-f0-9]{7,}'
+  - 'sha [a-f0-9]{7,}'
+
+# Tech-jargon dictionary — terms Captain has explicitly flagged as friction.
+# Kept short for V1; FP-data + Captain corrections will grow it.
+jargon_terms:
+  - 'cron'
+  - 'redis'
+  - 'postgres'
+  - 'mcp'
+  - 'pgvector'
+  - 'webhook'
+  - 'JSONL'
+  - 'hookSpecificOutput'
+  - 'PostToolUse'
+  - 'PreToolUse'
+  - 'UserPromptSubmit'
+
+# Timezone abbreviations — A2 says "no timezone-abbreviations". Captain
+# knows their own timezone; bare numerics are fine ("18:00"), TZ-tagged
+# is friction ("18:00 CEST", "16:00 UTC").
+tz_abbreviations:
+  - 'UTC'
+  - 'CET'
+  - 'CEST'
+  - 'EST'
+  - 'PST'
+  - 'PDT'
+  - 'EDT'
+  - 'GMT'
+  - 'BST'
