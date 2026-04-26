@@ -48,6 +48,15 @@
             "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/pre-tool-use.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/build-vs-buy-precheck.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -87,6 +96,10 @@
           {
             "type": "command",
             "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/post-file-write-memory.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /opt/founders-cabinet/cabinet/scripts/hooks/personal-work-parity.sh"
           }
         ]
       }

@@ -1155,7 +1155,7 @@ _(none)_
 ---
 
 ### FW-062 — Captain-Discipline Hooks + Skills (Spec 043) (P1)
-- **Status:** Phase 1 IN BUILD 2026-04-26 (CTO claims build per A1). Phase 1 = H1 (gate-language detector) + H2 (Captain Posture compliance) + S1 (captain-posture-compliance skill) + settings.json registrations. All warn-mode (never exit non-zero per AC #6, env-var emergency disable per AC #10, FP-rate logging per AC #9). Phase 2 = H3 (parity reminder) + H4 (build-vs-buy precheck) + S2 + S3. Phase 3 = S4 (hook-authoring-discipline meta-skill) + FP-data tooling.
+- **Status:** Phase 1 + Phase 2 SHIPPED 2026-04-26. Phase 1: H1 (gate-language) + H2 (Captain Posture) + S1 + settings.json. Phase 2: H3 (Personal-Work parity reminder, 5-min TTL tracker) + H4 (build-vs-buy precheck, npm/pip/cargo/etc.) + S2 (parity checklist) + S3 (build-vs-buy quickdraw) + settings.json. All warn-mode (never exit non-zero per AC #6, env-var emergency disable per AC #10, FP-rate logging per AC #9). Phase 3 (S4 hook-authoring-discipline meta-skill + fp-analyze.sh weekly review tool) pending.
 - **Spec:** `shared/interfaces/product-specs/043-captain-discipline-hooks-skills.md`.
 - **Problem:** 3 highest-leverage memory rules (gate-language, Captain Posture, parity) failed enforcement ≥2 times in 24h. Memory alone doesn't hold past attention budget. Hooks fire deterministically and surface the rule at the moment of violation. Anti-FW-042 discipline: warn-first, harden only with FP data.
 - **Build:** native bash hooks (no deps), per-hook `<HOOK_NAME>_ENABLED=0` env-var disable, configurable rule dictionaries, FP-rate JSONL logging at `cabinet/logs/hook-fires/`. Personal-Work parity via existing sync-framework.
