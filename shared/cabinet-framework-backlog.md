@@ -1140,3 +1140,14 @@ _(none)_
 - **Effort:** XS (~15min once investigation finds the source-of-truth gap).
 - **Owner:** CTO (server.py fix) or CoS (config wiring fix) depending on root cause.
 - **Source:** CoS smoke-test trigger 2026-04-26 09:09 UTC during FW-005 Option C inbound AC-1 verification.
+
+---
+
+### FW-061 — Tool-Call Retrievable Captain Patterns + Intents (Spec 042) (P1)
+- **Status:** Phase 1 SHIPPED 2026-04-26 (indexer + scaffold-entry + retro-fit of 24 blocks across 5 anchors + 5 patterns + 14 intents + pre-commit freshness gate). Phase 2 (query.sh + pre-captain-dm hook + 60s dedup) and Phase 3 (eval + 5-anchor fixture set + pre-/post-comparison) pending. Spec 042 v1 LANDED 2026-04-26. File artifacts + scripts only, zero schema reach. Reversible.
+- **Spec:** `shared/interfaces/product-specs/042-tool-call-retrievable-patterns-intents.md`.
+- **Problem:** captain-patterns.md + captain-intents.md are tier-1 always-loaded. As they grow past ~10 entries each, attention dilution + lost-in-the-middle erode rule application. CoS's 3-time gate-on-reversibles failure mode is the canonical regression. Phase 2 of the memory-architecture upgrade per CRO research brief.
+- **Build:** native indexer over the two markdown files → `captain-rules-index.yaml`; native query.sh with keyword-match scoring (anchors always; non-anchors top-5 by trigger-word hits); pre-captain-dm hook injects structured block as system-reminder at turn-start; golden eval w/ pre-/post-comparison against 5 anchor fixtures. Personal-Work parity via existing sync-framework. Build-our-own (no embeddings, no SaaS).
+- **Phasing:** ~15h CTO time. Phase 1 indexer+scaffold. Phase 2 query+hook+dedup. Phase 3 eval+comparison run.
+- **Owner:** CTO build, CPO spec.
+- **Source:** Captain msg 1980 promotion (Phase 2 of memory-architecture upgrades) + CRO brief `2026-04-26-memory-architecture-context-handling-cabinet.md` ACTIONABLE-CABINET #2.
