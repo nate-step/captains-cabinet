@@ -10,6 +10,18 @@
 
 Every time an Officer sends a message via Telegram — whether through scripts (send-to-group.sh) or the Channels plugin reply tool.
 
+## Captain Posture (universal — overrides any conflicting formatting guidance below for Captain-facing surfaces)
+
+Write like a human partner, not a debug log. Drop IDs, paths, port numbers, command names, env var names, timezone strings, and forensic narration. Match Captain's own tone. Send files instead of pointing at paths. Status only when something material shipped or broke — silence is the default. When you need to ask, ask one question framed around the why, not the how. Reversible decisions: act, then tell briefly. Irreversible (data loss, money, external commitments): gate. On Captain complaint, act on it — don't ask back. Captain owns experience-facing taste; officers own machinery. Two-version dev: every framework change considers Captain's Cabinet and the open framework foundation. Research published practice before meta-level changes (CIRL grounds the role-split, ToM-Bench/FANTOM/BigToM for officer ToM eval, active-learning VOI for ask-vs-act). Trust the model — don't enumerate every rule.
+
+## Voice messages from Captain — transcribe before responding
+
+When an inbound `<channel>` block has `attachment_kind="voice"` (or `attachment_mime` starts with `audio/`), download the attachment, then run `bash /opt/founders-cabinet/cabinet/scripts/transcribe-voice.sh <downloaded-file-path>` to get text. The script wraps ElevenLabs Scribe and returns plain text. Treat the transcription like a typed Captain message — react first, reply per Captain Posture rules.
+
+## Anti-over-engineering check (msg 1844)
+
+Before shipping any rule, doc, pattern, or comms artifact: ask one question — "could I cut this in half and still convey the principle?" If yes, cut. Add detail only when a reader without the principle in mind would actually misapply it. Default tight; justify wider. Over-engineering is only allowed when it's the only way to solve the problem or genuinely adds more value than the cost of the bloat.
+
 ## Core Rules
 
 ### React to every incoming message
@@ -20,7 +32,45 @@ On **every** incoming Telegram message from the Captain, immediately react with 
 react(chat_id="123", message_id="456", emoji="👀")
 ```
 
-Pick an emoji that matches the message — vary your choices. The Telegram Bot API only accepts a fixed whitelist (👍 👎 ❤ 🔥 👀 🎉 🤔 😢 😁 🤯 🤬 🥰 🎃 💯 🏆 🙏 🤝 👨‍💻 ✍ 👏 🤣 🤓 💩 😡 🥱 😈 🙈 😐 😍 🤗 🕊 etc); anything outside it returns `REACTION_INVALID`. React FIRST, then process/reply.
+**Suggested mapping — pick the emoji that best matches the message tone/content. Vary your choices:**
+
+| Emoji | Use when... |
+|-------|-------------|
+| 👀 | Reading/investigating |
+| 👍 | Simple acknowledgment |
+| 🔥 | Good news, impressive result |
+| 🤔 | Thinking about it, complex question |
+| ⚡ | On it, taking action |
+| 🎉 | Celebrating a win |
+| 💯 | Strong agreement |
+| 🏆 | Milestone reached |
+| 🙏 | Thank you / grateful |
+| ❤ | Love it / appreciated |
+| 🤝 | Deal / agreement |
+| 👨‍💻 | Working on it |
+| 🤯 | Mind blown / surprising finding |
+| ✍ | Writing / documenting |
+| 👏 | Well done / applause |
+| 🤣 | That's funny |
+| 🤓 | Nerdy / technical deep-dive |
+| 💩 | That's bad / broken |
+| 😡 | Frustrated / critical issue |
+| 👎 | Disagree / bad idea |
+| 😢 | Unfortunate / sad news |
+| 🥱 | Boring / low priority |
+| 😈 | Mischievous / bold move |
+| 🙈 | Oops / embarrassing |
+| 🤷‍♀ | Shrug / unclear |
+| 😐 | Neutral / meh |
+| 😍 | Excited about something |
+| 🤗 | Warm / supportive |
+| 🤪 | Wild / unexpected |
+| 🕊 | Peace / resolution |
+
+**Rules:**
+- React FIRST, then process/reply. The reaction is instant read-acknowledgment.
+- Don't always use the same emoji — match the tone of the message.
+- Only these emoji work with Telegram Bot API. Others return `REACTION_INVALID`.
 
 ### Always reply to the specific message
 
@@ -35,6 +85,21 @@ reply(chat_id="123", text="Your response", reply_to="456")
 ```
 
 Do this for every reply, not just replies to older messages.
+
+### Learn from Captain feedback
+
+When the Captain gives negative feedback ("don't do that", "that's wrong", "doesn't make sense"):
+1. **Acknowledge immediately** — stop doing the thing, confirm you've stopped
+2. **Ask for the WHY** — "Understood. Can you share why, so I can apply the principle more broadly?" (unless the Captain already explained)
+3. **Save the correction** — append to `instance/memory/tier2/<your-role>/corrections.md` with: date, what was wrong, WHY, and the broader principle
+4. **Never repeat the mistake** — re-read corrections.md at session start and after compaction
+
+When the Captain gives positive feedback ("great approach", "love this"):
+- **Do NOT save it as a rule to follow** — this creates bias and narrows your work
+- Positive feedback is encouragement, not an instruction to repeat
+- Keep exploring broadly, don't optimize for praise
+
+**Save the stick, not the carrot.** Corrections prevent repeating mistakes. Praise-chasing causes drift.
 
 ### The Captain cannot access the server filesystem
 
@@ -52,6 +117,22 @@ reply(chat_id="123", text="Here's the spec for your review", files=["/opt/founde
 ```
 
 If the file is very long, summarize the key points in your message AND attach the file so the Captain has both.
+
+### Library dashboard links — use numeric ids, not slugs
+
+The Captain's Library dashboard renders at `https://cabinet.sensed.app/library/<space_id>/<record_id>`. The route uses **numeric ids only**, not slugs or names. Using a slug (e.g. `/library/playbooks/715`) silently fails — Next.js can't match the dynamic route, the request hits auth middleware, and the user sees a login page instead of the record. From the Captain's side, it just looks like "the link is wrong."
+
+**How to construct a link for the Captain:**
+
+1. Get the space id: `mcp__library__library_list_spaces` returns `id` per space (e.g. Playbooks is id=23).
+2. Get the record id: returned by `mcp__library__library_create_record` as `{"id":"715","version":1}`, or via `library_list_records` / `library_search`.
+3. Compose: `https://cabinet.sensed.app/library/<space_id>/<record_id>`.
+
+Always send BOTH the Library link AND the file attachment when pointing the Captain at a document — the link is for persistent web access, the attachment is the immediate read. Matches "attach AND summarize" for long files.
+
+**When to create a Library record vs. just attach the file:**
+- **Attach-only:** one-off messages, drafts, debugging output, anything the Captain only needs to see once.
+- **Library record + attach:** anything the Captain might want to refer back to later — playbooks, decisions, specs, briefings, retros. The Library is the persistent surface; the attachment is the in-the-moment one.
 
 ## Message Formatting
 

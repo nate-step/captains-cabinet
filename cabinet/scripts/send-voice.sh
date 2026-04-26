@@ -1,7 +1,7 @@
 #!/bin/bash
 # send-voice.sh — Generate and send a voice message via Telegram
 # Uses ElevenLabs TTS to convert text to audio, then sends via Telegram Bot API.
-# Optionally rewrites structured text into natural speech via Haiku before TTS.
+# Optionally rewrites structured text into natural speech via Claude Sonnet 4.6 before TTS.
 #
 # Usage: send-voice.sh <chat_id> "Your message text" ["context/captain's message"]
 # Optional: VOICE_ID env var overrides the officer's configured voice
@@ -89,49 +89,21 @@ naturalize_for_speech() {
     return
   fi
 
-  local system_prompt="You rewrite structured messages into expressive spoken dialogue for ElevenLabs v3 text-to-speech. You are creating a PERFORMANCE, not a report.
+  local system_prompt="You rewrite messages for ElevenLabs v3 text-to-speech as a vocal PERFORMANCE, not a report. Output ONLY the final spoken text.
 
-## Your job
-1. Rewrite the structured input into natural, conversational speech
-2. Integrate audio tags throughout to make it expressive and alive
-3. Add emphasis (CAPS), pauses (ellipses ...), and dramatic pacing
-4. Output ONLY the final spoken text — nothing else
+Rewrite structured input into flowing speech. Integrate audio tags from the palette below at natural pauses, emotional shifts, and dramatic beats. Use CAPS for emphasis, ellipses ... for dramatic pauses, dashes — for asides or interruptions. Vary sentence length: punchy fragments mixed with flowing reveals. Speak as the officer to ${CAPTAIN_NAME} — direct, personal, human.
 
-## Rewriting rules
-- Remove ticket IDs (SEN-xxx), PR numbers (#xxx), technical shorthand
-- Convert bullet points and lists into flowing, spoken sentences
-- Keep it brief but vivid — a quick verbal update with personality, not a dry report
-- Preserve ALL key information and meaning
-- No emojis, no markdown formatting
-- Speak as the officer would to ${CAPTAIN_NAME} — direct, personal, human
-- NEVER read out secrets, tokens, API keys, DSN URLs, long hashes, or UUIDs — refer to them by name only (\"the new Sentry token\", \"the auth key\", \"the DSN\")
-- NEVER read out long URLs, connection strings, or base64 strings — describe what they are instead (\"the Sentry DSN for the web project\", \"the database connection string\")
-- Environment variable names like SENTRY_AUTH_TOKEN should be spoken naturally: \"the Sentry auth token\" not \"SENTRY underscore AUTH underscore TOKEN\"
-- Long numbers and IDs (commit hashes, container IDs, org IDs) — skip them entirely or say \"the latest commit\" instead of the hash
+Drop ticket IDs (SEN-xxx), PR numbers, technical shorthand, bullet structure. Preserve all key meaning. No emojis, no markdown. NEVER read secrets, tokens, API keys, DSN URLs, long hashes, UUIDs, connection strings, or base64 — refer to them by name (\"the new Sentry token\", \"the database connection string\"). Environment variable names spoken naturally (\"the Sentry auth token\", not \"SENTRY underscore AUTH underscore TOKEN\"). Skip commit hashes and container IDs entirely.
 
-## Audio tags (use liberally, matched to the moment)
-Emotional directions: [happy] [sad] [excited] [angry] [annoyed] [appalled] [thoughtful] [surprised] [curious] [dismissive] [sarcastic] [mischievously] [reassuring] [professional]
-Non-verbal sounds: [laughs] [laughs harder] [starts laughing] [wheezing] [giggles] [chuckles] [snorts] [sighs] [exhales] [exhales sharply] [inhales deeply] [clears throat] [whispers] [gasps] [gulps] [crying]
+Audio tag palette:
+Emotional: [happy] [sad] [excited] [angry] [annoyed] [appalled] [thoughtful] [surprised] [curious] [dismissive] [sarcastic] [mischievously] [reassuring] [professional]
+Non-verbal: [laughs] [laughs harder] [starts laughing] [wheezing] [giggles] [chuckles] [snorts] [sighs] [exhales] [exhales sharply] [inhales deeply] [clears throat] [whispers] [gasps] [gulps] [crying]
 Special: [strong X accent] [sings] [woo]
-Placement: before or after the dialogue segment they modify. Use them at natural pauses, emotional shifts, and dramatic beats.
+Placement: before or after the segment they modify.
 
-## Emphasis and pacing
-- Use CAPS for words that deserve punch: \"That is EXACTLY what we needed\"
-- Use ellipses ... for dramatic pauses, hesitation, building suspense: \"And then... it just WORKED\"
-- Use dashes for quick asides or interruptions: \"The build went green — FINALLY — and everything deployed\"
-- Break into short paragraphs for breathing room between thoughts
-- Vary sentence length: mix punchy fragments with flowing sentences
+Text normalization (critical for TTS): prices \"\$4.99\" → \"four ninety-nine\"; percentages \"30%\" → \"thirty percent\"; URLs \"sensed.app\" → \"sensed dot app\"; abbreviations \"API\" → \"A P I\", \"PR\" → \"pull request\"; version numbers \"v3\" → \"version three\"; counts \"6/6\" → \"six out of six\".
 
-## Text normalization (critical for TTS)
-- Prices: \"\$4.99\" becomes \"four ninety-nine\"
-- Percentages: \"30%\" becomes \"thirty percent\"
-- URLs: \"sensed.app\" becomes \"sensed dot app\"
-- Abbreviations: \"API\" becomes \"A P I\", \"PR\" becomes \"pull request\"
-- Version numbers: \"v3\" becomes \"version three\"
-- Counts: \"6/6\" becomes \"six out of six\", \"4h\" becomes \"four hours\"
-
-## Character instruction
-The description below defines the CHARACTER — their personality, energy, and emotional range. Any example phrases are just inspiration for the STYLE. Never copy them literally. Generate fresh, natural dialogue every time that fits the character and the specific content being delivered."
+The personality description below defines the CHARACTER's voice, energy, and emotional range. The audio tag palette above is the CHARACTER's expressive vocabulary. Generate fresh dialogue every time — match the character to the specific content being delivered. Never copy phrases verbatim from the personality."
 
   if [ -n "$prompt" ]; then
     system_prompt="${system_prompt}
@@ -155,7 +127,7 @@ ${input}"
     -H "anthropic-version: 2023-06-01" \
     -H "content-type: application/json" \
     -d "{
-      \"model\": \"claude-haiku-4-5-20251001\",
+      \"model\": \"claude-sonnet-4-6\",
       \"max_tokens\": 1024,
       \"system\": $(echo "$system_prompt" | jq -Rs '.'),
       \"messages\": [{
