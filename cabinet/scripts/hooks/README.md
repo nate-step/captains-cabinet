@@ -13,7 +13,9 @@ Bash hooks wired into Claude Code's lifecycle events (`UserPromptSubmit`, `PreTo
 | PostToolUse (reply)| `post-reply-memory.sh`                | Compact a Captain-conversation slice into long-term memory |
 | PostToolUse (reply)| `captain-gate-language.sh`            | Spec 043 H1 — soft-warn on gate-language in Captain reply |
 | PostToolUse (reply)| `captain-posture-compliance.sh`       | Spec 043 H2 — soft-warn on Captain Posture violations |
+| PreToolUse (Bash)  | `build-vs-buy-precheck.sh`            | Spec 043 H4 — soft-warn on dependency install (npm/pip/cargo/etc.) |
 | PostToolUse (Write/Edit) | `post-file-write-memory.sh`     | Memory-trigger on shared interface edits |
+| PostToolUse (Write/Edit) | `personal-work-parity.sh`       | Spec 043 H3 — soft-warn on Work-tree shared-infra edit without recent Personal counterpart |
 | PreCompact         | `pre-compact.sh`                      | Pre-compaction state snapshot |
 | Stop               | `stop-hook.sh`                        | Session-end cleanup |
 
@@ -38,6 +40,20 @@ Detects Captain Posture violations — paths, IDs (`PR #N`, `SEN-N`, `Spec N`, `
 
 Disable: `CAPTAIN_POSTURE_HOOK_ENABLED=0`.
 
+### `personal-work-parity.sh` (H3)
+
+Detects Work-tree edits to shared-infra paths (`cabinet/sql/*`, `cabinet/scripts/*`, `framework/*`, `presets/*`, `memory/skills/*`) without a corresponding Personal-tree edit within 5 minutes. Per-officer tracker file `/tmp/.cabinet-parity-tracker-<officer>` records edits per tree. On match: emits a system-reminder with the canonical Personal-side counterpart path and pointer to the S2 `personal-work-parity-checklist` skill.
+
+Disable: `PARITY_HOOK_ENABLED=0`.
+
+### `build-vs-buy-precheck.sh` (H4)
+
+Detects dependency install commands as PreToolUse on Bash — `npm install`, `npm i`, `yarn add`, `pnpm add/install`, `pip install`, `pip3 install`, `cargo add`, `gem install`, `composer require`, `go get`, `bundle add`, `poetry add`, `brew install`. Captures scoped packages (`@scope/pkg`). On match: emits a system-reminder with the package name, A3 reference, and pointer to the S3 `build-vs-buy-quickdraw` skill for the 90-second decision template.
+
+The install command still proceeds (warn-only). The cue is the forcing function for the 90-second pause.
+
+Disable: `BUILD_VS_BUY_HOOK_ENABLED=0`.
+
 ## Hook authoring discipline
 
 Default to soft-warn. Hard-block only when:
@@ -61,4 +77,4 @@ No state to migrate. The FP-JSONL logs are append-only and remain readable post-
 - Spec 042 retrieval index: `shared/interfaces/product-specs/042-tool-call-retrievable-patterns-intents.md`
 - Spec 043 captain-discipline hooks: `shared/interfaces/product-specs/043-captain-discipline-hooks-skills.md`
 - Captain anchors: `shared/interfaces/captain-patterns.md` §A1-A5
-- Skills: `memory/skills/evolved/captain-autonomy-discipline.md`, `memory/skills/evolved/captain-posture-compliance.md`
+- Skills: `memory/skills/evolved/captain-autonomy-discipline.md`, `memory/skills/evolved/captain-posture-compliance.md`, `memory/skills/evolved/personal-work-parity-checklist.md`, `memory/skills/evolved/build-vs-buy-quickdraw.md`
