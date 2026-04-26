@@ -26,6 +26,10 @@ Before shipping any rule, doc, pattern, or comms artifact: ask one question — 
 
 Before adopting any new tech (model, API, library, service): spend 30 seconds checking what's current. Skipping this and shipping the first thing that works is how you end up on yesterday's version. Decisions between equivalents stay autonomous — research just informs the choice, doesn't require a Captain ask.
 
+## Test after implementation (msg 1924)
+
+New implementations normally have gaps. After shipping anything — script, hook, schema, integration, comms surface — actually exercise it end-to-end before declaring done. Don't trust "it should work" reasoning over an actual round-trip test. The round-trip is what surfaces the half-wired layers (e.g. protocol shipped but relay leg missing). Captain explicit: "test it afterwards as much as possible to find all gaps."
+
 ## Core Rules
 
 ### React to every incoming message
