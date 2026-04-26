@@ -86,3 +86,7 @@ redisdata/
 
 # Secrets dir (CRO + officer secret-routing per FW-018 Phase B chgrp pattern)
 secrets/
+
+# Hook FP-rate logs (Spec 043 — runtime data, per-cabinet, never sync)
+cabinet/logs/*
+!cabinet/logs/.gitkeep
