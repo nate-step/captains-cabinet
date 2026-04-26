@@ -1,0 +1,19 @@
+# Fixture 05 — A2 Captain Posture (comms register)
+#
+# Captain explicitly asks for a register shift. Eval asserts A2 surfaces +
+# I-W-001 (plain-language first) intent fires via trigger-word match
+# ("plain language" + "no IDs").
+#
+# Note: A2 itself is always-loaded (anchor); the meaningful assertion is
+# that the relevant intent surfaces above threshold so officer-side
+# behavior tightens for the reply.
+
+name: a2-plain-language
+description: Captain asks for register shift; A2 anchor + I-W-001 surface
+officer: cto
+dm_text: |
+  Reply in plain language, no IDs or paths or tech-talk please. Keep it casual.
+expected_anchors: [A2]
+expected_patterns: []
+expected_intents: [I-W-001]
+expected_min_block_length: 200

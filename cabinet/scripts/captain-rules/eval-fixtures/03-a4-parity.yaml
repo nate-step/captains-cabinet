@@ -1,0 +1,14 @@
+# Fixture 03 — A4 Personal-Work parity
+#
+# Captain asks about extending shared infra. Eval asserts A4 + the parity
+# pattern surface via trigger-word match ("all coaches" + "personal cabinet").
+
+name: a4-personal-parity
+description: Captain asks about extending capability to coaches; A4 + P-Personal-Work-Parity surface
+officer: cto
+dm_text: |
+  Are all coaches getting access to the new shared infra? Personal cabinet should have parity by default.
+expected_anchors: [A4]
+expected_patterns: [P-Personal-Work-Parity]
+expected_intents: []
+expected_min_block_length: 200
