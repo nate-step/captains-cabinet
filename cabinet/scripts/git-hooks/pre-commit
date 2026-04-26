@@ -39,6 +39,54 @@ if [ -z "$REPO_ROOT" ]; then
   exit 0
 fi
 
+# Spec 042 — captain-rules-index.yaml freshness gate.
+# If either source file is staged, regenerate the index from the working
+# tree and require the YAML on disk to match. Bypass: COMMIT_NO_RULES_INDEX=1.
+if [ "${COMMIT_NO_RULES_INDEX:-}" != "1" ]; then
+  STAGED_FILES=$(git diff --cached --name-only 2>/dev/null)
+  RULES_SOURCE_STAGED=0
+  case "$STAGED_FILES" in
+    *shared/interfaces/captain-patterns.md*) RULES_SOURCE_STAGED=1 ;;
+    *shared/interfaces/captain-intents.md*)  RULES_SOURCE_STAGED=1 ;;
+  esac
+
+  if [ "$RULES_SOURCE_STAGED" = "1" ]; then
+    INDEXER="$REPO_ROOT/cabinet/scripts/captain-rules/index.sh"
+    LIVE_YAML="$REPO_ROOT/shared/interfaces/captain-rules-index.yaml"
+    if [ ! -x "$INDEXER" ]; then
+      echo "pre-commit: captain-rules indexer missing at $INDEXER — bypass with COMMIT_NO_RULES_INDEX=1" >&2
+      exit 1
+    fi
+    TMP_YAML=$(mktemp)
+    TMP_ERR=$(mktemp)
+    if ! INDEX_OUT="$TMP_YAML" bash "$INDEXER" >/dev/null 2>"$TMP_ERR"; then
+      echo "pre-commit: captain-rules indexer failed:" >&2
+      cat "$TMP_ERR" >&2
+      rm -f "$TMP_YAML" "$TMP_ERR"
+      exit 1
+    fi
+    rm -f "$TMP_ERR"
+    if ! diff -q "$TMP_YAML" "$LIVE_YAML" >/dev/null 2>&1; then
+      rm -f "$TMP_YAML"
+      cat >&2 <<EOF
+pre-commit: BLOCKED — captain-rules-index.yaml is out of date.
+
+You modified shared/interfaces/captain-{patterns,intents}.md but
+shared/interfaces/captain-rules-index.yaml was not regenerated.
+
+To unblock:
+  bash cabinet/scripts/captain-rules/index.sh
+  git add shared/interfaces/captain-rules-index.yaml
+  git commit ...
+
+Bypass (rare — e.g. fixing the indexer itself): COMMIT_NO_RULES_INDEX=1
+EOF
+      exit 1
+    fi
+    rm -f "$TMP_YAML"
+  fi
+fi
+
 # Measure staged diff size (added + removed lines — "churn")
 # Use --numstat for precise line counts; skip binary files ("-").
 DIFF_LINES=$(git diff --cached --numstat 2>/dev/null | awk '$1 != "-" && $2 != "-" { added += $1; removed += $2 } END { print added + removed + 0 }')
