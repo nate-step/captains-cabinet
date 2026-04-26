@@ -10,4 +10,4 @@ FILE="${1:?Usage: transcribe-voice.sh <path-to-audio-file>}"
 curl -sS --max-time 60 -X POST "https://api.elevenlabs.io/v1/speech-to-text" \
   -H "xi-api-key: $ELEVENLABS_API_KEY" \
   -F "file=@$FILE" \
-  -F "model_id=scribe_v1" | jq -r '.text'
+  -F "model_id=scribe_v2" | jq -r '.text'
