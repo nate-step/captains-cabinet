@@ -10,10 +10,12 @@ context window.
 cabinet/scripts/captain-rules/
   index.sh           — builds shared/interfaces/captain-rules-index.yaml
   scaffold-entry.sh  — interactive helper for new <!-- index: --> blocks
-  query.sh           — (Phase 2) score + return top-N entries for a DM
-  eval.sh            — (Phase 3) golden-eval regression harness
+  query.sh           — score + return top-N entries for an incoming DM (Phase 2)
+  eval.sh            — golden-eval regression harness (Phase 3, pending)
   README.md          — this file
 ```
+
+The runtime hook lives at `cabinet/scripts/hooks/pre-captain-dm.sh` (UserPromptSubmit) and is wired in `.claude/settings.json`. It reads the incoming user prompt, detects a Captain Telegram DM, calls `query.sh`, and injects the structured block as a `<system-reminder>` via `additionalContext` — landing in the model's tier-1 attention zone for that turn only.
 
 ## Authoring a new entry
 
@@ -80,6 +82,27 @@ A pre-commit hook (`cabinet/scripts/git-hooks/pre-commit`) regenerates
 the index when either source file is staged and fails the commit if
 the index is out of date.
 
+## Querying the index
+
+```bash
+bash cabinet/scripts/captain-rules/query.sh <officer_slug> <dm_text> [<context_hint>]
+```
+
+Emits a structured markdown block (or empty if no anchors and no scored hits).
+Anchors always present; non-anchors scored by trigger-word substring match
+(threshold ≥1, top-5 default). Officer-relevant scope bumps score by 0.5.
+
+Env knobs:
+- `INDEX_FILE` — override index path
+- `QUERY_TOP_N` — top-N non-anchor entries (default 5)
+- `QUERY_THRESHOLD` — minimum score (default 1)
+
+The runtime hook (`cabinet/scripts/hooks/pre-captain-dm.sh`) wraps the query
+output in `<system-reminder>` and injects it via Claude Code's
+UserPromptSubmit hook → `additionalContext`. 60s identical-DM dedup prevents
+reminder fatigue when Captain bursts. Per-officer opt-in via the
+`captain_rules_retrieval` capability in `cabinet/officer-capabilities.conf`.
+
 ## Rollback
 
 The artifacts are pure files; reversibility is `rm` + revert.
@@ -87,7 +110,10 @@ The artifacts are pure files; reversibility is `rm` + revert.
 ```bash
 rm -rf cabinet/scripts/captain-rules/
 rm shared/interfaces/captain-rules-index.yaml
-# revert pre-commit hook + the cabinet/scripts/hooks/ retrieval hook (Phase 2)
+rm cabinet/scripts/hooks/pre-captain-dm.sh
+# revert .claude/settings.json (drop the UserPromptSubmit entry)
+# revert cabinet/scripts/git-hooks/pre-commit (drop the freshness gate)
+# revert cabinet/officer-capabilities.conf (drop captain_rules_retrieval lines)
 ```
 
 Patterns + intents fall back to always-loaded behavior. No DB column
