@@ -1,0 +1,14 @@
+# Fixture 02 — A3 build-our-own > add-dependency
+#
+# Captain asks about a SaaS adoption. Eval asserts A3 surfaces +
+# P-Build-Our-Own pattern fires via trigger-word match ("should we use" + "Linear").
+
+name: a3-build-vs-buy
+description: Captain asks about adopting a third-party tool; A3 + P-Build-Our-Own surface
+officer: cto
+dm_text: |
+  Should we use Linear for backlog tracking? It's a dependency we'd be adding.
+expected_anchors: [A3]
+expected_patterns: [P-Build-Our-Own]
+expected_intents: []
+expected_min_block_length: 200

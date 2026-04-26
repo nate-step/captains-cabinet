@@ -1,0 +1,14 @@
+# Fixture 04 — A5 stay productive, never idle
+#
+# Captain confirms direction; officer should ship next concrete step rather
+# than wait. Eval asserts A5 + P-Stay-Productive surface ("stay productive").
+
+name: a5-stay-productive
+description: Captain reinforces autonomy + don't idle; A5 + P-Stay-Productive surface
+officer: cto
+dm_text: |
+  OK go ahead and stay productive. Ship the next deliverable in sequence.
+expected_anchors: [A5]
+expected_patterns: [P-Stay-Productive]
+expected_intents: []
+expected_min_block_length: 200

@@ -119,9 +119,41 @@ rm cabinet/scripts/hooks/pre-captain-dm.sh
 Patterns + intents fall back to always-loaded behavior. No DB column
 to drop, no schema migration.
 
+## Golden eval (Phase 3)
+
+```bash
+bash cabinet/scripts/captain-rules/eval.sh
+# PASS  a1-reversibility-gate
+# PASS  a3-build-vs-buy
+# PASS  a4-personal-parity
+# PASS  a5-stay-productive
+# PASS  a2-plain-language
+# [eval] pass=5 fail=0 total=5
+```
+
+Fixtures live in `eval-fixtures/<NN>-<slug>.yaml`. Each fixture defines a
+synthetic Captain DM + the expected anchor / pattern / intent IDs that
+must appear in the retrieval block. eval.sh runs query.sh on each fixture
+and asserts the expected IDs surface; exits non-zero on any FAIL.
+
+Wired into Cabinet CI as a separate step before the hook-regression suite —
+catches regressions in trigger-word tuning, indexer schema drift, and
+query.sh scoring logic.
+
+Adding a new fixture:
+1. Drop a new YAML at `eval-fixtures/NN-slug.yaml`.
+2. Define `name`, `officer`, `dm_text` (block scalar), `expected_anchors`,
+   `expected_patterns`, `expected_intents` (flow lists).
+3. `bash cabinet/scripts/captain-rules/eval.sh` to verify locally.
+
+VERBOSE=1 dumps the full retrieval block per fixture.
+
+The pre-/post-comparison run (Spec 042 AC #13 — measure rule-application
+delta with retrieval ON vs OFF using LLM-eval) is a Phase 3.5 follow-up.
+The deterministic "rule retrieved" assertion shipped here is the floor.
+
 ## Spec reference
 
 `shared/interfaces/product-specs/042-tool-call-retrievable-patterns-intents.md`.
-Phase 1 (this directory's index.sh + retro-fit) ships the indexer + index file.
-Phase 2 ships query.sh + the pre-captain-dm hook + the capability flag.
-Phase 3 ships eval.sh + the golden-eval fixture set + pre-/post-comparison.
+Phase 1 (indexer + retro-fit) and Phase 2 (query.sh + hook + capability flag) shipped.
+Phase 3 ships eval.sh + 5 anchor fixtures + CI wiring.

@@ -234,6 +234,13 @@ jobs:
         # surface end-to-end.
         run: bash /opt/founders-cabinet/cabinet/scripts/run-golden-evals.sh
 
+      - name: Captain-rules retrieval eval
+        # Spec 042 Phase 3: golden eval over 5 anchor fixtures asserting
+        # query.sh surfaces the expected anchors + patterns + intents
+        # for synthetic Captain DMs. Catches regressions in trigger-word
+        # tuning + indexer schema drift. Exits non-zero on any fixture FAIL.
+        run: bash /opt/founders-cabinet/cabinet/scripts/captain-rules/eval.sh
+
       - name: Hook regression harnesses
         # FW-051 addendum: 7 permanent harnesses at cabinet/tests/hook-regression/
         # (fw041/042/043/044/045/051) snapshot each FW-0xx adversary-finding

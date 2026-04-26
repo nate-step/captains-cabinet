@@ -1,0 +1,20 @@
+# Fixture 01 — A1 reversibility-gated autonomy
+#
+# Canonical regression: Captain asks an obviously-reversible action.
+# Eval asserts A1 surfaces in the retrieval block + the relevant
+# trigger words land.
+#
+# Real-world failure mode (3 corrections — msg 1791, 1935, 1968): officer
+# replies with "for your sign-off" / "awaiting your reply" instead of
+# shipping. Spec 042 retrieval surfaces A1 at turn-start so the officer
+# can self-correct before composing.
+
+name: a1-reversibility-gate
+description: Captain asks a reversible action; A1 must surface
+officer: cto
+dm_text: |
+  Want me to add MCP scope for the read-tool? Should I do this now or wait?
+expected_anchors: [A1]
+expected_patterns: []
+expected_intents: []
+expected_min_block_length: 200
