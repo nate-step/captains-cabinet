@@ -60,7 +60,28 @@ Default to soft-warn. Hard-block only when:
 - The action is irreversible AND
 - The detection rule has <5% false-positive rate based on real session data (FP-JSONL analysis).
 
-Pre-FP-data hooks are warn-only. Don't ship a block-mode hook on a fresh detection rule — measure first. See the eventual S4 `hook-authoring-discipline` meta-skill (Spec 043 Phase 3) for the full taxonomy.
+Pre-FP-data hooks are warn-only. Don't ship a block-mode hook on a fresh detection rule — measure first.
+
+The full taxonomy lives in the **`hook-authoring-discipline`** meta-skill at `memory/skills/evolved/hook-authoring-discipline.md` (Spec 043 S4). It enumerates:
+- The default soft-warn shape (template)
+- The four conditions that earn hard-block status
+- FP-rate measurement methodology
+- The FW-042 anti-pattern as canonical regression
+- Authoring checklist
+
+## FP-data analysis
+
+Each soft-warn hook writes one JSONL line per fire to `cabinet/logs/hook-fires/<hook-name>.jsonl`. Roll up weekly via:
+
+```bash
+bash cabinet/scripts/hooks/fp-analyze.sh                                  # last 7 days, all hooks
+bash cabinet/scripts/hooks/fp-analyze.sh --days 30
+bash cabinet/scripts/hooks/fp-analyze.sh --hook captain-gate-language
+bash cabinet/scripts/hooks/fp-analyze.sh --officer cto
+bash cabinet/scripts/hooks/fp-analyze.sh --json                           # JSON for scripting
+```
+
+Reports per-hook + per-officer fire counts, top matched phrases, captain-posture violation classes, daily fire-rate trend, and harden-or-not heuristic signals. Final harden decisions need labeled FP-rate data (manual review of session transcripts) — fp-analyze.sh is the surface, not the verdict.
 
 ## Rollback
 
@@ -77,4 +98,4 @@ No state to migrate. The FP-JSONL logs are append-only and remain readable post-
 - Spec 042 retrieval index: `shared/interfaces/product-specs/042-tool-call-retrievable-patterns-intents.md`
 - Spec 043 captain-discipline hooks: `shared/interfaces/product-specs/043-captain-discipline-hooks-skills.md`
 - Captain anchors: `shared/interfaces/captain-patterns.md` §A1-A5
-- Skills: `memory/skills/evolved/captain-autonomy-discipline.md`, `memory/skills/evolved/captain-posture-compliance.md`, `memory/skills/evolved/personal-work-parity-checklist.md`, `memory/skills/evolved/build-vs-buy-quickdraw.md`
+- Skills: `memory/skills/evolved/captain-autonomy-discipline.md`, `memory/skills/evolved/captain-posture-compliance.md`, `memory/skills/evolved/personal-work-parity-checklist.md`, `memory/skills/evolved/build-vs-buy-quickdraw.md`, `memory/skills/evolved/hook-authoring-discipline.md`
