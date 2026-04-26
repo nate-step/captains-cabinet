@@ -83,3 +83,6 @@ Thumbs.db
 # Docker volumes (managed by Docker, not git)
 pgdata/
 redisdata/
+
+# Secrets dir (CRO + officer secret-routing per FW-018 Phase B chgrp pattern)
+secrets/
