@@ -685,7 +685,13 @@ SELECT json_build_object(
       'target', e.target::text
     ))
     FROM filtered_edges e
-  ), '[]'::json)
+  ), '[]'::json),
+  'total_record_count', (
+    SELECT COUNT(*)::int
+    FROM library_records r
+    WHERE r.superseded_by IS NULL
+      AND ((SELECT ids FROM space_filter) IS NULL OR r.space_id = ANY((SELECT ids FROM space_filter)))
+  )
 )::text;
 SQLEOF
 }

@@ -30,6 +30,8 @@ The server reads `NEON_CONNECTION_STRING` and `VOYAGE_API_KEY` from `cabinet/.en
 | `library_search` | Semantic search via cosine similarity |
 | `library_list_records` | List active records in a Space |
 | `library_delete_record` | Soft-delete (data preserved) |
+| `library_get_backlinks` | Records linking IN to a target via `[[wikilink]]` (Spec 045 Phase 1) |
+| `library_graph_data` | `{nodes, edges, total_record_count}` JSON for the `/library/graph` view (Spec 045 Phase 2). Top-N by degree; optional `space_ids` filter; default `limit_nodes=500` (max 5000) |
 
 ## Running locally
 
