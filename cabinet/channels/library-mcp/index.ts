@@ -327,6 +327,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "library_graph_data",
+      description:
+        "Returns the [[wiki-link]] network as JSON {nodes: [{id, title, space_id, degree}], edges: [{source, target}]} for graph-view rendering. Top-N nodes by degree. Default limit_nodes=500; pass space_ids to scope to one or more Spaces.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          space_ids: {
+            type: "string",
+            description:
+              "Optional comma-separated Space ids (e.g., '12,15'). Omit for cross-Space.",
+          },
+          limit_nodes: {
+            type: "number",
+            description: "Max nodes returned (default 500, top-N by degree)",
+          },
+        },
+      },
+    },
+    {
       name: "library_search",
       description:
         "Semantic search across Library Records using voyage-4-large embeddings. Returns top-K records ordered by cosine similarity.",
@@ -497,6 +516,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
         return {
           content: [{ type: "text", text: JSON.stringify({ backlinks }) }],
+        };
+      }
+
+      // ---- library_graph_data (Spec 045 Phase 2) ----
+      case "library_graph_data": {
+        const { space_ids = "", limit_nodes = 500 } = args as any;
+        // Validate space_ids: comma-separated digits only
+        const idsCsv = String(space_ids).trim();
+        if (idsCsv && !/^\d+(,\d+)*$/.test(idsCsv)) {
+          throw new Error("library_graph_data: space_ids must be comma-separated numeric ids");
+        }
+        const limitNum = parseInt(String(limit_nodes), 10);
+        if (!Number.isFinite(limitNum) || limitNum < 1 || limitNum > 5000) {
+          throw new Error("library_graph_data: limit_nodes must be 1..5000");
+        }
+        const raw = await callLibrary("library_graph_data", [idsCsv, String(limitNum)]);
+        // psql returns the JSON literal as a single line. Re-parse to normalize
+        // whitespace + validate shape, then re-stringify so the MCP client
+        // gets a clean object.
+        let parsed: { nodes: unknown[]; edges: unknown[] };
+        try {
+          parsed = JSON.parse(raw.trim());
+        } catch (parseErr) {
+          // Surface the failure on stderr so misconfigured psql / NOTICE-leakage
+          // is debuggable instead of silently returning an empty graph.
+          process.stderr.write(
+            `[library-mcp] library_graph_data JSON parse failed: ${String(parseErr)} (raw bytes=${raw.length})\n`
+          );
+          parsed = { nodes: [], edges: [] };
+        }
+        return {
+          content: [{ type: "text", text: JSON.stringify(parsed) }],
         };
       }
 

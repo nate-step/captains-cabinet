@@ -17,7 +17,8 @@
     "next": "latest",
     "pg": "^8.13.3",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-force-graph-2d": "^1.29.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

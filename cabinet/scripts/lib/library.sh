@@ -616,6 +616,80 @@ LIMIT :'limit';
 SQLEOF
 }
 
+# Spec 045 Phase 2 — graph data for /library/graph force-directed view.
+# Returns a single-line JSON object: {"nodes":[...],"edges":[...]}.
+# Args: space_ids_csv (optional, empty for cross-Space), limit_nodes (default 500)
+# Top-N selection by degree DESC keeps the most-connected records when corpus
+# exceeds the cap. Edges are filtered to the included node set so callers
+# never receive dangling references.
+library_graph_data() {
+  local space_ids_csv="${1:-}"
+  local limit_nodes="${2:-500}"
+
+  psql "$NEON_CONNECTION_STRING" -q -t -A \
+    -v space_ids="$space_ids_csv" \
+    -v limit_nodes="$limit_nodes" \
+    2>/dev/null <<'SQLEOF'
+WITH space_filter AS (
+  SELECT CASE
+    WHEN :'space_ids' = '' THEN NULL::bigint[]
+    ELSE string_to_array(:'space_ids', ',')::bigint[]
+  END AS ids
+),
+degree_counts AS (
+  SELECT r.id, COALESCE(s.cnt, 0) + COALESCE(t.cnt, 0) AS degree
+  FROM library_records r
+  LEFT JOIN (
+    SELECT source_record_id AS id, COUNT(*) AS cnt
+    FROM library_record_links
+    GROUP BY source_record_id
+  ) s ON s.id = r.id
+  LEFT JOIN (
+    SELECT target_record_id AS id, COUNT(*) AS cnt
+    FROM library_record_links
+    GROUP BY target_record_id
+  ) t ON t.id = r.id
+  WHERE r.superseded_by IS NULL
+    AND ((SELECT ids FROM space_filter) IS NULL OR r.space_id = ANY((SELECT ids FROM space_filter)))
+),
+top_nodes AS (
+  SELECT r.id, r.title, r.space_id, dc.degree
+  FROM library_records r
+  JOIN degree_counts dc ON dc.id = r.id
+  WHERE r.superseded_by IS NULL
+    AND ((SELECT ids FROM space_filter) IS NULL OR r.space_id = ANY((SELECT ids FROM space_filter)))
+  ORDER BY dc.degree DESC, r.id ASC
+  LIMIT :'limit_nodes'::int
+),
+filtered_edges AS (
+  SELECT DISTINCT lrl.source_record_id AS source, lrl.target_record_id AS target
+  FROM library_record_links lrl
+  WHERE lrl.source_record_id IN (SELECT id FROM top_nodes)
+    AND lrl.target_record_id IN (SELECT id FROM top_nodes)
+    AND lrl.source_record_id <> lrl.target_record_id
+  LIMIT 5000
+)
+SELECT json_build_object(
+  'nodes', COALESCE((
+    SELECT json_agg(json_build_object(
+      'id', n.id::text,
+      'title', n.title,
+      'space_id', n.space_id::text,
+      'degree', n.degree
+    ) ORDER BY n.degree DESC, n.id ASC)
+    FROM top_nodes n
+  ), '[]'::json),
+  'edges', COALESCE((
+    SELECT json_agg(json_build_object(
+      'source', e.source::text,
+      'target', e.target::text
+    ))
+    FROM filtered_edges e
+  ), '[]'::json)
+)::text;
+SQLEOF
+}
+
 # Soft-delete a record by marking it superseded_by itself.
 # Trick: use a sentinel that lets us distinguish deleted from live without extra schema.
 # Convention: if superseded_by = id (self-reference), record is deleted.
