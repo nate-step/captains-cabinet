@@ -1,0 +1,46 @@
+# cabinet/scripts/captain-rules/encode-signals.yaml — Spec 048 v2 Phase 1
+#
+# Encode-signal phrases that captain-rule-encoder.sh scans for in inbound
+# Captain DM bodies. Match → fire the encode flow (memory-file append +
+# async classifier + audit log).
+#
+# v1 list intentionally narrow per Spec 048 v2 honest-self-critique.
+# Widen via FP-data signal after a week of real DMs (cabinet/logs/rule-
+# promotions.jsonl tracks each fire + Captain verdict).
+#
+# Each entry is a Python regex (case-insensitive). Phrases capture the
+# patterns that historically produced "encode this as a behavior" signals
+# from Captain.
+
+signals:
+  # Direct memory hints
+  - '\bremember\b'
+  - '\bin the future\b'
+  - '\bgoing forward\b'
+  - '\bfrom now on\b'
+  - '\bencode\b'
+  - '\bsave (this|it) as\b'
+  - "\\blet'?s (track|remember|note|capture)\\b"
+
+  # Standing-rule phrasings
+  - '\balways\b'
+  - '\bnever\b'
+  - '\bevery time\b'
+  - '\bwhenever\b'
+
+  # Process-instruction phrasings
+  - '\b(stop|don\?t) (doing|gating|asking|writing)\b'
+  - '\bstart (doing|gating|asking|writing)\b'
+  - '\bmake (sure|it so|it that)\b'
+  - '\bplease (always|never|remember)\b'
+
+# Section routing — which signal classes go to which file. Regex match
+# against signal phrase determines target file.
+#
+# patterns.md   = behavioral rules with explicit Captain feedback
+# intents.md    = inferred latent goals (less common from direct asks)
+#
+# Most encoded entries belong in patterns.md; intents.md gets surfaced
+# entries explicitly framed as "the underlying goal" / "what Captain
+# really wants" without an explicit imperative.
+default_target: captain-patterns.md
