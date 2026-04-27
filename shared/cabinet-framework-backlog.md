@@ -1165,6 +1165,16 @@ _(none)_
 
 ---
 
+### FW-064 — Library Wiki-Links + Backlinks Panel (Spec 045 Phase 1) (P1)
+- **Status:** Phase 1a IN BUILD 2026-04-27 (CTO claims build per A1). Phase 1a (this branch) ships the backlinks API route + dashboard panel UI. Phase 1b ships the `library_get_backlinks` MCP tool. Spec 037 Phase A already shipped the parser (`parseWikilinks` / `resolveWikilinks` / `renderWikilinks`), the indexer (`indexLinks` called in createRecord/updateRecord), and the `getBacklinks` query — Phase 1 of Spec 045 reduces to the missing API + UI surface. Phase 2 (graph view via react-force-graph) DEFERRED per CoS until corpus density justifies.
+- **Spec:** `shared/interfaces/product-specs/045-library-wikilinks-backlinks-graph.md`.
+- **Problem:** records exist as standalone docs; cross-references live as plain prose with no navigable surface. Spec 037 Phase A laid the substrate (parser + indexer + library_record_links table); Spec 045 surfaces the backlinks UX.
+- **Build:** ~2-3h Phase 1a. New `/api/library/records/[recordId]/backlinks` route + `BacklinksPanel` server component on `/library/[spaceId]/[recordId]/page.tsx`. SSR data-loading; "no backlinks yet" empty state honest until corpus density compounds.
+- **Owner:** CTO build, CPO spec.
+- **Source:** Captain msg 1996 *"look into what it would take… if feasible or good idea, go for it"* + CRO brief `2026-04-26-library-obsidian-pattern-borrow.md` ACTIONABLE #2.
+
+---
+
 ### FW-063 — Library Semantic Search Hardening (Spec 044 v2) (P1)
 - **Status:** Phase 1 IN BUILD 2026-04-27 (CTO claims build per A1). Phase 1 = SQL migration: `embedded_at TIMESTAMPTZ` column + BEFORE UPDATE trigger clearing embedding+embedded_at on content/title change → re-embed-on-edit. Phase 2 = TypeScript patches in dashboard/src/lib/library.ts (createRecord/updateRecord write embedded_at=NOW(), JSONL cost log, env-knob hybrid ranking weights with defaults preserving pure-semantic). Phase 3 = Personal cabinet_memory dual-bootstrap per CoS Gap 5 (b) ratification.
 - **Spec:** `shared/interfaces/product-specs/044-library-semantic-search.md`.
