@@ -30,6 +30,7 @@ HARNESSES=(
   "fw051-adversary.sh"
   "fw056-baseline.sh"
   "fw056-adversary.sh"
+  "fw057-notify-officer-argv.sh"
 )
 
 OVERALL_FAIL=0
