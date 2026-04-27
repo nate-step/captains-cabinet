@@ -115,10 +115,44 @@ export interface VersionHistoryEntry {
 // Embedding via Voyage AI
 // ============================================================
 
-async function getEmbedding(text: string): Promise<number[] | null> {
+// Spec 044 v2 Phase 2 — getEmbedding logs cost data per call to a JSONL stream
+// at LIBRARY_EMBED_LOG_PATH (default cabinet/logs/library-embeddings.jsonl).
+// The log stream is per-cabinet runtime data (gitignored). Phase 3 weekly
+// aggregator can roll it up to surface API spend.
+//
+// Failure mode: log-write errors are swallowed; never block the embed path
+// or the surrounding record save.
+
+async function logEmbeddingCost(
+  recordId: string | null,
+  tokens: number,
+  latencyMs: number
+): Promise<void> {
+  try {
+    const { appendFile } = await import('node:fs/promises')
+    const logPath =
+      process.env.LIBRARY_EMBED_LOG_PATH ??
+      '/opt/founders-cabinet/cabinet/logs/library-embeddings.jsonl'
+    const line = JSON.stringify({
+      ts: new Date().toISOString(),
+      record_id: recordId,
+      tokens,
+      latency_ms: latencyMs,
+    })
+    await appendFile(logPath, line + '\n')
+  } catch {
+    // Swallow — log path may not exist or fs access may be restricted.
+  }
+}
+
+async function getEmbedding(
+  text: string,
+  recordId?: string | null
+): Promise<number[] | null> {
   const apiKey = process.env.VOYAGE_API_KEY
   if (!apiKey) return null
 
+  const start = Date.now()
   const response = await fetch('https://api.voyageai.com/v1/embeddings', {
     method: 'POST',
     headers: {
@@ -130,13 +164,21 @@ async function getEmbedding(text: string): Promise<number[] | null> {
       input: [text],
     }),
   })
+  const latencyMs = Date.now() - start
 
   if (!response.ok) return null
 
   const data = (await response.json()) as {
     data: { embedding: number[] }[]
+    usage?: { total_tokens?: number }
   }
-  return data.data?.[0]?.embedding ?? null
+  const embedding = data.data?.[0]?.embedding ?? null
+  if (embedding) {
+    // Voyage usually reports total_tokens; fall back to a rough char/4 estimate.
+    const tokens = data.usage?.total_tokens ?? Math.round(text.length / 4)
+    await logEmbeddingCost(recordId ?? null, tokens, latencyMs)
+  }
+  return embedding
 }
 
 // ============================================================
@@ -451,12 +493,17 @@ export async function createRecord(params: {
 
   const embedding = embedText ? await getEmbedding(embedText) : null
 
+  // Spec 044 v2 Phase 2 — write embedded_at = NOW() when embedding is non-null
+  // so staleness tracking is accurate from row creation. The re-embed-on-edit
+  // trigger from Phase 1 will null both columns on subsequent content/title edits.
+  const embeddedAt = embedding ? new Date().toISOString() : null
+
   const rows = await query<LibraryRecord>(
     `
     INSERT INTO library_records
-      (space_id, title, content_markdown, schema_data, labels, embedding, created_by_officer, created_at)
+      (space_id, title, content_markdown, schema_data, labels, embedding, embedded_at, created_by_officer, created_at)
     VALUES
-      ($1::bigint, $2, $3, $4::jsonb, $5::text[], $6, $7, COALESCE($8::timestamptz, NOW()))
+      ($1::bigint, $2, $3, $4::jsonb, $5::text[], $6, $7::timestamptz, $8, COALESCE($9::timestamptz, NOW()))
     RETURNING
       id::text, space_id::text, title, content_markdown, schema_data, labels,
       version, superseded_by::text,
@@ -471,6 +518,7 @@ export async function createRecord(params: {
       JSON.stringify(params.schema_data ?? {}),
       params.labels ?? [],
       embedding ? `[${embedding.join(',')}]` : null,
+      embeddedAt,
       params.created_by_officer ?? 'captain',
       params.created_at ?? null,
     ]
@@ -525,7 +573,12 @@ export async function updateRecord(
     .filter(Boolean)
     .join('\n\n')
     .trim()
-  const embedding = embedText ? await getEmbedding(embedText) : null
+  const embedding = embedText ? await getEmbedding(embedText, id) : null
+
+  // Spec 044 v2 Phase 2 — write embedded_at = NOW() on the new version row
+  // when embedding is non-null. Re-embed-on-edit trigger from Phase 1 covers
+  // the staleness invariant; this write is the positive-side timestamp.
+  const embeddedAt = embedding ? new Date().toISOString() : null
 
   // Single atomic transaction: SELECT FOR UPDATE locks the old row so concurrent
   // updates serialize. Without the lock, two callers could both read version=N
@@ -540,10 +593,10 @@ export async function updateRecord(
     ),
     inserted AS (
       INSERT INTO library_records
-        (space_id, title, content_markdown, schema_data, labels, embedding, version, created_by_officer, status)
+        (space_id, title, content_markdown, schema_data, labels, embedding, embedded_at, version, created_by_officer, status)
       SELECT
         locked.space_id,
-        $2, $3, $4::jsonb, $5::text[], $6, locked.version + 1, NULLIF($7, ''),
+        $2, $3, $4::jsonb, $5::text[], $6, $7::timestamptz, locked.version + 1, NULLIF($8, ''),
         locked.status
       FROM locked
       RETURNING
@@ -571,6 +624,7 @@ export async function updateRecord(
       JSON.stringify(params.schema_data ?? {}),
       params.labels ?? [],
       embedding ? `[${embedding.join(',')}]` : null,
+      embeddedAt,
       params.created_by_officer ?? '',
     ]
   )
@@ -671,6 +725,25 @@ export async function getRecordHistory(id: string): Promise<VersionHistoryEntry[
 // Semantic search
 // ============================================================
 
+// Spec 044 v2 Phase 2 — env-knob hybrid ranking weights.
+// Defaults preserve the current pure-semantic behavior (semantic only).
+// Set KEYWORD_W or RECENCY_W > 0 in env to dial in hybrid scoring.
+//   - SEMANTIC_W * (1 - cosine_distance)
+//   - KEYWORD_W  * (title ILIKE '%query%' ? 1 : 0)
+//   - RECENCY_W  * 1 / (1 + days_since_update)
+// Sum → ORDER BY DESC. Pure-semantic path (KEYWORD_W=0 AND RECENCY_W=0)
+// keeps the original SQL shape for byte-identical query plans.
+function getSearchWeights(): { semantic: number; keyword: number; recency: number } {
+  const semantic = parseFloat(process.env.LIBRARY_SEARCH_SEMANTIC_W ?? '1.0')
+  const keyword = parseFloat(process.env.LIBRARY_SEARCH_KEYWORD_W ?? '0.0')
+  const recency = parseFloat(process.env.LIBRARY_SEARCH_RECENCY_W ?? '0.0')
+  return {
+    semantic: Number.isFinite(semantic) ? semantic : 1.0,
+    keyword: Number.isFinite(keyword) ? keyword : 0.0,
+    recency: Number.isFinite(recency) ? recency : 0.0,
+  }
+}
+
 export async function searchRecords(params: {
   query: string
   space_id?: string
@@ -701,6 +774,46 @@ export async function searchRecords(params: {
   }
 
   const embeddingLiteral = `[${embedding.join(',')}]`
+  const weights = getSearchWeights()
+  const isHybrid = weights.keyword > 0 || weights.recency > 0
+
+  // Hybrid path activates only when keyword or recency weight is non-zero.
+  // At defaults (SEMANTIC=1.0, KEYWORD=0.0, RECENCY=0.0) we keep the original
+  // pure-semantic SQL shape below for stable plans + byte-identical results.
+  if (isHybrid) {
+    return query<SearchResult>(
+      `
+      SELECT
+        space_id::text,
+        id::text AS record_id,
+        title,
+        round((1 - (embedding <=> $1::vector))::numeric, 3) AS similarity,
+        left(regexp_replace(content_markdown, E'[\\t\\n\\r]+', ' ', 'g'), 200) AS preview,
+        created_by_officer,
+        created_at::text
+      FROM library_records
+      WHERE superseded_by IS NULL
+        AND ($2::bigint IS NULL OR space_id = $2::bigint)
+        AND ($3::text[] IS NULL OR labels && $3::text[])
+      ORDER BY (
+        $4::float8 * (1 - (embedding <=> $1::vector))
+        + $5::float8 * (CASE WHEN title ILIKE '%' || $6 || '%' THEN 1.0 ELSE 0.0 END)
+        + $7::float8 * (1.0 / (1.0 + EXTRACT(EPOCH FROM (NOW() - updated_at)) / 86400.0))
+      ) DESC
+      LIMIT $8
+    `,
+      [
+        embeddingLiteral,
+        params.space_id ?? null,
+        params.labels && params.labels.length > 0 ? params.labels : null,
+        weights.semantic,
+        weights.keyword,
+        params.query,
+        weights.recency,
+        params.limit ?? 10,
+      ]
+    )
+  }
 
   if (params.labels && params.labels.length > 0) {
     return query<SearchResult>(
