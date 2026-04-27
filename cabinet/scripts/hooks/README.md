@@ -14,6 +14,7 @@ Bash hooks wired into Claude Code's lifecycle events (`UserPromptSubmit`, `PreTo
 | PostToolUse (reply)| `captain-gate-language.sh`            | Spec 043 H1 — soft-warn on gate-language in Captain reply |
 | PostToolUse (reply)| `captain-posture-compliance.sh`       | Spec 043 H2 — soft-warn on Captain Posture violations |
 | PreToolUse (Bash)  | `build-vs-buy-precheck.sh`            | Spec 043 H4 — soft-warn on dependency install (npm/pip/cargo/etc.) |
+| PreToolUse (Bash)  | `captain-posture-warroom.sh`          | Spec 047 Phase 1 — soft-warn on Captain Posture violations in warroom posts |
 | PostToolUse (Write/Edit) | `post-file-write-memory.sh`     | Memory-trigger on shared interface edits |
 | PostToolUse (Write/Edit) | `personal-work-parity.sh`       | Spec 043 H3 — soft-warn on Work-tree shared-infra edit without recent Personal counterpart |
 | PreCompact         | `pre-compact.sh`                      | Pre-compaction state snapshot |

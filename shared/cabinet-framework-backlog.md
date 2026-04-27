@@ -1182,3 +1182,44 @@ _(none)_
 - **Build:** ~5-10h total. Phase 1 ~1h (SQL only, idempotent CREATEs). Phase 2 ~2-3h (TypeScript). Phase 3 ~1-4h (Personal bootstrap, CoS coordination).
 - **Owner:** CTO build, CPO spec, CoS Personal-side migration.
 - **Source:** CRO brief `2026-04-26-library-obsidian-pattern-borrow.md` ACTIONABLE #1 + CoS live-DB verification re-scope.
+
+---
+
+### FW-065 — Library Graph View (Spec 045 Phase 2 RE-ACTIVATED) (P1)
+- **Status:** Captain msg 2012 (2026-04-27) un-deferred Phase 2 from earlier "wait for corpus density" call. Reasoning: visual itself accelerates linking. Spec 045 amended in place. CTO claims build per A1.
+- **Spec:** `shared/interfaces/product-specs/045-library-wikilinks-backlinks-graph.md` Phase 2 + Phase 3.
+- **Build:** `library_graph_data` MCP tool + `react-force-graph` (MIT, 2D) + `/library/graph` route + iOS Safari fallback + cluster-by-Space + degree-based node sizing + standard interactions.
+- **Phasing:** ~3-5h CTO. Phase 1 substrate already shipped via PRs #60 + #62.
+- **Owner:** CTO build, CPO spec.
+- **Source:** Captain msg 2012.
+
+---
+
+### FW-066 — Voice Flow Parity (Spec 046) (P1)
+- **Status:** Spec 046 v1 LANDED 2026-04-27. CTO build-approved with 3 notes folded in (curl-direct-Telegram for download not MCP, latency budget documented, single-string additionalContext concat ordering). CTO claims build per A1.
+- **Spec:** `shared/interfaces/product-specs/046-voice-flow-parity.md`.
+- **Problem:** Captain voice DMs deliver `(voice message)` placeholder; pre-captain-dm retrieval (Spec 042) + warn hooks (Spec 043 H1/H2) operate against placeholder, not words. CoS has been transcribing manually.
+- **Build:** Extend `pre-captain-dm.sh` to detect voice attachment → curl Telegram getFile + download → transcribe via existing Scribe wrapper → cache by message_id (24h TTL) → inject transcript as system-reminder concat'd with retrieval block. 12 ACs, single phase ~3-4h.
+- **Owner:** CTO build, CPO spec.
+- **Source:** Captain msg 2013.
+
+---
+
+### FW-068 — Pre-Reply Draft + Review Subagent Flow (Spec 047) (P1)
+- **Status:** Spec 047 v1 LANDED 2026-04-27. CTO build-approved with 4 notes folded in (PostToolUse(Bash) entry pattern for warroom matcher, ACTIVE orchestrator over passive PreToolUse, 50-char trivial-skip, reviewer-prompt.md pinned). CTO claims build per A1.
+- **Spec:** `shared/interfaces/product-specs/047-pre-reply-draft-review.md`.
+- **Problem:** H2 Captain-Posture hook scoped to DM only — warroom posts leak IDs/paths/jargon. Plus post-hoc warning is too late if officer pressed send. Captain msg 2024 ratified bigger meta-improvement: draft → review → refine → send pipeline.
+- **Build:** Phase 1 (~30min) extends H2 to `send-to-group.sh` via PostToolUse(Bash); Phase 2 (~4-6h) draft+review pipeline with Sonnet reviewer + JSON contract + per-iteration log; Phase 3 (~2-3h) wrapper orchestrator + opt-in env flag + Personal propagation.
+- **Phasing:** Phase 1 closes the immediate warroom leak independently. Phase 2-3 the bigger pipeline.
+- **Owner:** CTO build, CPO spec.
+- **Source:** Captain msg 2024 — leak caught in evening warroom briefing + Captain meta-improvement direction.
+
+---
+
+### FW-069 — "Captain Says Remember" → Auto-Promote to Enforcement (Spec 048) (P1)
+- **Status:** Spec 048 v1 LANDED 2026-04-27. CTO build-approved with 4 notes folded in (async classifier via redis trigger so encode-acknowledge isn't latency-bumped, ≥3 distinctive trigger phrases anti-over-hooking guard, jq-modify for settings.json auto-merge, classifier-prompt.md pinned). CTO claims build per A1.
+- **Spec:** `shared/interfaces/product-specs/048-remember-to-enforcement.md`.
+- **Problem:** 4th-loop encode-offer writes memory-file only. Recurring rules with detectable phrases/actions deserve mechanized enforcement automatically (today this is manual on a 3-strike cycle). Spec extends the encode-offer to auto-draft hook + skill alongside the memory-file write for operationalizable rules.
+- **Build:** Phase 1 (~3-4h) classifier (Sonnet) + hook draft generator + skill draft generator + audit log JSONL; Phase 2 (~1-2h) 4th-loop integration + Captain ratify path (yes/no/edit) + jq-merge to settings.json + sync-framework propagation.
+- **Owner:** CTO build, CPO spec.
+- **Source:** Captain msg 2024 — extend encode-offer beyond memory-file into operational enforcement.
