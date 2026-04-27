@@ -1166,7 +1166,7 @@ _(none)_
 ---
 
 ### FW-064 — Library Wiki-Links + Backlinks Panel (Spec 045 Phase 1) (P1)
-- **Status:** Phase 1a IN BUILD 2026-04-27 (CTO claims build per A1). Phase 1a (this branch) ships the backlinks API route + dashboard panel UI. Phase 1b ships the `library_get_backlinks` MCP tool. Spec 037 Phase A already shipped the parser (`parseWikilinks` / `resolveWikilinks` / `renderWikilinks`), the indexer (`indexLinks` called in createRecord/updateRecord), and the `getBacklinks` query — Phase 1 of Spec 045 reduces to the missing API + UI surface. Phase 2 (graph view via react-force-graph) DEFERRED per CoS until corpus density justifies.
+- **Status:** Phase 1a + Phase 1b SHIPPED 2026-04-27. Phase 1a: backlinks API route at `/api/library/records/[recordId]/backlinks` + `BacklinksPanel` server component. Phase 1b: `library_get_backlinks` MCP tool — bash function in `cabinet/scripts/lib/library.sh`, tool definition + dispatch in `cabinet/channels/library-mcp/index.ts`. Spec 037 Phase A already shipped the parser, indexer, and getBacklinks query. Phase 2 (graph view via react-force-graph) DEFERRED per CoS until corpus density justifies.
 - **Spec:** `shared/interfaces/product-specs/045-library-wikilinks-backlinks-graph.md`.
 - **Problem:** records exist as standalone docs; cross-references live as plain prose with no navigable surface. Spec 037 Phase A laid the substrate (parser + indexer + library_record_links table); Spec 045 surfaces the backlinks UX.
 - **Build:** ~2-3h Phase 1a. New `/api/library/records/[recordId]/backlinks` route + `BacklinksPanel` server component on `/library/[spaceId]/[recordId]/page.tsx`. SSR data-loading; "no backlinks yet" empty state honest until corpus density compounds.

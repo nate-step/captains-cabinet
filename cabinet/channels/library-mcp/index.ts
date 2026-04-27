@@ -315,6 +315,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "library_get_backlinks",
+      description:
+        "Get the records that link IN to a target record via [[wikilink]] syntax. Returns up to 50 source records with title, source space, link text, ±40 char context, and link position.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          record_id: { type: "string", description: "Target record id" },
+        },
+        required: ["record_id"],
+      },
+    },
+    {
       name: "library_search",
       description:
         "Semantic search across Library Records using voyage-4-large embeddings. Returns top-K records ordered by cosine similarity.",
@@ -452,6 +464,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const history = parseHistory(histRaw);
         return {
           content: [{ type: "text", text: JSON.stringify({ ...rec, history }) }],
+        };
+      }
+
+      // ---- library_get_backlinks ----
+      case "library_get_backlinks": {
+        const { record_id } = args as any;
+        if (!record_id || !/^\d+$/.test(String(record_id))) {
+          throw new Error("library_get_backlinks: record_id must be numeric");
+        }
+        const raw = await callLibrary("library_get_backlinks", [String(record_id)]);
+        const lines = raw.trim().split("\n").filter(Boolean);
+        const backlinks = lines.map((line) => {
+          const [
+            source_record_id,
+            source_title,
+            source_space_id,
+            source_space_name,
+            link_text,
+            link_context,
+            link_position,
+          ] = line.split("\t");
+          return {
+            source_record_id,
+            source_title,
+            source_space_id,
+            source_space_name,
+            link_text,
+            link_context,
+            link_position: parseInt(link_position || "0", 10),
+          };
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify({ backlinks }) }],
         };
       }
 

@@ -480,6 +480,50 @@ ORDER BY version DESC;
 SQLEOF
 }
 
+# Get the records that link IN to a target record via [[wikilink]] syntax.
+# Args: target record_id
+# Returns tab-separated: source_record_id, source_title, source_space_id, source_space_name, link_text, link_context, link_position
+# Up to 50 rows, ordered by source space name → source title → link position.
+library_get_backlinks() {
+  local record_id="$1"
+  local officer="${OFFICER_NAME:-}"
+
+  # Access check on the target record's space — backlinks reveal what links
+  # at the target, so the caller needs read access to the target's space.
+  if [ -n "$officer" ] && [ "$officer" != "system" ]; then
+    local target_space_id
+    target_space_id=$(psql "$NEON_CONNECTION_STRING" -q -t -A \
+      -v rid="$record_id" \
+      2>/dev/null <<'SQLEOF'
+SELECT space_id FROM library_records WHERE id = :'rid'::bigint LIMIT 1;
+SQLEOF
+)
+    if [ -n "$target_space_id" ]; then
+      if ! library_check_access "$target_space_id" "$officer" "read"; then
+        return 1
+      fi
+    fi
+  fi
+
+  psql "$NEON_CONNECTION_STRING" -q -t -A -F $'\t' \
+    -v target_id="$record_id" \
+    2>/dev/null <<'SQLEOF'
+SELECT lrl.source_record_id::text,
+       r.title,
+       r.space_id::text,
+       s.name,
+       lrl.link_text,
+       COALESCE(lrl.link_context, ''),
+       lrl.link_position
+FROM library_record_links lrl
+JOIN library_records r ON r.id = lrl.source_record_id AND r.superseded_by IS NULL
+JOIN library_spaces s ON s.id = r.space_id
+WHERE lrl.target_record_id = :'target_id'::bigint
+ORDER BY s.name, r.title, lrl.link_position
+LIMIT 50;
+SQLEOF
+}
+
 # Search records by semantic similarity.
 # Args: query, space_id (optional, empty for cross-Space), labels_csv (optional), limit (default 10)
 # Returns tab-separated: space_id, record_id, title, similarity, preview, officer, created_at
