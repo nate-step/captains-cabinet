@@ -31,20 +31,21 @@ beforeEach(() => {
 
 describe('GET /api/library/graph — happy path', () => {
   it('200 with empty result when corpus is empty', async () => {
-    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [] })
+    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [], total_record_count: 0 })
     const res = await GET(makeReq('http://test/api/library/graph'))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual({ nodes: [], edges: [] })
+    expect(body).toEqual({ nodes: [], edges: [], total_record_count: 0 })
   })
 
-  it('200 with nodes + edges', async () => {
+  it('200 with nodes + edges + total_record_count', async () => {
     const data = {
       nodes: [
         { id: '1', title: 'A', space_id: '10', degree: 2 },
         { id: '2', title: 'B', space_id: '10', degree: 1 },
       ],
       edges: [{ source: '1', target: '2' }],
+      total_record_count: 2,
     }
     mockGetGraphData.mockResolvedValueOnce(data)
     const res = await GET(makeReq('http://test/api/library/graph'))
@@ -52,8 +53,21 @@ describe('GET /api/library/graph — happy path', () => {
     expect(body).toEqual(data)
   })
 
+  it('200 with truncated corpus — total > rendered', async () => {
+    const data = {
+      nodes: [{ id: '1', title: 'A', space_id: '10', degree: 5 }],
+      edges: [],
+      total_record_count: 597,
+    }
+    mockGetGraphData.mockResolvedValueOnce(data)
+    const res = await GET(makeReq('http://test/api/library/graph?limit=1'))
+    const body = await res.json()
+    expect(body.total_record_count).toBe(597)
+    expect(body.nodes).toHaveLength(1)
+  })
+
   it('passes spaceIds + limit through to lib', async () => {
-    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [] })
+    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [], total_record_count: 0 })
     await GET(makeReq('http://test/api/library/graph?space_ids=10,11&limit=200'))
     expect(mockGetGraphData).toHaveBeenCalledWith({
       spaceIds: ['10', '11'],
@@ -62,7 +76,7 @@ describe('GET /api/library/graph — happy path', () => {
   })
 
   it('strips non-numeric space_ids', async () => {
-    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [] })
+    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [], total_record_count: 0 })
     await GET(makeReq('http://test/api/library/graph?space_ids=10,abc,12'))
     expect(mockGetGraphData).toHaveBeenCalledWith({
       spaceIds: ['10', '12'],
@@ -71,7 +85,7 @@ describe('GET /api/library/graph — happy path', () => {
   })
 
   it('clamps limit to <=5000', async () => {
-    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [] })
+    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [], total_record_count: 0 })
     await GET(makeReq('http://test/api/library/graph?limit=99999'))
     expect(mockGetGraphData).toHaveBeenCalledWith({
       spaceIds: undefined,
@@ -80,7 +94,7 @@ describe('GET /api/library/graph — happy path', () => {
   })
 
   it('clamps limit to >=1', async () => {
-    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [] })
+    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [], total_record_count: 0 })
     await GET(makeReq('http://test/api/library/graph?limit=0'))
     expect(mockGetGraphData).toHaveBeenCalledWith({
       spaceIds: undefined,
@@ -89,7 +103,7 @@ describe('GET /api/library/graph — happy path', () => {
   })
 
   it('ignores non-numeric limit', async () => {
-    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [] })
+    mockGetGraphData.mockResolvedValueOnce({ nodes: [], edges: [], total_record_count: 0 })
     await GET(makeReq('http://test/api/library/graph?limit=abc'))
     expect(mockGetGraphData).toHaveBeenCalledWith({
       spaceIds: undefined,

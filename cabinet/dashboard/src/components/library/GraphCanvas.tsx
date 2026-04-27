@@ -170,7 +170,9 @@ export default function GraphCanvas({ spaces }: Props) {
 
   const totalNodes = data?.nodes.length ?? 0
   const totalEdges = data?.edges.length ?? 0
+  const totalRecordCount = data?.total_record_count ?? 0
   const matchedCount = matchedNodeIds === null ? null : matchedNodeIds.size
+  const isTruncated = totalRecordCount > totalNodes && totalNodes > 0
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-3">
@@ -220,10 +222,28 @@ export default function GraphCanvas({ spaces }: Props) {
           {!loading && (
             <>
               <span>
-                {totalNodes} node{totalNodes === 1 ? '' : 's'} · {totalEdges} edge
-                {totalEdges === 1 ? '' : 's'}
+                {isTruncated ? (
+                  <>
+                    showing top {totalNodes} of {totalRecordCount} record
+                    {totalRecordCount === 1 ? '' : 's'} (by degree) · {totalEdges} edge
+                    {totalEdges === 1 ? '' : 's'}
+                  </>
+                ) : (
+                  <>
+                    {totalNodes} record{totalNodes === 1 ? '' : 's'} · {totalEdges} edge
+                    {totalEdges === 1 ? '' : 's'}
+                  </>
+                )}
                 {matchedCount !== null && ` · ${matchedCount} matched`}
               </span>
+              {isTruncated && (
+                <span
+                  className="rounded-md border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-zinc-400"
+                  title={`${totalRecordCount - totalNodes} lower-degree records not rendered. Filter by Space to scope, or pass ?limit=${Math.min(totalRecordCount, 5000)} via the URL.`}
+                >
+                  truncated
+                </span>
+              )}
               {totalNodes > 1000 && (
                 <span
                   className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-300"

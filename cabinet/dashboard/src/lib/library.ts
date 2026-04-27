@@ -878,6 +878,10 @@ export interface LibraryGraphEdge {
 export interface LibraryGraphData {
   nodes: LibraryGraphNode[]
   edges: LibraryGraphEdge[]
+  // Spec 045 Phase 3 — total count of records in the (filtered) corpus, before
+  // the limitNodes cap. Lets the UI show "showing top N of M" so Captain knows
+  // when they're seeing a degree-truncated slice vs. the full graph.
+  total_record_count: number
 }
 
 export async function getGraphData(opts?: {
@@ -920,8 +924,21 @@ export async function getGraphData(opts?: {
     [spaceIds, limit]
   )
 
+  // Total count uses the same Space filter as the node query, but no limit —
+  // single COUNT(*) at planner scale, cheap.
+  const totalRows = await query<{ total: string }>(
+    `
+    SELECT COUNT(*)::text AS total
+    FROM library_records
+    WHERE superseded_by IS NULL
+      AND ($1::bigint[] IS NULL OR space_id = ANY($1::bigint[]))
+  `,
+    [spaceIds]
+  )
+  const total_record_count = parseInt(totalRows[0]?.total ?? '0', 10) || 0
+
   if (nodes.length === 0) {
-    return { nodes: [], edges: [] }
+    return { nodes: [], edges: [], total_record_count }
   }
 
   // Bigint comparison (not text cast) so the index on
@@ -941,5 +958,5 @@ export async function getGraphData(opts?: {
     [nodeIdsBigint]
   )
 
-  return { nodes, edges }
+  return { nodes, edges, total_record_count }
 }
