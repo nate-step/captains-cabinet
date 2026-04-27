@@ -856,3 +856,90 @@ export async function searchRecords(params: {
     [embeddingLiteral, params.space_id ?? null, params.limit ?? 10]
   )
 }
+
+// Spec 045 Phase 2 — graph data for /library/graph force-directed view.
+// Returns top-N nodes by degree (descending) so the cap keeps the most
+// connected records when corpus exceeds limit. Edges are filtered to the
+// included node set so the client never receives dangling references.
+export interface LibraryGraphNode {
+  [key: string]: unknown
+  id: string
+  title: string
+  space_id: string
+  degree: number
+}
+
+export interface LibraryGraphEdge {
+  [key: string]: unknown
+  source: string
+  target: string
+}
+
+export interface LibraryGraphData {
+  nodes: LibraryGraphNode[]
+  edges: LibraryGraphEdge[]
+}
+
+export async function getGraphData(opts?: {
+  spaceIds?: string[]
+  limitNodes?: number
+}): Promise<LibraryGraphData> {
+  const limit = opts?.limitNodes ?? 500
+  const spaceIds = opts?.spaceIds && opts.spaceIds.length > 0 ? opts.spaceIds : null
+
+  const nodes = await query<LibraryGraphNode>(
+    `
+    WITH degree_counts AS (
+      SELECT r.id, COALESCE(s.cnt, 0) + COALESCE(t.cnt, 0) AS degree
+      FROM library_records r
+      LEFT JOIN (
+        SELECT source_record_id AS id, COUNT(*) AS cnt
+        FROM library_record_links
+        GROUP BY source_record_id
+      ) s ON s.id = r.id
+      LEFT JOIN (
+        SELECT target_record_id AS id, COUNT(*) AS cnt
+        FROM library_record_links
+        GROUP BY target_record_id
+      ) t ON t.id = r.id
+      WHERE r.superseded_by IS NULL
+        AND ($1::bigint[] IS NULL OR r.space_id = ANY($1::bigint[]))
+    )
+    SELECT
+      r.id::text AS id,
+      r.title,
+      r.space_id::text AS space_id,
+      dc.degree::int AS degree
+    FROM library_records r
+    JOIN degree_counts dc ON dc.id = r.id
+    WHERE r.superseded_by IS NULL
+      AND ($1::bigint[] IS NULL OR r.space_id = ANY($1::bigint[]))
+    ORDER BY dc.degree DESC, r.id ASC
+    LIMIT $2
+  `,
+    [spaceIds, limit]
+  )
+
+  if (nodes.length === 0) {
+    return { nodes: [], edges: [] }
+  }
+
+  // Bigint comparison (not text cast) so the index on
+  // library_record_links.source_record_id / target_record_id is used.
+  const nodeIdsBigint = nodes.map((n) => n.id)
+  const edges = await query<LibraryGraphEdge>(
+    `
+    SELECT DISTINCT
+      source_record_id::text AS source,
+      target_record_id::text AS target
+    FROM library_record_links
+    WHERE source_record_id = ANY($1::bigint[])
+      AND target_record_id = ANY($1::bigint[])
+      AND source_record_id <> target_record_id
+    LIMIT 5000
+  `,
+    [nodeIdsBigint]
+  )
+
+  return { nodes, edges }
+}
