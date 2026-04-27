@@ -6,7 +6,7 @@ Bash hooks wired into Claude Code's lifecycle events (`UserPromptSubmit`, `PreTo
 
 | Event              | Hook                                  | Purpose |
 |--------------------|---------------------------------------|---------|
-| UserPromptSubmit   | `pre-captain-dm.sh`                   | Spec 042 — inject retrieval block as `<system-reminder>` on Captain DM |
+| UserPromptSubmit   | `pre-captain-dm.sh`                   | Spec 042 — inject retrieval block as `<system-reminder>` on Captain DM. Spec 046 — when DM carries a voice attachment, transcribe via Telegram Bot API + ElevenLabs Scribe, cache by message_id at `cabinet/cache/voice-transcripts/<id>.txt` (24h TTL), inject transcript before retrieval. Disable: `VOICE_TRANSCRIBE_HOOK_ENABLED=0`. |
 | PreToolUse (any)   | `pre-tool-use.sh`                     | Kill switch, spending limits, prohibited-action enforcement, Layer 1 gates |
 | PostToolUse (any)  | `post-tool-use.sh`                    | Heartbeat, structured logging, cost tracking, trigger delivery, deploy alerts |
 | PostToolUse (reply)| `post-reply-voice.sh`                 | Auto-send voice message after Captain reply |

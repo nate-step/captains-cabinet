@@ -84,6 +84,101 @@ if [ -z "$DM_BODY" ]; then
   exit 0
 fi
 
+# Spec 046 — voice flow parity. If the channel block carries a voice
+# attachment, download it via Telegram Bot API, transcribe via Scribe,
+# cache by message_id, and replace DM_BODY with the transcript so the
+# downstream retrieval + dedup operate on the actual words instead of
+# the literal "(voice message)" placeholder.
+#
+# Failure modes are non-fatal at every step: missing bot token, getFile
+# error, download error, transcription error → DM_BODY keeps the
+# placeholder, the existing flow continues (anchors-only retrieval).
+#
+# Env-var disable: VOICE_TRANSCRIBE_HOOK_ENABLED=0 skips the voice path.
+VOICE_BLOCK=""
+if [ "${VOICE_TRANSCRIBE_HOOK_ENABLED:-1}" != "0" ]; then
+  VOICE_INFO="$(printf '%s' "$PROMPT" | python3 -c '
+import sys, re
+text = sys.stdin.read()
+m = re.search(r"<channel source=\"telegram\"([^>]*)>", text)
+if not m:
+    sys.exit(0)
+attrs = m.group(1)
+def find_attr(name):
+    am = re.search(name + r"=\"([^\"]*)\"", attrs)
+    return am.group(1) if am else ""
+kind = find_attr("attachment_kind")
+mime = find_attr("attachment_mime")
+file_id = find_attr("attachment_file_id")
+msg_id = find_attr("message_id")
+is_voice = kind == "voice" or mime.startswith("audio/")
+if is_voice and file_id and msg_id:
+    sys.stdout.write(file_id + "\t" + msg_id + "\t" + mime + "\t" + kind)
+' 2>/dev/null)"
+
+  if [ -n "$VOICE_INFO" ]; then
+    IFS=$'\t' read -r FILE_ID MSG_ID MIME KIND <<< "$VOICE_INFO"
+    CACHE_DIR="$REPO_ROOT/cabinet/cache/voice-transcripts"
+    CACHE_FILE="$CACHE_DIR/$MSG_ID.txt"
+    TRANSCRIPT=""
+
+    # Cache hit (24h TTL per Spec 046 AC #9)?
+    if [ -f "$CACHE_FILE" ]; then
+      cache_age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) ))
+      if [ "$cache_age" -lt 86400 ]; then
+        TRANSCRIPT="$(cat "$CACHE_FILE" 2>/dev/null)"
+      fi
+    fi
+
+    # Cache miss → download + transcribe.
+    if [ -z "$TRANSCRIPT" ] && [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+      mkdir -p "$CACHE_DIR" 2>/dev/null
+      TMP_AUDIO="/tmp/.captain-voice-$$.audio"
+
+      # Two-step Telegram download: getFile → file_path → download URL.
+      FILE_PATH="$(curl -sS --max-time 10 "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getFile?file_id=$FILE_ID" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    r = json.load(sys.stdin).get("result", {})
+    sys.stdout.write(r.get("file_path", ""))
+except Exception:
+    pass
+' 2>/dev/null)"
+
+      if [ -n "$FILE_PATH" ]; then
+        VOICE_START_MS="$(date +%s%3N)"
+        if curl -sS --max-time 30 -o "$TMP_AUDIO" "https://api.telegram.org/file/bot$TELEGRAM_BOT_TOKEN/$FILE_PATH" 2>/dev/null && [ -s "$TMP_AUDIO" ]; then
+          TRANSCRIPT="$(bash "$REPO_ROOT/cabinet/scripts/transcribe-voice.sh" "$TMP_AUDIO" 2>/dev/null)"
+          VOICE_END_MS="$(date +%s%3N)"
+          VOICE_LATENCY_MS=$((VOICE_END_MS - VOICE_START_MS))
+          if [ -n "$TRANSCRIPT" ]; then
+            # Cache + cost log per Spec 046 AC #4 + #10.
+            printf '%s' "$TRANSCRIPT" > "$CACHE_FILE"
+            mkdir -p "$REPO_ROOT/cabinet/logs" 2>/dev/null
+            AUDIO_BYTES="$(stat -c %s "$TMP_AUDIO" 2>/dev/null || echo 0)"
+            VOICE_LOG="$(jq -cn \
+              --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --arg message_id "$MSG_ID" \
+              --argjson audio_bytes "$AUDIO_BYTES" \
+              --argjson latency_ms "$VOICE_LATENCY_MS" \
+              '{ts:$ts, message_id:$message_id, audio_bytes:$audio_bytes, latency_ms:$latency_ms}' 2>/dev/null)"
+            [ -n "$VOICE_LOG" ] && echo "$VOICE_LOG" >> "$REPO_ROOT/cabinet/logs/voice-transcripts.jsonl"
+          fi
+        fi
+        rm -f "$TMP_AUDIO" 2>/dev/null
+      fi
+    fi
+
+    # If we have a transcript, replace DM_BODY so retrieval matches against
+    # actual words. Build a voice-header block; the additional-context emit
+    # at the end concatenates it BEFORE the retrieval block per Spec 046 AC #5.
+    if [ -n "$TRANSCRIPT" ]; then
+      VOICE_BLOCK="$(printf '🎙️ VOICE TRANSCRIPT (auto-transcribed from Captain voice DM):\n\n%s\n\n(original "(voice message)" placeholder + audio attachment_file_id %s retained for fallback)' "$TRANSCRIPT" "$FILE_ID")"
+      DM_BODY="$TRANSCRIPT"
+    fi
+  fi
+fi
+
 # 60s dedup: hash the DM body, compare with last hash + timestamp.
 HASH="$(printf '%s' "$DM_BODY" | sha1sum | awk '{print $1}')"
 NOW_TS="$(date +%s)"
@@ -110,6 +205,12 @@ if [ -z "$BLOCK" ]; then
 fi
 
 # Emit Claude Code hook output: additionalContext gets injected pre-prompt.
-# Wrap the block in <system-reminder> so it lands tier-1.
-WRAPPED="$(printf '<system-reminder>\n%s\n</system-reminder>' "$BLOCK")"
+# Wrap the block in <system-reminder> so it lands tier-1. When a voice
+# transcript was captured (Spec 046), prepend it as a separate
+# <system-reminder> block so retrieval reasoning sees both surfaces.
+if [ -n "$VOICE_BLOCK" ]; then
+  WRAPPED="$(printf '<system-reminder>\n%s\n</system-reminder>\n\n<system-reminder>\n%s\n</system-reminder>' "$VOICE_BLOCK" "$BLOCK")"
+else
+  WRAPPED="$(printf '<system-reminder>\n%s\n</system-reminder>' "$BLOCK")"
+fi
 printf '%s' "$WRAPPED" | jq -R -s '{hookSpecificOutput: {additionalContext: .}}'

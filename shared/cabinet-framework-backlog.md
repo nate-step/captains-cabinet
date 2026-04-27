@@ -1175,6 +1175,16 @@ _(none)_
 
 ---
 
+### FW-066 — Voice Flow Parity (Spec 046) (P1)
+- **Status:** SHIPPED 2026-04-27 (CTO claim per A1, post Captain msg 2030 priority bump). Single-phase ship: `pre-captain-dm.sh` extended to detect Captain voice DMs (`attachment_kind="voice"` or `audio/*` mime), download via Telegram Bot API direct (curl getFile → file_path → audio bytes), transcribe via existing `cabinet/scripts/transcribe-voice.sh` (ElevenLabs Scribe), cache by `message_id` at `cabinet/cache/voice-transcripts/<id>.txt` with 24h TTL, inject transcript as `<system-reminder>` BEFORE the retrieval block. Voice transcript REPLACES the `(voice message)` placeholder in DM_BODY so retrieval matches against actual words. Cost log JSONL at `cabinet/logs/voice-transcripts.jsonl`.
+- **Spec:** `shared/interfaces/product-specs/046-voice-flow-parity.md`.
+- **Problem:** Voice DMs landed as `(voice message)` placeholder, retrieval ran against the literal string (zero trigger hits, anchors only). CoS was manually transcribing to keep the loop running. Captain msg 2030 surfaced the gap; msg 2031 ratified the priority bump.
+- **Build:** ~3-4h. Failure modes graceful: missing token, getFile error, download error, transcribe error → DM_BODY stays placeholder, existing flow continues. Env-var disable: `VOICE_TRANSCRIBE_HOOK_ENABLED=0`.
+- **Owner:** CTO build, CPO spec, CoS end-to-end test post-merge.
+- **Source:** Captain msg 2013 (gap surfaced) + msg 2030 priority bump (msg 2031 ratify).
+
+---
+
 ### FW-063 — Library Semantic Search Hardening (Spec 044 v2) (P1)
 - **Status:** Phase 1 IN BUILD 2026-04-27 (CTO claims build per A1). Phase 1 = SQL migration: `embedded_at TIMESTAMPTZ` column + BEFORE UPDATE trigger clearing embedding+embedded_at on content/title change → re-embed-on-edit. Phase 2 = TypeScript patches in dashboard/src/lib/library.ts (createRecord/updateRecord write embedded_at=NOW(), JSONL cost log, env-knob hybrid ranking weights with defaults preserving pure-semantic). Phase 3 = Personal cabinet_memory dual-bootstrap per CoS Gap 5 (b) ratification.
 - **Spec:** `shared/interfaces/product-specs/044-library-semantic-search.md`.
