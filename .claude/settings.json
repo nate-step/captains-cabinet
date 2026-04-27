@@ -3,6 +3,7 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "enableAllProjectMcpServers": true,
+  "cleanupPeriodDays": 60,
   "permissions": {
     "allow": [
       "Bash(*)",
