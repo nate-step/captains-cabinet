@@ -136,7 +136,10 @@ PRE_LOG="$(jq -cn \
 [ -n "$PRE_LOG" ] && echo "$PRE_LOG" >> "$AUDIT_LOG"
 
 # Fire async classifier — fully detached from this hook's lifetime.
-# stdout of classifier appended to audit log when it completes.
+# stdout of classifier appended to audit log when it completes. Phase 2:
+# if classifier returns operationalizable + confidence >= 0.7, also fire
+# draft-generator.sh to emit hook + skill drafts at the .draft paths.
+DRAFT_GEN="$REPO_ROOT/cabinet/scripts/captain-rules/draft-generator.sh"
 if [ -x "$CLASSIFIER" ]; then
   (
     CLASS_RESULT="$(bash "$CLASSIFIER" "$DM_BODY" 2>/dev/null)"
@@ -148,6 +151,34 @@ if [ -x "$CLASSIFIER" ]; then
         --arg phase "classified" \
         '{ts:$ts, rule_id:$rule_id, classifier:$classifier, phase:$phase}' 2>/dev/null)"
       [ -n "$POST_LOG" ] && echo "$POST_LOG" >> "$AUDIT_LOG"
+
+      # Phase 2: auto-draft hook + skill if operationalizable + confident.
+      CLS_CHECK="$(printf '%s' "$CLASS_RESULT" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    cls = d.get("class")
+    conf = float(d.get("confidence") or 0)
+    if cls == "operationalizable" and conf >= 0.7:
+        print("draft")
+except Exception:
+    pass
+' 2>/dev/null)"
+      if [ "$CLS_CHECK" = "draft" ] && [ -x "$DRAFT_GEN" ]; then
+        TMP_BODY="$(mktemp)"
+        printf '%s' "$DM_BODY" > "$TMP_BODY"
+        DRAFT_PATHS="$(bash "$DRAFT_GEN" "$RULE_ID" "$TMP_BODY" "$CLASS_RESULT" 2>/dev/null)"
+        rm -f "$TMP_BODY" 2>/dev/null
+        if [ -n "$DRAFT_PATHS" ]; then
+          DRAFT_LOG="$(jq -cn \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg rule_id "$RULE_ID" \
+            --arg paths "$DRAFT_PATHS" \
+            --arg phase "drafted" \
+            '{ts:$ts, rule_id:$rule_id, draft_paths:$paths, phase:$phase}' 2>/dev/null)"
+          [ -n "$DRAFT_LOG" ] && echo "$DRAFT_LOG" >> "$AUDIT_LOG"
+        fi
+      fi
     fi
   ) >/dev/null 2>&1 &
   disown
