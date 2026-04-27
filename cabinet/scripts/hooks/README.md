@@ -11,8 +11,9 @@ Bash hooks wired into Claude Code's lifecycle events (`UserPromptSubmit`, `PreTo
 | PostToolUse (any)  | `post-tool-use.sh`                    | Heartbeat, structured logging, cost tracking, trigger delivery, deploy alerts |
 | PostToolUse (reply)| `post-reply-voice.sh`                 | Auto-send voice message after Captain reply |
 | PostToolUse (reply)| `post-reply-memory.sh`                | Compact a Captain-conversation slice into long-term memory |
-| PostToolUse (reply)| `captain-gate-language.sh`            | Spec 043 H1 — soft-warn on gate-language in Captain reply |
-| PostToolUse (reply)| `captain-posture-compliance.sh`       | Spec 043 H2 — soft-warn on Captain Posture violations |
+| PreToolUse (reply) | `captain-reply-refine.sh`             | Spec 047 v2 — wrapper that runs H1 + H2 BEFORE send, escalates flags to a Sonnet refine-pass (max 3 cycles, 50-char trivial-skip, audit log at `cabinet/logs/captain-reply-reviews.jsonl`). Disable: `REPLY_REFINE_HOOK_ENABLED=0`. |
+| (invoked by refine wrapper) | `captain-gate-language.sh`   | Spec 043 H1 — gate-language detector. No longer registered directly; called by `captain-reply-refine.sh`. |
+| (invoked by refine wrapper) | `captain-posture-compliance.sh` | Spec 043 H2 — Captain Posture detector. No longer registered directly; called by `captain-reply-refine.sh`. |
 | PreToolUse (Bash)  | `build-vs-buy-precheck.sh`            | Spec 043 H4 — soft-warn on dependency install (npm/pip/cargo/etc.) |
 | PreToolUse (Bash)  | `captain-posture-warroom.sh`          | Spec 047 Phase 1 — soft-warn on Captain Posture violations in warroom posts |
 | PostToolUse (Write/Edit) | `post-file-write-memory.sh`     | Memory-trigger on shared interface edits |
