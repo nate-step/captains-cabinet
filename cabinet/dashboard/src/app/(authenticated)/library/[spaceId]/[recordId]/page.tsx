@@ -5,6 +5,7 @@ import RecordEditor from './record-editor'
 import RecordVisitTracker from './record-visit-tracker'
 import RenderedContent from '@/components/library/RenderedContent'
 import StatusBadge from '@/components/library/StatusBadge'
+import BacklinksPanel from '@/components/library/BacklinksPanel'
 import type { SchemaJson } from './schema-fields'
 
 export const dynamic = 'force-dynamic'
@@ -99,6 +100,9 @@ export default async function RecordPage({ params }: Props) {
           />
         </section>
       )}
+
+      {/* Spec 045 Phase 1 — backlinks panel. SSR loads the inbound link list. */}
+      <BacklinksPanel recordId={recordId} />
 
       {/* Editor — client component handles save */}
       <RecordEditor
