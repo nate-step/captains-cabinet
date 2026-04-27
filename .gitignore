@@ -90,3 +90,7 @@ secrets/
 # Hook FP-rate logs (Spec 043 — runtime data, per-cabinet, never sync)
 cabinet/logs/*
 !cabinet/logs/.gitkeep
+
+# Hook cache (Spec 046 voice transcripts; future caches per hook spec)
+cabinet/cache/*
+!cabinet/cache/.gitkeep
