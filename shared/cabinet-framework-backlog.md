@@ -1155,10 +1155,20 @@ _(none)_
 ---
 
 ### FW-062 — Captain-Discipline Hooks + Skills (Spec 043) (P1)
-- **Status:** Phase 1 + Phase 2 SHIPPED 2026-04-26. Phase 1: H1 (gate-language) + H2 (Captain Posture) + S1 + settings.json. Phase 2: H3 (Personal-Work parity reminder, 5-min TTL tracker) + H4 (build-vs-buy precheck, npm/pip/cargo/etc.) + S2 (parity checklist) + S3 (build-vs-buy quickdraw) + settings.json. All warn-mode (never exit non-zero per AC #6, env-var emergency disable per AC #10, FP-rate logging per AC #9). Phase 3 (S4 hook-authoring-discipline meta-skill + fp-analyze.sh weekly review tool) pending.
+- **Status:** ALL 3 PHASES SHIPPED 2026-04-26 / 2026-04-27. Phase 1: H1 (gate-language) + H2 (Captain Posture) + S1 + settings.json. Phase 2: H3 (Personal-Work parity reminder, 5-min TTL tracker) + H4 (build-vs-buy precheck, npm/pip/cargo/etc.) + S2 + S3 + settings.json. Phase 3: S4 (hook-authoring-discipline meta-skill) + fp-analyze.sh weekly FP-rate review tool. All warn-mode (never exit non-zero per AC #6, env-var emergency disable per AC #10, FP-rate JSONL logging per AC #9). Anti-FW-042 discipline baked in.
 - **Spec:** `shared/interfaces/product-specs/043-captain-discipline-hooks-skills.md`.
 - **Problem:** 3 highest-leverage memory rules (gate-language, Captain Posture, parity) failed enforcement ≥2 times in 24h. Memory alone doesn't hold past attention budget. Hooks fire deterministically and surface the rule at the moment of violation. Anti-FW-042 discipline: warn-first, harden only with FP data.
 - **Build:** native bash hooks (no deps), per-hook `<HOOK_NAME>_ENABLED=0` env-var disable, configurable rule dictionaries, FP-rate JSONL logging at `cabinet/logs/hook-fires/`. Personal-Work parity via existing sync-framework.
 - **Phasing:** ~9h CTO time. Phase 1 ~3h (this branch). Phase 2 ~3h. Phase 3 ~3h.
 - **Owner:** CTO build, CPO spec.
 - **Source:** Captain msg 1987 *"Yes, those 3 phases sounds good!!"* approving CoS audit recommendations.
+
+---
+
+### FW-063 — Library Semantic Search Hardening (Spec 044 v2) (P1)
+- **Status:** Phase 1 IN BUILD 2026-04-27 (CTO claims build per A1). Phase 1 = SQL migration: `embedded_at TIMESTAMPTZ` column + BEFORE UPDATE trigger clearing embedding+embedded_at on content/title change → re-embed-on-edit. Phase 2 = TypeScript patches in dashboard/src/lib/library.ts (createRecord/updateRecord write embedded_at=NOW(), JSONL cost log, env-knob hybrid ranking weights with defaults preserving pure-semantic). Phase 3 = Personal cabinet_memory dual-bootstrap per CoS Gap 5 (b) ratification.
+- **Spec:** `shared/interfaces/product-specs/044-library-semantic-search.md`.
+- **Problem:** v1 was redundant (CoS verified 597/597 records already embedded, library_search MCP live). v2 targets 4 actual gaps: stale embeddings on edit, no staleness timestamp, no hybrid-ranking surface, no cost-ceiling visibility. Plus Personal Library schema not bootstrapped (Gap 5).
+- **Build:** ~5-10h total. Phase 1 ~1h (SQL only, idempotent CREATEs). Phase 2 ~2-3h (TypeScript). Phase 3 ~1-4h (Personal bootstrap, CoS coordination).
+- **Owner:** CTO build, CPO spec, CoS Personal-side migration.
+- **Source:** CRO brief `2026-04-26-library-obsidian-pattern-borrow.md` ACTIONABLE #1 + CoS live-DB verification re-scope.
