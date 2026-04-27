@@ -45,12 +45,15 @@ export default async function AuthenticatedLayout({
 
       {/*
         Persistent kill switch pill — Spec 032 §5.
-        Fixed top-right, z-[60] (above the nav's z-50 mobile header) so it is
-        always visible on mobile AND desktop without needing to touch the nav
-        client component. The pill is small enough not to overlap the branding.
+        Fixed top-right on desktop, fixed top with a right offset on mobile so
+        it sits LEFT of the nav's hamburger button (which lives at right-4 inside
+        the z-50 mobile header). z-[60] is above the nav so the pill paints on top,
+        but the pill background is bg-red-600/20 (20% opaque) — without the offset
+        the hamburger shows through the translucent fill and looks like it
+        overlaps the "Stop All" label.
         min-h/min-w ensures ≥ 44pt tap target on mobile.
       */}
-      <div className="fixed right-3 top-2 z-[60]">
+      <div className="fixed right-14 top-2 z-[60] md:right-3">
         <KillSwitchHeader active={killSwitchActive} />
       </div>
 
