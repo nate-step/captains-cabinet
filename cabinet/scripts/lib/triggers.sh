@@ -68,7 +68,12 @@ trigger_send() {
     echo "trigger_send WARN: XADD to $stream failed (${_xadd_err:-redis unreachable?}) — trigger NOT queued, sender=$sender" >&2
   fi
 
-  # Cabinet Memory: queue trigger for semantic indexing (fire-and-forget)
+  # Cabinet Memory: queue trigger for semantic indexing (fire-and-forget).
+  # FW-077: redirect bg subshell stdout+stderr to /dev/null and disown so
+  # bash's job-control "Done" message cannot leak the env vars exported by
+  # memory.sh's `set -a; source cabinet/.env` (NEON_CONNECTION_STRING +
+  # others) into the calling officer's session JSONL. The disown drops the
+  # job from the parent's job table entirely so no completion notice fires.
   if [ -f /opt/founders-cabinet/cabinet/scripts/lib/memory.sh ]; then
     (
       source /opt/founders-cabinet/cabinet/scripts/lib/memory.sh 2>/dev/null
@@ -81,7 +86,8 @@ trigger_send() {
           "[$sender → $target] $message" "$metadata" \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null || true
       fi
-    ) &
+    ) >/dev/null 2>&1 &
+    disown 2>/dev/null || true
   fi
 }
 
