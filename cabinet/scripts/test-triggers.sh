@@ -171,6 +171,104 @@ redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" DEL "cabinet:triggers:${NE
 rm -f "/tmp/.trigger_ids_${NEW_OFFICER}"
 
 echo ""
+echo "=== FW-074 (Pool Phase 1B) — per-(officer, project) stream routing ==="
+
+# Pool-mode tests use a separate test officer + project slug to keep
+# isolation from the legacy-mode tests above. Cleanup via trap appends.
+POOL_OFFICER="test-trg-pool-$$-$(date +%s)"
+POOL_PROJECT="testproj"
+POOL_STREAM="cabinet:triggers:${POOL_OFFICER}:${POOL_PROJECT}"
+POOL_GROUP="officer-${POOL_OFFICER}-${POOL_PROJECT}"
+LEGACY_STREAM="cabinet:triggers:${POOL_OFFICER}"
+
+# Augment cleanup. Includes the otherproj stream T-pool-4 creates via the
+# XGROUP MKSTREAM side-effect of trigger_read — if the test aborts mid-flight
+# under set -uo pipefail, the trap still wipes that stream.
+_pool_cleanup() {
+  redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" DEL \
+    "$POOL_STREAM" "$LEGACY_STREAM" \
+    "cabinet:triggers:${POOL_OFFICER}:otherproj" > /dev/null 2>&1
+  rm -f "/tmp/.trigger_ids_${POOL_OFFICER}" \
+    "/tmp/.trigger_ids_${POOL_OFFICER}_${POOL_PROJECT}" \
+    "/tmp/.trigger_ids_${POOL_OFFICER}_otherproj"
+}
+trap '_pool_cleanup; cleanup' EXIT
+
+# T-pool-1: trigger_send under CABINET_ACTIVE_PROJECT routes to per-project stream
+CABINET_ACTIVE_PROJECT="$POOL_PROJECT" OFFICER_NAME=pool-sender \
+  trigger_send "$POOL_OFFICER" "pool message"
+POOL_LEN=$(redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" XLEN "$POOL_STREAM")
+LEG_LEN=$(redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" XLEN "$LEGACY_STREAM" 2>/dev/null || echo 0)
+assert "pool send writes to per-project stream (len=1)" "$POOL_LEN" "1"
+assert "pool send does NOT write to legacy stream" "$LEG_LEN" "0"
+
+# T-pool-2: trigger_read under matching CABINET_ACTIVE_PROJECT reads it
+POOL_READ=$(CABINET_ACTIVE_PROJECT="$POOL_PROJECT" trigger_read "$POOL_OFFICER")
+assert_contains "pool read sees the pool message" "$POOL_READ" "pool message"
+
+# T-pool-3: legacy read (no env) on same officer does NOT see pool message
+unset CABINET_ACTIVE_PROJECT
+LEGACY_READ=$(trigger_read "$POOL_OFFICER")
+LEGACY_RC=$?
+assert "legacy read on pool officer returns exit 1 (empty)" "$LEGACY_RC" "1"
+assert "legacy read does NOT see pool message" "$LEGACY_READ" ""
+
+# T-pool-4: cross-project — different project's read does NOT see this project
+CROSS_READ=$(CABINET_ACTIVE_PROJECT="otherproj" trigger_read "$POOL_OFFICER")
+CROSS_RC=$?
+assert "cross-project read returns exit 1" "$CROSS_RC" "1"
+assert "cross-project read does NOT see this project's message" "$CROSS_READ" ""
+# Cleanup the cross-project stream the read created via XGROUP CREATE
+redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" DEL \
+  "cabinet:triggers:${POOL_OFFICER}:otherproj" > /dev/null 2>&1
+
+# T-pool-5: trigger_count counts in the right (project) group
+POOL_PENDING=$(CABINET_ACTIVE_PROJECT="$POOL_PROJECT" trigger_count "$POOL_OFFICER")
+assert "pool trigger_count after read=2 pending" "$POOL_PENDING" "1"
+
+# T-pool-6: trigger_ack under matching project clears the right group.
+# Use trigger_ids_path so we read from the per-(officer, project) file
+# (FW-074 file-path collision fix — see _trigger_keys docstring).
+POOL_IDS_PATH=$(CABINET_ACTIVE_PROJECT="$POOL_PROJECT" trigger_ids_path "$POOL_OFFICER")
+POOL_IDS=$(cat "$POOL_IDS_PATH" | xargs)
+CABINET_ACTIVE_PROJECT="$POOL_PROJECT" trigger_ack "$POOL_OFFICER" "$POOL_IDS"
+POST_ACK=$(CABINET_ACTIVE_PROJECT="$POOL_PROJECT" trigger_count "$POOL_OFFICER")
+assert "pool trigger_ack drops pending to 0" "$POST_ACK" "0"
+
+# T-pool-7: malformed slug falls back to legacy stream (defensive — never
+# emit a malformed Redis key even if env var is corrupted). Covers both
+# bad-charset and length-cap-exceeded paths.
+CABINET_ACTIVE_PROJECT="UPPER_BAD!" OFFICER_NAME=defensive-sender \
+  trigger_send "$POOL_OFFICER" "fallback to legacy"
+LEG_LEN_AFTER=$(redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" XLEN "$LEGACY_STREAM" 2>/dev/null || echo 0)
+assert "malformed CABINET_ACTIVE_PROJECT charset falls back to legacy" "$LEG_LEN_AFTER" "1"
+
+# 33-char slug (passes regex but fails length cap) also falls back
+LONG_PROJ=$(printf 'a%.0s' {1..33})
+CABINET_ACTIVE_PROJECT="$LONG_PROJ" OFFICER_NAME=defensive-sender \
+  trigger_send "$POOL_OFFICER" "33-char slug fallback"
+LEG_LEN_AFTER=$(redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" XLEN "$LEGACY_STREAM" 2>/dev/null || echo 0)
+assert "33-char CABINET_ACTIVE_PROJECT falls back to legacy (length cap)" "$LEG_LEN_AFTER" "2"
+redis-cli -h "$TRIG_REDIS_HOST" -p "$TRIG_REDIS_PORT" DEL "$LEGACY_STREAM" > /dev/null 2>&1
+
+# T-pool-8: pool-mode trigger_read_pending (crash recovery). Send + read
+# (deliver to consumer, leaves it pending). Then re-read via _pending —
+# must surface the same message even though the new-message cursor is
+# already past it. This is the pod-restart code path.
+CABINET_ACTIVE_PROJECT="$POOL_PROJECT" OFFICER_NAME=pool-sender \
+  trigger_send "$POOL_OFFICER" "crash-recovery probe"
+CABINET_ACTIVE_PROJECT="$POOL_PROJECT" trigger_read "$POOL_OFFICER" > /dev/null
+PENDING_OUT=$(CABINET_ACTIVE_PROJECT="$POOL_PROJECT" trigger_read_pending "$POOL_OFFICER")
+assert_contains "pool trigger_read_pending recovers pending message" \
+  "$PENDING_OUT" "crash-recovery probe"
+
+# T-pool-9: trigger_ids_path with no arg returns rc=1 + stderr message
+TIP_OUT=$(trigger_ids_path 2>&1)
+TIP_RC=$?
+assert "trigger_ids_path no-arg returns rc=1" "$TIP_RC" "1"
+assert_contains "trigger_ids_path no-arg emits diagnostic" "$TIP_OUT" "officer argument required"
+
+echo ""
 echo "=== Summary ==="
 echo "PASS: $PASS | FAIL: $FAIL"
 if [ "$FAIL" -eq 0 ]; then
