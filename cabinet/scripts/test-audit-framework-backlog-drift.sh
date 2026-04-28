@@ -227,6 +227,66 @@ OUT=$(run_auditor "$FIXTURE2")  # fixture2 has stale FW-901
 EXIT_CODE=$?
 assert_eq "  exit 0 with flagged entries" "$EXIT_CODE" "0"
 
+# ── Test 13: Duplicate FW-N headings flagged ─────────────────────────────────
+FIXTURE13="$TMP_DIR/dup.md"
+cat > "$FIXTURE13" <<'EOF'
+### FW-100 — first canonical entry
+- **Status:** SHIPPED 2026-04-26
+### FW-101 — middle entry
+- **Status:** SHIPPED 2026-04-26
+### FW-100 — accidental redeclaration
+- **Status:** Proposed 2026-04-26
+EOF
+OUT=$(run_auditor "$FIXTURE13")
+EXIT_CODE=$?
+echo "Test 13: duplicate FW-N headings flagged"
+assert_eq "  exit code 0 (advisory)" "$EXIT_CODE" "0"
+assert_contains "  DUPLICATE banner present" "$OUT" "DUPLICATE FW-N headings detected"
+assert_contains "  cites FW-100" "$OUT" "FW-100"
+
+# ── Test 14: Phase sub-heading is NOT flagged as dup of base FW-N ────────────
+FIXTURE14="$TMP_DIR/phase-not-dup.md"
+cat > "$FIXTURE14" <<'EOF'
+### FW-200 — base entry
+- **Status:** SHIPPED 2026-04-26
+### FW-200 Phase 2 — follow-up sub-entry
+- **Status:** SHIPPED 2026-04-26
+EOF
+OUT=$(run_auditor "$FIXTURE14")
+echo "Test 14: 'FW-N Phase X' sub-heading is NOT a duplicate of 'FW-N — …'"
+assert_not_contains "  no DUPLICATE banner" "$OUT" "DUPLICATE FW-N headings detected"
+
+# ── Test 15: Missing FW-N gaps flagged ───────────────────────────────────────
+FIXTURE15="$TMP_DIR/gaps.md"
+cat > "$FIXTURE15" <<'EOF'
+### FW-001 — first
+- **Status:** SHIPPED 2026-04-26
+### FW-003 — third (FW-002 missing)
+- **Status:** SHIPPED 2026-04-26
+### FW-006 — sixth (FW-004 + FW-005 missing)
+- **Status:** SHIPPED 2026-04-26
+EOF
+OUT=$(run_auditor "$FIXTURE15")
+echo "Test 15: missing FW-N gaps surfaced"
+assert_contains "  MISSING banner present" "$OUT" "MISSING FW-N numbers in sequence"
+assert_contains "  cites FW-002 gap" "$OUT" "FW-002"
+assert_contains "  cites FW-004 gap" "$OUT" "FW-004"
+assert_contains "  cites FW-005 gap" "$OUT" "FW-005"
+
+# ── Test 16: Sequential FW-N (no gaps) → no MISSING banner ───────────────────
+FIXTURE16="$TMP_DIR/sequential.md"
+cat > "$FIXTURE16" <<'EOF'
+### FW-001 — first
+- **Status:** SHIPPED 2026-04-26
+### FW-002 — second
+- **Status:** SHIPPED 2026-04-26
+### FW-003 — third
+- **Status:** SHIPPED 2026-04-26
+EOF
+OUT=$(run_auditor "$FIXTURE16")
+echo "Test 16: sequential FW-N → no MISSING banner"
+assert_not_contains "  no MISSING banner" "$OUT" "MISSING FW-N numbers in sequence"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 printf "==== %d PASS, %d FAIL ====\n" "$PASS" "$FAIL"
