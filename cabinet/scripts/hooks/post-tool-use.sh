@@ -227,7 +227,11 @@ if ! . /opt/founders-cabinet/cabinet/scripts/lib/triggers.sh; then
   echo "post-tool-use: CRITICAL — triggers.sh failed to load; trigger delivery is broken for $OFFICER" >&2
 fi
 TRIG_MESSAGES=$(trigger_read "$OFFICER" 2>/dev/null)
-TRIG_IDS=$(cat /tmp/.trigger_ids_${OFFICER} 2>/dev/null)
+# FW-074: in pool mode, IDS file path is per-(officer, project) — derive
+# via trigger_ids_path so ACK lands on the correct stream/group.
+# Legacy mode falls back to /tmp/.trigger_ids_<officer> (unchanged).
+TRIG_IDS_FILE=$(trigger_ids_path "$OFFICER" 2>/dev/null)
+TRIG_IDS=$(cat "$TRIG_IDS_FILE" 2>/dev/null)
 if [ -n "$TRIG_MESSAGES" ]; then
   TRIG_COUNT=$(echo "$TRIG_MESSAGES" | wc -l)
   echo ""
