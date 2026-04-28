@@ -160,6 +160,16 @@ jobs:
         # but silently hide drift classes. See scripts/test-audit-framework-backlog-drift.sh.
         run: bash /opt/founders-cabinet/cabinet/scripts/test-audit-framework-backlog-drift.sh
 
+      - name: Shell unit tests — start-officer.sh args (FW-073)
+        # 22 assertions across 8 test groups: legacy back-compat, --project
+        # arg parsing, CABINET_ACTIVE_PROJECT export contract (FW-072 trigger),
+        # path-injection guard on slug, slug length cap (32 char), defensive
+        # unset against env-file pollution, missing-env-file rejection, unknown
+        # arg + missing officer rejections. Pins the pool-mode opt-in semantics
+        # so legacy single-project deployments cannot accidentally start
+        # writing per-project HSET fields without an explicit --project flag.
+        run: bash /opt/founders-cabinet/cabinet/tests/start-officer/test-args.sh
+
       - name: Shell unit tests — pre-push hook (FW-007 + FW-025)
         # 14 scenarios / 31 assertions covering the safety-critical pre-push hook:
         # non-master fast-paths, legit fast-forward + first-create, force-overwrite
