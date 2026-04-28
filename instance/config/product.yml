@@ -5,7 +5,7 @@
 #   instance/config/platform.yml + instance/config/projects/sensed.yml
 # Do not edit directly — edit the source files instead.
 # Active project: sensed
-# Generated: 2026-04-13 18:39:12 UTC
+# Generated: 2026-04-28 06:00:21 UTC
 # =============================================================  
 
 # =============================================================
@@ -116,6 +116,42 @@ captain_timezone: Europe/Berlin       # CEST/CET — auto-adjusts for DST
 captain_telegram_chat_id: "8631324091"
 
 # =============================================================
+# Spending Limits — daily caps on Anthropic API spend
+# =============================================================
+# Per-officer and cabinet-wide caps enforced by pre-tool-use.sh.
+# Framework ships safe defaults at framework/defaults/spending-limits.yml;
+# this block overrides them for THIS Cabinet. Any key set to 0 disables
+# enforcement for that scope. When a cap blocks, the hook prints the
+# reason on stderr; Telegram reply/react/group always bypass the gate
+# so an over-cap officer can DM the Captain for a raise.
+#
+# Background: FW-002 in shared/cabinet-framework-backlog.md; incident
+# 2026-04-17 — CoS bricked for ~15 min by silent over-cap block.
+spending_limits:
+  daily_per_officer_usd: 0            # 0 = unlimited for Captain's own Cabinet
+  daily_cabinet_wide_usd: 0           # 0 = unlimited
+  coordinating_officer_multiplier: 3.0  # Framework default, harmless when caps = 0
+  telegram_whitelist_enabled: true    # Always-on safety net, cheap to keep enabled
+  telegram_whitelist_hourly_cap: 100  # bumped 2026-04-19 per Captain "no limits" directive; FW-002.2 will add 0=unlimited semantic
+
+# =============================================================
+# Dashboard — Consumer Mode (Spec 032)
+# =============================================================
+# The Consumer/Advanced toggle surfaces a 4-card natural-language dashboard
+# for non-developer founders, while Advanced keeps the current admin UI.
+# Consumer is the default for first-time users. Once a user toggles to
+# Advanced, the toggle stays there permanently (no re-defaulting — CRO v3
+# pressure-test: Home Assistant saw 14% of users never find the toggle).
+#
+# Set consumer_mode_enabled: false to disable the feature entirely — the
+# dashboard behaves exactly as pre-Spec-032, full admin nav only.
+dashboard:
+  consumer_mode_enabled: true         # Master switch for the toggle + Consumer UI
+# consumer_mode_default is reserved — will be wired when the first-visit
+# default-mode selection lands end-to-end in a follow-up PR. Setting it now
+# has no effect.
+
+# =============================================================
 # Founder Accountability — how officers push on blocking issues
 # =============================================================
 # Officers ask the Captain for commitment dates on founder-action items,
@@ -156,6 +192,42 @@ communication:
   # silent: Log to tech-radar.md only, no notifications
 
 # =============================================================
+# Officer Types — fulltime vs consultant
+# =============================================================
+# fulltime: always-on, persistent session, supervisor auto-restarts
+# consultant: on-demand, starts via cron/trigger, supervisor does NOT restart
+#
+# Consultant officers have full identity (role def, memory, Telegram, tools)
+# but aren't always running. They activate on schedule or when triggered,
+# do their work, then sit idle. Designed for low-frequency, non-interactive
+# roles (research sweeps, periodic audits, compliance checks).
+#
+# To configure: add officer key with type field. Officers not listed default to fulltime.
+# IMPORTANT: Use inline YAML format (single line per officer, 2-space indent).
+# The supervisor parses this with grep — multi-line block style will not be detected.
+# officers:
+#   cos: { type: fulltime }
+#   cto: { type: fulltime }
+#   cpo: { type: fulltime }
+#   coo: { type: fulltime }
+#   cro: { type: consultant, schedule: "0 */4 * * *" }
+
+# =============================================================
+# Organizational Health — officer governance and auditing
+# =============================================================
+organizational_health:
+  audit_cadence: auto            # auto | daily | weekly | manual
+  # auto: CoS runs audit during reflection (every 6h) when officer activity is high,
+  #   or during retro (every 24h) when activity is normal. Baseline: at least once per retro.
+  # daily: Run audit every 24h
+  # weekly: Run audit every 7 days
+  # manual: Only run when CoS or Captain requests
+
+  cross_validation: true         # Auto-notify reviewers when artifacts are created
+  trigger_ack_warning: 60        # Minutes before unACK'd trigger triggers a warning
+  correction_tracking: true      # Track correction frequency for role fitness signal
+
+# =============================================================
 # Research APIs — CRO Tools
 # =============================================================
 research:
@@ -188,7 +260,7 @@ embeddings:
 # To add a new officer's voice: add their key to naturalize_prompts, voices,
 # and optionally models/stability/speeds.
 voice:
-  enabled: false                # Set to true to activate voice messages
+  enabled: true                 # Set to true to activate voice messages
   provider: elevenlabs
   model: eleven_flash_v2_5      # Fastest model (~75ms latency)
   mode: all                     # all | captain-dm | group | briefings

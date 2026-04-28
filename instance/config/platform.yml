@@ -165,7 +165,7 @@ embeddings:
 # To add a new officer's voice: add their key to naturalize_prompts, voices,
 # and optionally models/stability/speeds.
 voice:
-  enabled: false                # Set to true to activate voice messages
+  enabled: true                 # Set to true to activate voice messages
   provider: elevenlabs
   model: eleven_flash_v2_5      # Fastest model (~75ms latency)
   mode: all                     # all | captain-dm | group | briefings

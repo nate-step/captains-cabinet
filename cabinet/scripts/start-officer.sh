@@ -23,7 +23,7 @@ if [ -n "$ACTIVE_SLUG" ] && [ -f "$CABINET_ROOT/cabinet/env/${ACTIVE_SLUG}.env" 
 fi
 
 # Dynamic bot token lookup — constructs env var name from officer abbreviation
-TOKEN_VAR="TELEGRAM_${OFFICER^^}_TOKEN"
+TOKEN_VAR="TELEGRAM_$(echo "${OFFICER^^}" | tr "-" "_")_TOKEN"
 BOT_TOKEN="${!TOKEN_VAR:?$TOKEN_VAR not set in environment}"
 
 WINDOW="officer-$OFFICER"
