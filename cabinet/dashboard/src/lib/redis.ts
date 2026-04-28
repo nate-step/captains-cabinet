@@ -136,8 +136,25 @@ export async function getCostHistory(days: number): Promise<DailyCostEntry[]> {
     const hash = await redis.hgetall(`cabinet:cost:tokens:daily:${dateStr}`)
     const officerCosts: Record<string, number> = {}
     let total = 0
+    // FW-072 / S3 (Pool Phase 1A): cost field shape is now either legacy
+    // `<officer>_cost_micro` (pre-pool) OR per-project
+    // `<officer>_<project>_cost_micro` (pool mode). Sum both shapes per
+    // officer by scanning hash keys. One match in pre-pool, N matches in
+    // pool mode (one per project the officer touched today). Hash field
+    // naming is the only source-of-truth — legacy callsites reading the
+    // single field would silently miss pool-mode totals.
     for (const role of officers) {
-      const micro = hash ? parseInt(hash[`${role}_cost_micro`] || '0', 10) : 0
+      let micro = 0
+      if (hash) {
+        for (const [field, value] of Object.entries(hash)) {
+          if (
+            field === `${role}_cost_micro` ||
+            (field.startsWith(`${role}_`) && field.endsWith('_cost_micro'))
+          ) {
+            micro += parseInt(value || '0', 10) || 0
+          }
+        }
+      }
       const cents = Math.round(micro / 10000)
       officerCosts[role] = cents
       total += cents
@@ -179,15 +196,30 @@ export async function getTokenCostHistory(days: number): Promise<TokenCostEntry[
     const officerData: TokenCostEntry['officers'] = {}
     let totalCostMicro = 0
 
+    // FW-072 / S3 (Pool Phase 1A): cost field shape is now either legacy
+    // `<officer>_<dim>` (pre-pool) OR per-project `<officer>_<project>_<dim>`
+    // (pool mode). Sum both shapes per officer per dimension.
     for (const role of officers) {
       if (!hash || Object.keys(hash).length === 0) continue
-      const input = parseInt(hash[`${role}_input`] || '0', 10)
-      const output = parseInt(hash[`${role}_output`] || '0', 10)
-      const cacheWrite = parseInt(hash[`${role}_cache_write`] || '0', 10)
-      const cacheRead = parseInt(hash[`${role}_cache_read`] || '0', 10)
-      const costMicro = parseInt(hash[`${role}_cost_micro`] || '0', 10)
-      officerData[role] = { input, output, cacheWrite, cacheRead, costMicro }
-      totalCostMicro += costMicro
+      const dims = ['input', 'output', 'cache_write', 'cache_read', 'cost_micro']
+      const sums: Record<string, number> = { input: 0, output: 0, cache_write: 0, cache_read: 0, cost_micro: 0 }
+      for (const [field, value] of Object.entries(hash)) {
+        // Match `<role>_<dim>` (legacy) or `<role>_<projslug>_<dim>` (pool).
+        for (const dim of dims) {
+          if (field === `${role}_${dim}` || (field.startsWith(`${role}_`) && field.endsWith(`_${dim}`))) {
+            sums[dim] += parseInt(value || '0', 10) || 0
+            break
+          }
+        }
+      }
+      officerData[role] = {
+        input: sums.input,
+        output: sums.output,
+        cacheWrite: sums.cache_write,
+        cacheRead: sums.cache_read,
+        costMicro: sums.cost_micro,
+      }
+      totalCostMicro += sums.cost_micro
     }
 
     entries.push({ date: dateStr, officers: officerData, totalCostMicro })

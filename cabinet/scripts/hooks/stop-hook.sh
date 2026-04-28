@@ -77,18 +77,32 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
       > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:tokens:$OFFICER" 86400 > /dev/null 2>&1
 
-    # Accumulate daily totals: tokens + cost
+    # Accumulate daily totals: tokens + cost.
+    #
+    # FW-072 / Showstopper S3 (Pool Phase 1A): if CABINET_ACTIVE_PROJECT is set
+    # (pool mode, post-Phase-1B start-officer.sh --project flag), HINCRBY
+    # to per-project fields (`<officer>_<project>_<dim>`). Otherwise write to
+    # legacy fields (`<officer>_<dim>`) — pre-pool single-project deployments
+    # are unchanged. Conditional, not dual-write — guarantees one HINCRBY per
+    # tool-call per dimension so the cabinet-wide cap (HKEYS+sum on
+    # `*_cost_micro`) cannot double-count.
     TODAY=$(date -u +%Y-%m-%d)
+    PROJ="${CABINET_ACTIVE_PROJECT:-}"
+    if [ -n "$PROJ" ]; then
+      FIELD_PREFIX="${OFFICER}_${PROJ}"
+    else
+      FIELD_PREFIX="${OFFICER}"
+    fi
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
-      "${OFFICER}_input" "$INPUT_TOKENS" > /dev/null 2>&1
+      "${FIELD_PREFIX}_input" "$INPUT_TOKENS" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
-      "${OFFICER}_output" "$OUTPUT_TOKENS" > /dev/null 2>&1
+      "${FIELD_PREFIX}_output" "$OUTPUT_TOKENS" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
-      "${OFFICER}_cache_write" "$CACHE_WRITE" > /dev/null 2>&1
+      "${FIELD_PREFIX}_cache_write" "$CACHE_WRITE" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
-      "${OFFICER}_cache_read" "$CACHE_READ" > /dev/null 2>&1
+      "${FIELD_PREFIX}_cache_read" "$CACHE_READ" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HINCRBY "cabinet:cost:tokens:daily:$TODAY" \
-      "${OFFICER}_cost_micro" "$COST_MICRO" > /dev/null 2>&1
+      "${FIELD_PREFIX}_cost_micro" "$COST_MICRO" > /dev/null 2>&1
     redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" EXPIRE "cabinet:cost:tokens:daily:$TODAY" 172800 > /dev/null 2>&1
   fi
 fi

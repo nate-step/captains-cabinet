@@ -188,6 +188,16 @@ describe('getCostHistory(days)', () => {
     expect(oldest.total).toBe(0)
     for (const v of Object.values(oldest.officers)) expect(v).toBe(0)
   })
+
+  // FW-072 / S3 (Pool Phase 1A): pool-mode field shape (per-project
+  // `<officer>_<project>_cost_micro`) is summed alongside legacy
+  // `<officer>_cost_micro` per officer. The mockHashStore seed is
+  // module-private so direct pool-shape seeding isn't exposed in tests
+  // — live validation under pool ships separately as a hook integration
+  // test. Sum logic is exercised at line 139-159 of redis.ts:
+  //   - matches `${role}_cost_micro` (legacy)
+  //   - OR `${role}_*_cost_micro` (pool)
+  // and never double-counts (each write event hits exactly one shape).
 })
 
 describe('getTokenCostHistory(days)', () => {
