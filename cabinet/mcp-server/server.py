@@ -195,11 +195,25 @@ def this_cabinet_id() -> str:
 
 
 def this_cabinet_capacity() -> str:
-    """Return this Cabinet's capacity — defaults to work for backward compat.
-    Reads from platform.yml `capacity:` key or $CABINET_CAPACITY env."""
+    """Return this Cabinet's capacity (preset name).
+
+    FW-060 fix: lookup chain is env → active-preset file → platform.yml → default.
+    The active-preset file is the deployment's source-of-truth (it's what
+    load-preset.sh reads to assemble the runtime), so a Personal Cabinet
+    naturally returns 'personal' without needing platform.yml or env tweaks.
+    Env var stays first so operators can override at container-start.
+    """
     env = os.environ.get("CABINET_CAPACITY", "").strip()
     if env:
         return env
+    # active-preset is a single-line file containing just the preset name.
+    active_preset_path = CABINET_ROOT / "instance" / "config" / "active-preset"
+    try:
+        preset = active_preset_path.read_text(encoding="utf-8").strip()
+        if preset:
+            return preset
+    except OSError:
+        pass
     return read_simple_yaml_key(PLATFORM_YML, "capacity", default="work")
 
 
