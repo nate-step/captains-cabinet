@@ -239,10 +239,26 @@ fi
 # -- Main cap enforcement (contract a: explicit stderr on every block) --
 if [ "${_SKIP_MAIN_CAP:-0}" != "1" ]; then
 
-  # Per-officer cap
+  # Per-officer cap.
+  #
+  # FW-072 / S3 (Pool Phase 1A): cost field shape is now either legacy
+  # `<officer>_cost_micro` (pre-pool) OR per-project `<officer>_<project>_cost_micro`
+  # (pool mode, post-Phase-1B start-officer.sh --project). Sum both patterns
+  # by HKEYS-scanning fields that start with `<officer>_` and end with
+  # `_cost_micro`. One field in pre-pool, N fields in pool mode.
   if [ "$EFFECTIVE_PER_OFF_CAP_MICRO" -gt 0 ] 2>/dev/null; then
-    OFFICER_COST_MICRO=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "cabinet:cost:tokens:daily:$TODAY" "${OFFICER}_cost_micro" 2>/dev/null)
-    OFFICER_COST_MICRO=${OFFICER_COST_MICRO:-0}
+    OFFICER_COST_MICRO=0
+    while IFS= read -r fld; do
+      [ -z "$fld" ] && continue
+      case "$fld" in
+        "${OFFICER}_cost_micro"|"${OFFICER}_"*"_cost_micro")
+          v=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HGET "cabinet:cost:tokens:daily:$TODAY" "$fld" 2>/dev/null)
+          v=${v:-0}
+          case "$v" in *[!0-9]*|'') v=0 ;; esac
+          OFFICER_COST_MICRO=$((OFFICER_COST_MICRO + v))
+          ;;
+      esac
+    done < <(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" HKEYS "cabinet:cost:tokens:daily:$TODAY" 2>/dev/null)
     case "$OFFICER_COST_MICRO" in *[!0-9]*|'') OFFICER_COST_MICRO=0 ;; esac
     if [ "$OFFICER_COST_MICRO" -ge "$EFFECTIVE_PER_OFF_CAP_MICRO" ] 2>/dev/null; then
       OFFICER_COST_USD=$(awk -v v="$OFFICER_COST_MICRO" 'BEGIN{printf "%.2f", v/1000000}')
