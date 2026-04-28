@@ -388,6 +388,86 @@ def test_bearer_verify_with_secrets_enforcement() -> None:
         tmp.unlink(missing_ok=True)
 
 
+def test_capacity_lookup_chain() -> None:
+    """FW-060: this_cabinet_capacity() reads env → active-preset → platform.yml → 'work'.
+    Personal Cabinet's active-preset='personal' should win without needing env or yaml tweaks."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+
+    tmp_root = Path("/tmp/cabinet-capacity-test")
+    cfg_dir = tmp_root / "instance" / "config"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    preset_file = cfg_dir / "active-preset"
+    platform_yml = cfg_dir / "platform.yml"
+
+    old_root = srv.CABINET_ROOT
+    old_platform = srv.PLATFORM_YML
+    saved_env = os.environ.pop("CABINET_CAPACITY", None)
+
+    try:
+        srv.CABINET_ROOT = tmp_root
+        srv.PLATFORM_YML = platform_yml
+
+        # 1. Active-preset = personal → returns "personal" (the FW-060 fix path)
+        preset_file.write_text("personal\n")
+        platform_yml.write_text("captain_name: Test\n")
+        result = srv.this_cabinet_capacity()
+        if result == "personal":
+            ok("capacity: active-preset=personal → 'personal' (FW-060)")
+        else:
+            fail("capacity: active-preset=personal", f"got '{result}'")
+
+        # 2. Env var CABINET_CAPACITY overrides active-preset
+        os.environ["CABINET_CAPACITY"] = "override-cap"
+        result = srv.this_cabinet_capacity()
+        if result == "override-cap":
+            ok("capacity: CABINET_CAPACITY env wins over active-preset")
+        else:
+            fail("capacity: env override", f"got '{result}'")
+        os.environ.pop("CABINET_CAPACITY", None)
+
+        # 3. No active-preset file → falls back to platform.yml capacity:
+        preset_file.unlink()
+        platform_yml.write_text("capacity: legacy-cap\ncaptain_name: Test\n")
+        result = srv.this_cabinet_capacity()
+        if result == "legacy-cap":
+            ok("capacity: missing preset → platform.yml capacity:")
+        else:
+            fail("capacity: platform.yml fallback", f"got '{result}'")
+
+        # 4. Nothing configured → default 'work'
+        platform_yml.write_text("captain_name: Test\n")
+        result = srv.this_cabinet_capacity()
+        if result == "work":
+            ok("capacity: nothing configured → 'work' default")
+        else:
+            fail("capacity: default", f"got '{result}'")
+
+        # 5. Empty active-preset file → falls through to platform.yml/default
+        preset_file.write_text("")
+        result = srv.this_cabinet_capacity()
+        if result == "work":
+            ok("capacity: empty preset file → falls through to default")
+        else:
+            fail("capacity: empty preset file", f"got '{result}'")
+
+    finally:
+        srv.CABINET_ROOT = old_root
+        srv.PLATFORM_YML = old_platform
+        if saved_env is not None:
+            os.environ["CABINET_CAPACITY"] = saved_env
+        else:
+            os.environ.pop("CABINET_CAPACITY", None)
+        try:
+            preset_file.unlink(missing_ok=True)
+            platform_yml.unlink(missing_ok=True)
+            cfg_dir.rmdir()
+            (tmp_root / "instance").rmdir()
+            tmp_root.rmdir()
+        except OSError:
+            pass
+
+
 # ---------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------
@@ -419,6 +499,8 @@ def run_unit_tests() -> None:
     print("\n-- bearer auth unit tests --")
     test_bearer_verify_no_secrets()
     test_bearer_verify_with_secrets_enforcement()
+    print("\n-- capacity lookup unit tests --")
+    test_capacity_lookup_chain()
 
 
 if __name__ == "__main__":
