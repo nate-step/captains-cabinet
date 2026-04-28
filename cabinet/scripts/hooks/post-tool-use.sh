@@ -13,7 +13,9 @@ REDIS_URL="${REDIS_URL:-redis://redis:6379}"
 REDIS_HOST=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f1)
 REDIS_PORT=$(echo "$REDIS_URL" | sed 's|redis://||' | cut -d: -f2)
 
-LOG_DIR="/opt/founders-cabinet/memory/logs"
+# LOG_DIR is overridable for hermetic tests (FW-075 test harness). Production
+# always uses the canonical path; the env override is opt-in and safe.
+LOG_DIR="${CABINET_LOG_DIR:-/opt/founders-cabinet/memory/logs}"
 mkdir -p "$LOG_DIR"
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -59,11 +61,24 @@ if ! [[ "$CABINET_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   CABINET_ID="main"
 fi
 
+# FW-075 (Pool Phase 1C H3): project dimension for pool-mode log filtering.
+# When CABINET_ACTIVE_PROJECT is set (FW-073 export contract), emit it as a
+# JSONL field so per-project activity slicing works in dashboards/retros.
+# Safelist mirrors start-officer.sh / triggers.sh slug guard (regex + 32-char
+# cap). Falls back to empty string if unset OR malformed — never injects bad
+# JSON, never substitutes a stale value.
+PROJECT_FIELD="${CABINET_ACTIVE_PROJECT:-}"
+if [ -n "$PROJECT_FIELD" ]; then
+  if ! [[ "$PROJECT_FIELD" =~ ^[a-z0-9][a-z0-9-]*$ ]] || [ "${#PROJECT_FIELD}" -gt 32 ]; then
+    PROJECT_FIELD=""
+  fi
+fi
+
 # Write JSON log line. Fail LOUD on append error — silent log drops create
 # invisible gaps that poison retro activity math (audit Finding #3,
 # 2026-04-21). Disk-full, RO mount, perm error — all would have been
 # invisible prior to this guard.
-echo "{\"ts\":\"$TIMESTAMP\",\"cabinet_id\":\"$CABINET_ID\",\"officer\":\"$OFFICER\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE" || echo "post-tool-use: LOG WRITE FAILED for $LOG_FILE (disk full? RO mount?) — log entry dropped for $OFFICER at $TIMESTAMP" >&2
+echo "{\"ts\":\"$TIMESTAMP\",\"cabinet_id\":\"$CABINET_ID\",\"officer\":\"$OFFICER\",\"project\":\"$PROJECT_FIELD\",\"tool\":\"$TOOL_NAME\",\"input\":$(echo "$TOOL_INPUT" | jq -c '.' 2>/dev/null || echo '{}'),\"output_preview\":$(echo "$TRUNCATED_OUTPUT" | jq -Rs '.' 2>/dev/null || echo '\"\"')}" >> "$LOG_FILE" || echo "post-tool-use: LOG WRITE FAILED for $LOG_FILE (disk full? RO mount?) — log entry dropped for $OFFICER at $TIMESTAMP" >&2
 
 # NOTE: Accurate per-tool cost tracking is handled by the cost-aware
 # Anthropic wrapper which writes microdollar-accurate values to the

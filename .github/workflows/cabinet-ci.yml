@@ -170,6 +170,14 @@ jobs:
         # writing per-project HSET fields without an explicit --project flag.
         run: bash /opt/founders-cabinet/cabinet/tests/start-officer/test-args.sh
 
+      - name: Shell unit tests — post-tool-use.sh JSONL project field (FW-075)
+        # 9 assertions: project field surfaces in JSONL when CABINET_ACTIVE_PROJECT
+        # is set (FW-073 export contract); legacy mode emits empty field; malformed
+        # slug (charset, leading hyphen, length>32) defensively falls back to empty
+        # so corrupted env never produces malformed JSONL. Pins the FW-075 H3 field
+        # contract so downstream dashboard/retro queries can rely on it.
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-post-tool-use-jsonl.sh
+
       - name: Shell unit tests — pre-push hook (FW-007 + FW-025)
         # 14 scenarios / 31 assertions covering the safety-critical pre-push hook:
         # non-master fast-paths, legit fast-forward + first-create, force-overwrite
