@@ -241,6 +241,16 @@ jobs:
         # tuning + indexer schema drift. Exits non-zero on any fixture FAIL.
         run: bash /opt/founders-cabinet/cabinet/scripts/captain-rules/eval.sh
 
+      - name: Captain-rules encode-pipeline eval
+        # Spec 048 v2: hermetic regression eval over the encode → draft →
+        # ratify path (skipping API-bound classify-rule.sh). Pins the
+        # draft template shape (set -u, env-var disable, JSONL log path),
+        # ratify yes/no semantics (settings.json patch on yes, untouched
+        # on no), audit-log entries, pending-marker cleanup, and graceful
+        # values-only short-circuit. 29 assertions; any silent breakage
+        # of draft-generator.sh or ratify-rule.sh fails CI.
+        run: bash /opt/founders-cabinet/cabinet/scripts/captain-rules/eval-encode-pipeline.sh
+
       - name: Hook regression harnesses
         # FW-051 addendum: 7 permanent harnesses at cabinet/tests/hook-regression/
         # (fw041/042/043/044/045/051) snapshot each FW-0xx adversary-finding
