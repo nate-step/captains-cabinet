@@ -16,10 +16,25 @@ if [ "$CABINET_UID" != "60001" ] || [ "$CABINET_GID" != "60000" ]; then
   exit 1
 fi
 
-# Fix ownership on mounted volumes (runs as root)
+# Fix ownership on mounted volumes (runs as root).
+#
+# FW-059 (2026-04-28): coverage extended past the original FW-018 Phase B
+# Stream A surface (memory/, shared/, ~/.claude/, ~/.claude-channels/) to
+# include paths officers write to during normal operation but which were
+# missed on first-rebuild — required CoS to host-side chgrp manually.
+# Adding them here means a fresh `docker compose up -d --build` leaves
+# the container fully self-sufficient on UID 60001.
+#
+# .git/ is mounted read/write because officers commit + push from inside
+# the container; chown'ing during a live git op is theoretically racy
+# but entrypoint runs before any officer process so timing is safe.
 echo "Fixing volume permissions..."
 chown -R cabinet:cabinet /opt/founders-cabinet/memory/ 2>/dev/null || true
 chown -R cabinet:cabinet /opt/founders-cabinet/shared/ 2>/dev/null || true
+chown -R cabinet:cabinet /opt/founders-cabinet/instance/memory/ 2>/dev/null || true
+chown -R cabinet:cabinet /opt/founders-cabinet/cabinet/scripts/ 2>/dev/null || true
+chown -R cabinet:cabinet /opt/founders-cabinet/.git/ 2>/dev/null || true
+chown cabinet:cabinet /opt/founders-cabinet/cabinet/.env 2>/dev/null || true
 chown -R cabinet:cabinet /home/cabinet/.claude/ 2>/dev/null || true
 chown -R cabinet:cabinet /home/cabinet/.claude-channels/ 2>/dev/null || true
 echo "Permissions fixed."
