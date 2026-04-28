@@ -91,4 +91,50 @@ else
   echo "framework-backlog-drift: review candidates above — verify Status line still accurate against hook source / commit log / eval suite. Flip to SHIPPED/SUPERSEDED/DONE with commit ref if empirically landed."
 fi
 
+# ============================================================
+# Numbering hygiene — duplicate FW-N headings + gaps in FW-N sequence.
+# ============================================================
+# A second drift class: human-edited headings can collide on FW-N (two
+# entries claiming the same number) or skip a number (gap from FW-066 →
+# FW-068 with no FW-067). Either makes "what is FW-067?" ambiguous and
+# corrupts cross-references in commit messages and trigger payloads.
+# Advisory only — exit code unchanged.
+
+DUP_OUT=$(grep -E '^### FW-[0-9]+ — ' "$BACKLOG" \
+  | awk '{print $2}' \
+  | sort | uniq -c | awk '$1 > 1 {print $2}')
+
+if [ -n "$DUP_OUT" ]; then
+  echo ""
+  echo "framework-backlog-drift: DUPLICATE FW-N headings detected:"
+  while read -r fw_id; do
+    [ -z "$fw_id" ] && continue
+    grep -nE "^### ${fw_id} — " "$BACKLOG" | sed 's/^/  /'
+  done <<< "$DUP_OUT"
+  echo "  → resolve by merging the entries or renumbering one to the next free FW-N."
+fi
+
+GAP_OUT=$(grep -E '^### FW-[0-9]+' "$BACKLOG" \
+  | sed -E 's/^### FW-0*([0-9]+).*/\1/' \
+  | sort -u -n \
+  | awk '
+    NR == 1 { last = $1; next }
+    {
+      while (last + 1 < $1) {
+        last++
+        printf "FW-%03d\n", last
+      }
+      last = $1
+    }
+  ')
+
+if [ -n "$GAP_OUT" ]; then
+  echo ""
+  echo "framework-backlog-drift: MISSING FW-N numbers in sequence:"
+  while read -r missing; do
+    [ -z "$missing" ] && continue
+    echo "  $missing — no entry; either back-fill or document the gap"
+  done <<< "$GAP_OUT"
+fi
+
 exit 0
