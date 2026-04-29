@@ -122,6 +122,19 @@ step_validate_repo_url() {
 # Preflight checks (step 3)
 # ---------------------------------------------------------------------------
 step_preflight() {
+  # FW-080 hotfix: when --skip-create is set, the env-file existence check
+  # is independent of infra (tmux/Redis/GITHUB_PAT) — fail fast here so
+  # missing-config diagnostics don't get masked by infra-not-present errors
+  # in CI runners (which lack tmux + GITHUB_PAT). Same check repeats inside
+  # step_provision_project for callers that hit it without --skip-create.
+  if [ "$SKIP_CREATE" = true ] && [ "$DRY_RUN" != "1" ]; then
+    if [ ! -f "$CABINET_ROOT/cabinet/env/${SLUG}.env" ]; then
+      err "--skip-create specified but cabinet/env/${SLUG}.env does not exist"
+      err "  Run without --skip-create to provision first"
+      exit 1
+    fi
+  fi
+
   if [ "$DRY_RUN" = "1" ]; then
     dry "Would check: cabinet/.env exists, REDIS_HOST reachable, tmux present, GITHUB_PAT set"
     return 0
