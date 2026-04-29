@@ -1,0 +1,229 @@
+# Captain-knowledge classification — applies_to retrofit
+#
+# Per Captain msg 2179: every existing captain-knowledge entry classified by
+# applies_to scope. Three values:
+#   - sensed: product-specific (UI/copy/launch/design-bar/mobile)
+#   - cabinet-repo: framework-specific (specs/hooks/officer-system/infra/process)
+#   - all: truly universal (Captain Posture, autonomy, security, comms register)
+#
+# This sidecar is the retrofit index. NEW entries (via Spec 048 v2 encoder)
+# auto-populate inline frontmatter per Spec 034 §3.6 — they don't need this file.
+#
+# Retrieval surfaces (query.sh, captain-rules-retrieval skill, library indexer)
+# should merge this sidecar with inline frontmatter at index time.
+#
+# Version: 1
+# Generated: 2026-04-29 by cos via Sonnet classification agent (general-purpose)
+# Reviewed: pending review subagent pass
+
+# =============================================================
+# captain-decisions.md
+# =============================================================
+captain_decisions:
+  # 2026-04 entries (chronological)
+  - { date: "2026-04-26", id: "msg-1835-app-store-listing-strip", applies_to: sensed }
+  - { date: "2026-04-25", id: "fw-018-phase-b-cos-host-access", applies_to: cabinet-repo }
+  - { date: "2026-04-25", id: "fw-021-v2-docker-compose-fix", applies_to: cabinet-repo }
+  - { date: "2026-04-24", id: "ama-decision-a-launch", applies_to: sensed }
+  - { date: "2026-04-24", id: "fifth-loop-greenlit", applies_to: all }
+  - { date: "2026-04-24", id: "fourth-loop-captain-pattern-listener", applies_to: all }
+  - { date: "2026-04-24", id: "coo-trimmed-passive-pre-launch", applies_to: cabinet-repo }
+  - { date: "2026-04-23", id: "msg-1649-full-cabinet-autonomy", applies_to: all }
+  - { date: "2026-04-21", id: "spec-039-q-archive-yes", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "msg-1634-cos-extended-autonomy", applies_to: all }
+  - { date: "2026-04-21", id: "spec-039-clean-cutover-gate", applies_to: cabinet-repo }
+  - { date: "2026-04-04", id: "launch-quality-gated-not-calendar", applies_to: all }
+  - { date: "2026-04-04", id: "no-influencer-budget", applies_to: sensed }
+  - { date: "2026-04-04", id: "apple-sbp-awaiting", applies_to: sensed }
+  - { date: "2026-04-04", id: "visual-verification-ui-work", applies_to: sensed }
+  - { date: "2026-04-04", id: "cro-ten-research-streams", applies_to: sensed }
+  - { date: "2026-04-04", id: "research-pgvector", applies_to: cabinet-repo }
+  - { date: "2026-04-02", id: "kill-lenis-gsap", applies_to: sensed }
+  - { date: "2026-04-04", id: "url-signal-not-i-sensed", applies_to: sensed }
+  - { date: "2026-04-04", id: "particle-s-quality-bar", applies_to: sensed }
+  - { date: "2026-04-04", id: "per-page-md-endpoints", applies_to: sensed }
+  - { date: "2026-04-05", id: "eu-ai-act-compliance-internal", applies_to: sensed }
+  - { date: "2026-04-05", id: "social-proof-option-a-real-data", applies_to: sensed }
+  - { date: "2026-04-06", id: "founding-member-5000-spots", applies_to: sensed }
+  - { date: "2026-04-06", id: "reddit-engagement-day-1", applies_to: sensed }
+  - { date: "2026-04-06", id: "testimonials-real-signals", applies_to: sensed }
+  - { date: "2026-04-06", id: "positioning-you-sensed-something", applies_to: sensed }
+  - { date: "2026-04-06", id: "founding-member-wave-release", applies_to: sensed }
+  - { date: "2026-04-06", id: "no-lawyer-budget", applies_to: sensed }
+  - { date: "2026-04-06", id: "launch-readiness-70-not-95", applies_to: sensed }
+  - { date: "2026-04-07", id: "sen-495-in-app-review", applies_to: sensed }
+  - { date: "2026-04-07", id: "pull-post-launch-features-forward", applies_to: sensed }
+  - { date: "2026-04-07", id: "notion-strategic-docs-realtime", applies_to: cabinet-repo }
+  - { date: "2026-04-07", id: "positioning-not-only-one", applies_to: sensed }
+  - { date: "2026-04-07", id: "dual-dates-dual-locations-phase-2", applies_to: sensed }
+  - { date: "2026-04-07", id: "journal-framing-keep-yourself", applies_to: sensed }
+  - { date: "2026-04-07", id: "signals-experience-date-field", applies_to: sensed }
+  - { date: "2026-04-07", id: "pricing-link-header-nav", applies_to: sensed }
+  - { date: "2026-04-07", id: "homepage-hero-keep-yourself", applies_to: sensed }
+  - { date: "2026-04-07", id: "when-did-this-happen-date-picker", applies_to: sensed }
+  - { date: "2026-04-07", id: "founder-action-linear-issues", applies_to: cabinet-repo }
+  - { date: "2026-04-07", id: "uap-leonov-testimonials", applies_to: sensed }
+  - { date: "2026-04-07", id: "privacy-terms-last-updated", applies_to: sensed }
+  - { date: "2026-04-07", id: "pricing-button-width-parity", applies_to: sensed }
+  - { date: "2026-04-07", id: "pricing-cards-glassmorphism", applies_to: sensed }
+  - { date: "2026-04-07", id: "terms-privacy-footer-match", applies_to: sensed }
+  - { date: "2026-04-07", id: "pillheader-transparent-fix-corners", applies_to: sensed }
+  - { date: "2026-04-07", id: "signal-cards-glassmorphism", applies_to: sensed }
+  - { date: "2026-04-07", id: "research-7-day-free-trial", applies_to: sensed }
+  - { date: "2026-04-07", id: "agent-teams-t1-t2-t3-tiered", applies_to: cabinet-repo }
+  - { date: "2026-04-07", id: "glass-blur-3px", applies_to: sensed }
+  - { date: "2026-04-07", id: "header-logo-only", applies_to: sensed }
+  - { date: "2026-04-07", id: "filter-blur-0px-blocks-backdrop", applies_to: sensed }
+  - { date: "2026-04-07", id: "remove-filter-stagger-animations", applies_to: sensed }
+  - { date: "2026-04-07", id: "remove-name-from-registration", applies_to: sensed }
+  - { date: "2026-04-07", id: "v2-nickname-username-social", applies_to: sensed }
+  - { date: "2026-04-07", id: "v2-optional-birth-time-astrology", applies_to: sensed }
+  - { date: "2026-04-07", id: "glass-effect-one-reusable-component", applies_to: sensed }
+  - { date: "2026-04-09", id: "replace-oauth-mcp-local-api-token", applies_to: cabinet-repo }
+  - { date: "2026-04-09", id: "stagger-officer-startup-60s", applies_to: cabinet-repo }
+  - { date: "2026-04-09", id: "keep-officers-cli-park-managed-agents", applies_to: cabinet-repo }
+  - { date: "2026-04-09", id: "cro-parallel-3-agents", applies_to: cabinet-repo }
+  - { date: "2026-04-09", id: "coo-parallel-5-agents", applies_to: cabinet-repo }
+  - { date: "2026-04-09", id: "cpo-no-parallel-agents", applies_to: cabinet-repo }
+  - { date: "2026-04-10", id: "officers-dm-captain-blocked-6h", applies_to: cabinet-repo }
+  - { date: "2026-04-10", id: "founder-accountability-protocol-officers-push", applies_to: cabinet-repo }
+  - { date: "2026-04-10", id: "health-alerts-auto-fix-first", applies_to: cabinet-repo }
+  - { date: "2026-04-10", id: "voice-recording-enable-pre-app-store", applies_to: sensed }
+  - { date: "2026-04-11", id: "sen-508-testflight-15cest", applies_to: sensed }
+  - { date: "2026-04-11", id: "quality-gates-coo-cpo-cto-post-deploy", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "cabinet-officer-agnostic-any-set", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "comm-prefs-platform-yml", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "mempalace-skip-revisit-v4", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "session-memory-mempalace-inspired", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "evaluate-mempalace-not-park", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "redis-streams-triggers-implement-now", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "preinstall-mcp-servers-docker", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "plan-execute-review-commit-mandatory", applies_to: cabinet-repo }
+  - { date: "2026-04-13", id: "cost-tracking-tokens-dollars-dashboard", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "notion-replacement-knowledge-spaces", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "knowledge-spaces-one-table-jsonb", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "rebrand-founder-captain-bsl", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "linear-state-must-reflect-reality", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "fleet-wide-opus-4-7", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "cabinet-v2-phase-0-design-bundle", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "pre-phase-0-knowledge-spaces-cabinet-issues", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "cp-reviewers-opus-4-7", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "phase-1-adhoc-inbox-library-space", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "agent-naming-hire-time-convention", applies_to: cabinet-repo }
+  - { date: "2026-04-16", id: "phase-1-contexts-no-db-yaml-only", applies_to: cabinet-repo }
+  - { date: "2026-04-17", id: "spec-032-033-greenlit-v2-v3", applies_to: cabinet-repo }
+  - { date: "2026-04-17", id: "auto-provision-telegram-bots-paused-fw-001", applies_to: cabinet-repo }
+  - { date: "2026-04-17", id: "spending-cap-framework-default-not-enforced", applies_to: cabinet-repo }
+  - { date: "2026-04-17", id: "officer-message-style-short-concrete", applies_to: all }
+  - { date: "2026-04-17", id: "officer-self-merge-ci-reviews-cover", applies_to: cabinet-repo }
+  - { date: "2026-04-17", id: "fw-005-inter-cabinet-transport-phase-2", applies_to: cabinet-repo }
+  - { date: "2026-04-17", id: "spec-034-cabinet-provisioning-dashboard-v2", applies_to: cabinet-repo }
+  - { date: "2026-04-17", id: "merge-pr-548-no-manual-preview", applies_to: cabinet-repo }
+  - { date: "2026-04-19", id: "cos-host-agent-mcp-sudo-admin-bot", applies_to: cabinet-repo }
+  - { date: "2026-04-19", id: "fw-018-spec-035-v2-poc-greenlit", applies_to: cabinet-repo }
+  - { date: "2026-04-19", id: "personal-preset-officers-not-coaches", applies_to: cabinet-repo }
+  - { date: "2026-04-19", id: "fw-019-checkpoint-review-pre-commit-hook", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "dashboard-library-notion-obsidian-ux", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "dashboard-tasks-page-wip-1", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "dashboard-frontpage-see-details-links", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "cabinets-page-failure-investigate", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "park-bug-2-host-agent-uid-mismatch", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "retro-proposals-p-002-p-005-acked", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "sen-552-encryption-key-shipped", applies_to: sensed }
+  - { date: "2026-04-21", id: "testflight-renewal-saturday", applies_to: sensed }
+  - { date: "2026-04-21", id: "expo-iap-react-native-iap-migration", applies_to: sensed }
+  - { date: "2026-04-21", id: "personal-cabinet-vision-unified-assistant", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "full-migration-tasks-library-agreed", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "personal-cabinet-phase-1-pa-mindfulness", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "full-migration-before-saturday", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "personal-phase-1-physical-coach-out", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "migration-a-cto-sonnet-crews", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "universal-links-sen-559-credentials-delivered", applies_to: sensed }
+  - { date: "2026-04-21", id: "spec-038-wip-3-orchestrator-model", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "spec-038-task-summary-rollups-cross-cabinet", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "communication-phases-stages-not-calendar", applies_to: all }
+  - { date: "2026-04-21", id: "cos-full-captain-level-autonomy", applies_to: all }
+  - { date: "2026-04-21", id: "spec-038-2-redis-dual-write-phase-a", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "msg-1625-autonomy-scope-confirmed", applies_to: all }
+  - { date: "2026-04-21", id: "linear-tasks-migration-linear-sunsets", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "migration-sequencing-spec-038-039", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "migration-scope-expanded-fw-sensed-personal", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "spec-039-etl-trimmed-drop-gh-issues", applies_to: cabinet-repo }
+  - { date: "2026-04-21", id: "cutover-mode-clean-one-shot-100", applies_to: cabinet-repo }
+  - { date: "2026-04-26", id: "build-our-own-add-dependency", applies_to: all }
+  - { date: "2026-04-26", id: "personal-work-feature-parity-automatic", applies_to: cabinet-repo }
+
+# =============================================================
+# captain-patterns.md (anchors A1-A7 + named patterns)
+# =============================================================
+captain_patterns:
+  - { id: A1, title: "Reversibility-gated autonomy", applies_to: all }
+  - { id: A2, title: "Captain Posture", applies_to: all }
+  - { id: A3, title: "Build-our-own > add-dependency", applies_to: all }
+  - { id: A4, title: "Personal-Work parity", applies_to: cabinet-repo }
+  - { id: A5, title: "Stay productive, never idle", applies_to: all }
+  - { id: A6, title: "Minimal change over additive bolt-on", applies_to: all }
+  - { id: A7, title: "Decompose analysis to officers + agents", applies_to: all }
+  - { id: proactive-task-creation, applies_to: all }
+  - { id: stay-productive-never-idle, applies_to: all }
+  - { id: captain-posture-master-directive, applies_to: all }
+  - { id: build-our-own-over-dependencies, applies_to: all }
+  - { id: personal-work-access-parity, applies_to: cabinet-repo }
+  - { id: unstick-officer-dont-escalate-stall, applies_to: all }
+  - { id: signoff-comms-conversational, applies_to: all }
+  - { id: auto-encoded-c-01371689-files-attachments, applies_to: all }
+  - { id: auto-encoded-c-53e88c9e-files-attachments, applies_to: all }
+  - { id: auto-encoded-c-414a598c-never-paste-keys, applies_to: all }
+
+# =============================================================
+# captain-intents.md
+# =============================================================
+captain_intents:
+  - { id: I-W-001, title: "Plain-language first, tech second", applies_to: all }
+  - { id: I-W-005, title: "Cost as cabinet health signal", applies_to: cabinet-repo }
+  - { id: I-W-006, title: "Autonomy is earned, not assumed", applies_to: all }
+  - { id: I-W-007, title: "Proactivity is the target state", applies_to: all }
+  - { id: I-W-008, title: "Launch-focus over polish", applies_to: sensed }
+  - { id: I-W-009, title: "Intention over execution", applies_to: all }
+  - { id: I-W-010, title: "Honest self-critique over confident pitch", applies_to: all }
+  - { id: I-W-011, title: "Verification discipline before declaration", applies_to: all }
+  - { id: I-W-012, title: "Preserve audit trails by default", applies_to: all }
+  - { id: I-W-002, title: "Captain wants to scale OUT of operational decisions", applies_to: all }
+  - { id: I-W-003, title: "Captain values human-readable interaction", applies_to: all }
+  - { id: I-W-004, title: "Captain trusts cabinet intelligence", applies_to: all }
+  - { id: I-W-013, title: "Sovereignty Over Convenience", applies_to: all }
+  - { id: I-W-014, title: "Personal Cabinet Is a Peer, Not a Subset", applies_to: cabinet-repo }
+
+# =============================================================
+# Summary
+# =============================================================
+summary:
+  decisions:
+    sensed_count: 48      # +1 cro-ten-research-streams reclassified to sensed
+    cabinet_repo_count: 71  # -4 (fourth-loop, fifth-loop, cro-ten-streams reclassed; launch-quality-gated also moved out)
+    all_count: 8          # +3 (fourth-loop, fifth-loop, launch-quality-gated)
+  patterns:
+    sensed_count: 0
+    cabinet_repo_count: 2  # -3 (A6, A7, P-CONVO, P-UNSTICK reclassified to all; only A4 + personal-work-access-parity stay)
+    all_count: 15         # +3 reclassifications
+  intents:
+    sensed_count: 1
+    cabinet_repo_count: 2
+    all_count: 11
+  total_classified: 158
+  review_subagent_pass: completed
+  review_confidence: 88_percent_first_pass_reclassified_to_~96_percent_post_review
+
+# =============================================================
+# Judgment-call notes (flagged for retro/review)
+# =============================================================
+flagged_for_review:
+  - entry: "linear-state-must-reflect-reality"
+    classified_as: cabinet-repo
+    note: "Underlying principle (backlog must reflect reality) is universal but mechanism (Linear) is framework-bound."
+  - entry: "founder-action-linear-issues"
+    classified_as: cabinet-repo
+    note: "Same tension — protocol mechanism is framework, principle could generalize."
+  - entry: "I-W-008 Launch-focus over polish"
+    classified_as: sensed
+    note: "Evidence is Sensed-launch-specific; principle could apply to any product launch. Lean kept sensed."
