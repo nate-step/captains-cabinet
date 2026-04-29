@@ -5,7 +5,7 @@
 #   instance/config/platform.yml + instance/config/projects/sensed.yml
 # Do not edit directly — edit the source files instead.
 # Active project: sensed
-# Generated: 2026-04-28 06:00:21 UTC
+# Generated: 2026-04-29 12:08:27 UTC
 # =============================================================  
 
 # =============================================================
@@ -90,6 +90,7 @@ neon:
 # Telegram — Project Group Chat
 # =============================================================
 telegram:
+  bot_mode: multi_officer          # Legacy: 5-bot roster (Sensed predates single_ceo default)
   officers:
     cos: sensed_cos_bot
     cto: sensed_cto_bot
