@@ -47,6 +47,13 @@ NEON_DATABASE_URL=""
 # Honour DRY_RUN env var (set before invocation) OR --dry-run flag below.
 # Initialize from environment; flag parsing may upgrade 0→1 but never 1→0.
 DRY_RUN="${DRY_RUN:-0}"
+# FW-082 hotfix (CoS field report 2026-04-29): peer-reachability check is
+# wrong-oriented for first-spawn — bootstrap runs from operator container, but
+# what matters is the NEW cabinet (not yet spawned) reaching the peer. The
+# operator-side probe can fail spuriously (containers/networks not visible
+# from caller). --skip-peer-reachability defers the check; FW-005 transport
+# does the real reachability test once both cabinets are alive.
+SKIP_PEER_REACHABILITY=0
 declare -a PEER_CABINETS=()
 
 if [ $# -ge 1 ]; then
@@ -108,6 +115,10 @@ while [ $# -gt 0 ]; do
       ;;
     --dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --skip-peer-reachability)
+      SKIP_PEER_REACHABILITY=1
       shift
       ;;
     *)
@@ -244,20 +255,34 @@ step_preflight() {
     info "Neon URL reachable: $(redact_neon_url "$NEON_DATABASE_URL")"
   fi
 
-  # Probe peer cabinets (TCP reachable)
-  for peer_entry in "${PEER_CABINETS[@]:-}"; do
-    [ -z "$peer_entry" ] && continue
-    local peer_host peer_port
-    peer_host=$(echo "$peer_entry" | cut -d: -f2)
-    peer_port=$(echo "$peer_entry" | cut -d: -f3)
-    if ! timeout 5 bash -c "echo > /dev/tcp/${peer_host}/${peer_port}" 2>/dev/null; then
-      err "Peer cabinet not reachable at ${peer_host}:${peer_port}"
-      err "  Entry: $peer_entry"
-      err "  Verify peer host/port before bootstrapping"
-      exit 1
+  # Probe peer cabinets (TCP reachable). NB: this probe runs from the operator
+  # container, NOT from the new cabinet's perspective — for first-spawn the
+  # operator may be one of the peers itself (DNS doesn't resolve "officers" to
+  # localhost) or otherwise lack visibility into peer's Docker network. The
+  # check exists to catch operator typo on host/port, not to validate true
+  # bidirectional FW-005 reachability (that happens once both cabinets are
+  # alive). Use --skip-peer-reachability when the caller can't reach peers
+  # itself.
+  if [ "$SKIP_PEER_REACHABILITY" = "1" ]; then
+    if [ "${#PEER_CABINETS[@]:-0}" -gt 0 ]; then
+      info "Peer-reachability check SKIPPED (--skip-peer-reachability) — FW-005 will validate live"
     fi
-    info "Peer reachable: ${peer_host}:${peer_port}"
-  done
+  else
+    for peer_entry in "${PEER_CABINETS[@]:-}"; do
+      [ -z "$peer_entry" ] && continue
+      local peer_host peer_port
+      peer_host=$(echo "$peer_entry" | cut -d: -f2)
+      peer_port=$(echo "$peer_entry" | cut -d: -f3)
+      if ! timeout 5 bash -c "echo > /dev/tcp/${peer_host}/${peer_port}" 2>/dev/null; then
+        err "Peer cabinet not reachable at ${peer_host}:${peer_port}"
+        err "  Entry: $peer_entry"
+        err "  Verify peer host/port before bootstrapping"
+        err "  OR pass --skip-peer-reachability if probing from a container that can't reach peers"
+        exit 1
+      fi
+      info "Peer reachable: ${peer_host}:${peer_port}"
+    done
+  fi
 
   info "Preflight checks passed"
 }
