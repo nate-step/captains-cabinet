@@ -65,7 +65,7 @@ PEERS_YML = CABINET_ROOT / "instance" / "config" / "peers.yml"
 CALENDAR_YML = CABINET_ROOT / "instance" / "config" / "calendar.yml"
 
 SERVER_NAME = "cabinet"
-SERVER_VERSION = "0.3.0"  # bumped for FW-005 HTTP transport
+SERVER_VERSION = "0.4.0"  # bumped for FW-079 cost_summary tool
 PROTOCOL_VERSION = "2024-11-05"
 
 # Transport config
@@ -514,6 +514,254 @@ def tool_request_handoff(params: dict) -> dict:
 
 
 # ---------------------------------------------------------------
+# Cost summary helpers (FW-079 — Pool Phase 3)
+# ---------------------------------------------------------------
+
+# Slug validation: lowercase alphanumeric + hyphen, starting with alnum, max 32 chars.
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+_MAX_DAYS = 90
+
+# Dimensions tracked per HSET field suffix (stop-hook.sh FW-072 source).
+# Note: cost_micro and cache_write/cache_read each contain underscores, so
+# the canonical dim suffix can be 1 or 2 underscore-separated tokens.
+# We check for longest-match dim suffixes first (cost_micro before micro, etc.)
+_DIMS = ("cost_micro", "cache_write", "cache_read", "input", "output")
+# Set for fast membership test
+_DIMS_SET = frozenset(_DIMS)
+
+
+def _valid_slug(s: str) -> bool:
+    return bool(_SLUG_RE.match(s))
+
+
+def _redis_hgetall(key: str) -> dict[str, str]:
+    """Run HGETALL on a Redis key; return field→value dict (strings). Empty on error."""
+    try:
+        out = subprocess.run(
+            ["redis-cli", "-h", REDIS_HOST, "-p", REDIS_PORT, "HGETALL", key],
+            capture_output=True, text=True, timeout=3,
+        )
+        lines = out.stdout.strip().splitlines()
+        result: dict[str, str] = {}
+        it = iter(lines)
+        for field in it:
+            try:
+                val = next(it)
+            except StopIteration:
+                break
+            result[field] = val
+        return result
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return {}
+
+
+def _parse_cost_hset(raw: dict[str, str], officer_filter: str | None, project_filter: str | None) -> dict:
+    """Parse a single day's HSET fields into structured rollup buckets.
+
+    Field shapes (from stop-hook.sh FW-072):
+      Legacy (no project):  <officer>_<dim>            e.g. cto_cost_micro
+      Pool   (with project): <officer>_<project>_<dim>  e.g. cto_sensed_cost_micro
+
+    Returns dict with keys:
+      by_officer_project: { "<officer>:<project|null>": {dim: int, ...} }
+    Malformed fields (not matching known dimensions) are silently skipped.
+    """
+    buckets: dict[str, dict[str, int]] = {}
+
+    for field, val_str in raw.items():
+        # Determine whether field is legacy or pool shape.
+        #
+        # Key insight: known dims can be multi-token (cost_micro, cache_write, cache_read).
+        # Officer and project slugs use hyphens only (not underscores), so splitting on `_`
+        # cleanly separates officer, optional project, and dim suffix.
+        #
+        # Strategy: try longest-match dim suffix first (2-token dims before 1-token dims).
+        #   Shapes:
+        #     Legacy:  <officer>_<dim1>               e.g. cto_input         (2 parts)
+        #              <officer>_<dim1>_<dim2>         e.g. cto_cost_micro    (3 parts)
+        #     Pool:    <officer>_<project>_<dim1>      e.g. cto_sensed_input  (3 parts)
+        #              <officer>_<project>_<dim1>_<dim2> e.g. cto_sensed_cost_micro (4 parts)
+        #
+        # We try to match dim suffix as 2-token compound first, then 1-token.
+        # Remaining prefix determines officer (and optional project).
+        parts = field.split("_")
+        dim: str | None = None
+        prefix_parts: list[str] = []
+
+        # Try 2-token dim suffix (e.g. cost_micro, cache_write, cache_read)
+        if len(parts) >= 3 and "_".join(parts[-2:]) in _DIMS_SET:
+            dim = "_".join(parts[-2:])
+            prefix_parts = parts[:-2]
+        elif len(parts) >= 2 and parts[-1] in _DIMS_SET:
+            dim = parts[-1]
+            prefix_parts = parts[:-1]
+        else:
+            # Malformed or unrecognised field — skip silently.
+            continue
+
+        # prefix_parts contains [officer] or [officer, project]
+        if len(prefix_parts) == 1:
+            officer = prefix_parts[0]
+            project = None
+        elif len(prefix_parts) == 2:
+            officer = prefix_parts[0]
+            project = prefix_parts[1]
+        else:
+            # Unexpected shape — skip.
+            continue
+
+        # Validate officer and project slugs from HSET field to drop malformed entries.
+        if not _valid_slug(officer):
+            continue
+        if project is not None and not _valid_slug(project):
+            continue
+
+        # Apply filters (None means "all").
+        if officer_filter and officer != officer_filter:
+            continue
+        if project_filter is not None and project != project_filter:
+            continue
+
+        try:
+            val = int(val_str)
+        except (ValueError, TypeError):
+            continue
+
+        key = f"{officer}:{project}"
+        if key not in buckets:
+            buckets[key] = {d: 0 for d in _DIMS}
+        buckets[key][dim] += val
+
+    return buckets
+
+
+def tool_cost_summary(params: dict) -> dict:
+    """Per-(officer, project) cost rollup from Redis daily HSET (FW-079 / Pool Phase 3).
+
+    Reads cabinet:cost:tokens:daily:<date> HSET written by stop-hook.sh (FW-072).
+    Field shapes:
+      Legacy: <officer>_<dim>
+      Pool:   <officer>_<project>_<dim>
+    Multi-day aggregation sums across all requested dates.
+    """
+    # --- Parameter extraction + validation ---
+    import datetime
+
+    raw_date = params.get("date") or None
+    raw_officer = params.get("officer") or None
+    raw_project = params.get("project")           # None = all; explicit None or missing = all
+    raw_days = params.get("days", 1)
+
+    # Validate date
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    if raw_date is None:
+        end_date_str = today_str
+    else:
+        try:
+            datetime.date.fromisoformat(raw_date)
+            end_date_str = raw_date
+        except (ValueError, TypeError):
+            return {"status": "error", "message": f"Invalid date: {raw_date!r}. Use YYYY-MM-DD."}
+
+    # Validate days
+    try:
+        days = int(raw_days)
+    except (ValueError, TypeError):
+        days = 1
+    days = max(1, min(days, _MAX_DAYS))
+
+    # Validate slugs
+    if raw_officer is not None and not _valid_slug(str(raw_officer)):
+        return {"status": "error", "message": f"Invalid officer slug: {raw_officer!r}. Must match ^[a-z0-9][a-z0-9-]{{0,31}}$."}
+    if raw_project is not None and not _valid_slug(str(raw_project)):
+        return {"status": "error", "message": f"Invalid project slug: {raw_project!r}. Must match ^[a-z0-9][a-z0-9-]{{0,31}}$."}
+
+    officer_filter = str(raw_officer) if raw_officer is not None else None
+    project_filter = str(raw_project) if raw_project is not None else None
+
+    # Build date range
+    end_date = datetime.date.fromisoformat(end_date_str)
+    start_date = end_date - datetime.timedelta(days=days - 1)
+
+    # Aggregate across date range
+    combined: dict[str, dict[str, int]] = {}
+    for i in range(days):
+        d = start_date + datetime.timedelta(days=i)
+        date_key = f"cabinet:cost:tokens:daily:{d.strftime('%Y-%m-%d')}"
+        raw = _redis_hgetall(date_key)
+        day_buckets = _parse_cost_hset(raw, officer_filter, project_filter)
+        for op_key, dims in day_buckets.items():
+            if op_key not in combined:
+                combined[op_key] = {dim: 0 for dim in _DIMS}
+            for dim, val in dims.items():
+                combined[op_key][dim] += val
+
+    # Build rollup aggregates
+    by_officer: dict[str, dict[str, int]] = {}
+    by_project: dict[str, dict[str, int]] = {}
+    by_officer_project: dict[str, dict] = {}
+
+    for op_key, dims in combined.items():
+        officer, project = op_key.split(":", 1)
+        project_display = project if project != "None" else None
+
+        # by_officer_project
+        by_officer_project[op_key] = {
+            "cost_micro": dims["cost_micro"],
+            "cost_usd": round(dims["cost_micro"] / 1_000_000, 6),
+            "tokens_in": dims["input"],
+            "tokens_out": dims["output"],
+            "tokens_cache_write": dims["cache_write"],
+            "tokens_cache_read": dims["cache_read"],
+            "officer": officer,
+            "project": project_display,
+        }
+
+        # by_officer (accumulate)
+        if officer not in by_officer:
+            by_officer[officer] = {d: 0 for d in _DIMS}
+        for dim in _DIMS:
+            by_officer[officer][dim] += dims[dim]
+
+        # by_project (accumulate; use string "null" key for None so JSON is clean)
+        proj_key = project_display if project_display is not None else "null"
+        if proj_key not in by_project:
+            by_project[proj_key] = {d: 0 for d in _DIMS}
+        for dim in _DIMS:
+            by_project[proj_key][dim] += dims[dim]
+
+    # Normalise by_officer and by_project into final shape
+    def _normalise_bucket(b: dict[str, int]) -> dict:
+        return {
+            "cost_micro": b["cost_micro"],
+            "cost_usd": round(b["cost_micro"] / 1_000_000, 6),
+            "tokens_in": b["input"],
+            "tokens_out": b["output"],
+            "tokens_cache_write": b["cache_write"],
+            "tokens_cache_read": b["cache_read"],
+        }
+
+    total_cost_micro = sum(v["cost_micro"] for v in by_officer.values())
+
+    return {
+        "date_range": {
+            "start": start_date.strftime("%Y-%m-%d"),
+            "end": end_date.strftime("%Y-%m-%d"),
+        },
+        "total_cost_micro": total_cost_micro,
+        "total_cost_usd": round(total_cost_micro / 1_000_000, 6),
+        "by_officer": {o: _normalise_bucket(b) for o, b in by_officer.items()},
+        "by_project": {p: _normalise_bucket(b) for p, b in by_project.items()},
+        "by_officer_project": by_officer_project,
+        "filters": {
+            "officer": officer_filter,
+            "project": project_filter,
+            "days": days,
+        },
+    }
+
+
+# ---------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------
 
@@ -612,6 +860,42 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
         "handler": tool_request_handoff,
+        "federation_allowed": True,
+    },
+    {
+        "name": "cost_summary",
+        "description": (
+            "Return per-(officer, project) cost rollup from Redis daily HSET "
+            "(FW-079 / Pool Phase 3). Reads cabinet:cost:tokens:daily:<date> written "
+            "by stop-hook.sh FW-072. Supports both legacy field shape (<officer>_<dim>) "
+            "and pool field shape (<officer>_<project>_<dim>). Multi-day aggregation "
+            "available via `days` param (max 90). Results include total_cost_usd, "
+            "by_officer, by_project, and by_officer_project breakdowns."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "ISO date YYYY-MM-DD. Defaults to today UTC.",
+                },
+                "officer": {
+                    "type": "string",
+                    "description": "Filter to single officer slug (e.g. 'cto'). Omit for all officers.",
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Filter to single project slug (e.g. 'sensed'). Omit for all projects.",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Number of days backwards from `date` to aggregate. Default 1, max 90.",
+                    "default": 1,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_cost_summary,
         "federation_allowed": True,
     },
 ]

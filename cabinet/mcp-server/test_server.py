@@ -101,11 +101,11 @@ def test_stdio_tools_list() -> None:
         return
     tools = responses[0].get("result", {}).get("tools", [])
     names = {t["name"] for t in tools}
-    expected = {"identify", "presence", "availability", "send_message", "request_handoff"}
+    expected = {"identify", "presence", "availability", "send_message", "request_handoff", "cost_summary"}
     if expected == names:
-        ok("stdio: tools/list returns all 5 tools")
+        ok("stdio: tools/list returns all 6 tools (incl. cost_summary)")
     else:
-        fail("stdio: tools/list returns all 5 tools", f"got {names}")
+        fail("stdio: tools/list returns all 6 tools", f"got {names}")
 
 
 def test_stdio_identify() -> None:
@@ -301,18 +301,18 @@ def test_http_wrong_path() -> None:
 
 
 def test_http_tools_list() -> None:
-    """HTTP tools/list returns the same 5 tools as stdio."""
+    """HTTP tools/list returns the same 6 tools as stdio (incl. cost_summary)."""
     code, body = _http_post("/mcp", rpc("tools/list"))
     if code != 200:
         fail("http: tools/list → 200", f"got {code}")
         return
     tools = body.get("result", {}).get("tools", [])
     names = {t["name"] for t in tools}
-    expected = {"identify", "presence", "availability", "send_message", "request_handoff"}
+    expected = {"identify", "presence", "availability", "send_message", "request_handoff", "cost_summary"}
     if expected == names:
-        ok("http: tools/list returns same 5 tools as stdio")
+        ok("http: tools/list returns same 6 tools as stdio (incl. cost_summary)")
     else:
-        fail("http: tools/list returns same 5 tools as stdio", f"got {names}")
+        fail("http: tools/list returns same 6 tools as stdio", f"got {names}")
 
 
 def test_http_notification_response() -> None:
@@ -469,6 +469,302 @@ def test_capacity_lookup_chain() -> None:
 
 
 # ---------------------------------------------------------------
+# cost_summary unit tests (FW-079 — Pool Phase 3)
+# ---------------------------------------------------------------
+
+def _cost_call_stdio(args: dict) -> dict:
+    """Call cost_summary via stdio and return the parsed payload."""
+    responses = run_stdio_batch([rpc("tools/call", {"name": "cost_summary", "arguments": args})])
+    if not responses:
+        return {}
+    content = responses[0].get("result", {}).get("content", [])
+    if not content:
+        return {}
+    return json.loads(content[0]["text"])
+
+
+def _setup_cost_server_hset(fields: dict[str, str]) -> "tuple[object, object]":
+    """Patch server module's _redis_hgetall to return fake data without Redis.
+    Returns (module, original_fn) — caller must restore original_fn."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: fields
+    return srv, orig
+
+
+def test_cost_legacy_mode() -> None:
+    """T-cost-1: Legacy HSET fields (<officer>_<dim>) → null project key."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: {
+        "cto_cost_micro": "3000000",
+        "cto_input": "500",
+        "cto_output": "200",
+        "cto_cache_write": "0",
+        "cto_cache_read": "0",
+    }
+    try:
+        result = srv.tool_cost_summary({"date": "2026-04-28"})
+        proj_keys = list(result.get("by_project", {}).keys())
+        if "null" in proj_keys:
+            ok("cost T-1: legacy mode → by_project contains 'null' key")
+        else:
+            fail("cost T-1: legacy mode → 'null' project key", f"got keys: {proj_keys}")
+        if result.get("total_cost_micro") == 3_000_000:
+            ok("cost T-1: legacy mode → total_cost_micro correct")
+        else:
+            fail("cost T-1: total_cost_micro", f"got {result.get('total_cost_micro')}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+def test_cost_pool_mode() -> None:
+    """T-cost-2: Pool HSET fields (<officer>_<project>_<dim>) → correct project key."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: {
+        "cto_sensed_cost_micro": "5000000",
+        "cto_sensed_input": "1000",
+        "cto_sensed_output": "400",
+        "cto_sensed_cache_write": "0",
+        "cto_sensed_cache_read": "0",
+    }
+    try:
+        result = srv.tool_cost_summary({"date": "2026-04-29"})
+        proj_keys = list(result.get("by_project", {}).keys())
+        if "sensed" in proj_keys:
+            ok("cost T-2: pool mode → by_project contains 'sensed' key")
+        else:
+            fail("cost T-2: pool mode → 'sensed' key", f"got keys: {proj_keys}")
+        op_keys = list(result.get("by_officer_project", {}).keys())
+        if "cto:sensed" in op_keys:
+            ok("cost T-2: pool mode → by_officer_project contains 'cto:sensed'")
+        else:
+            fail("cost T-2: by_officer_project 'cto:sensed'", f"got keys: {op_keys}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+def test_cost_officer_filter() -> None:
+    """T-cost-3: officer filter returns only that officer's data."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: {
+        "cto_cost_micro": "1000000",
+        "cto_input": "100",
+        "cto_output": "50",
+        "cto_cache_write": "0",
+        "cto_cache_read": "0",
+        "cos_cost_micro": "2000000",
+        "cos_input": "200",
+        "cos_output": "100",
+        "cos_cache_write": "0",
+        "cos_cache_read": "0",
+    }
+    try:
+        result = srv.tool_cost_summary({"date": "2026-04-28", "officer": "cto"})
+        officers = list(result.get("by_officer", {}).keys())
+        if officers == ["cto"]:
+            ok("cost T-3: officer filter → only 'cto' in by_officer")
+        else:
+            fail("cost T-3: officer filter", f"got {officers}")
+        if result.get("total_cost_micro") == 1_000_000:
+            ok("cost T-3: officer filter → total excludes other officers")
+        else:
+            fail("cost T-3: total_cost_micro with filter", f"got {result.get('total_cost_micro')}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+def test_cost_project_filter() -> None:
+    """T-cost-4: project filter (pool mode) returns only that project."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: {
+        "cto_sensed_cost_micro": "5000000",
+        "cto_sensed_input": "1000",
+        "cto_sensed_output": "400",
+        "cto_sensed_cache_write": "0",
+        "cto_sensed_cache_read": "0",
+        "cto_cabinet_cost_micro": "500000",
+        "cto_cabinet_input": "100",
+        "cto_cabinet_output": "50",
+        "cto_cabinet_cache_write": "0",
+        "cto_cabinet_cache_read": "0",
+    }
+    try:
+        result = srv.tool_cost_summary({"date": "2026-04-29", "project": "sensed"})
+        projects = list(result.get("by_project", {}).keys())
+        if projects == ["sensed"]:
+            ok("cost T-4: project filter → only 'sensed' in by_project")
+        else:
+            fail("cost T-4: project filter", f"got {projects}")
+        # project=None (no filter) should return both
+        result2 = srv.tool_cost_summary({"date": "2026-04-29"})
+        p2 = set(result2.get("by_project", {}).keys())
+        if "sensed" in p2 and "cabinet" in p2:
+            ok("cost T-4: no project filter → all projects present")
+        else:
+            fail("cost T-4: no project filter", f"got {p2}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+def test_cost_date_range() -> None:
+    """T-cost-5: multi-day aggregation sums across days."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    call_count = [0]
+    orig = srv._redis_hgetall
+    def _multi_day_hset(key: str) -> dict[str, str]:
+        call_count[0] += 1
+        return {"cto_cost_micro": "1000000", "cto_input": "100", "cto_output": "50",
+                "cto_cache_write": "0", "cto_cache_read": "0"}
+    srv._redis_hgetall = _multi_day_hset
+    try:
+        result = srv.tool_cost_summary({"date": "2026-04-28", "days": 3})
+        if call_count[0] == 3:
+            ok("cost T-5: days=3 → 3 Redis HGETALL calls")
+        else:
+            fail("cost T-5: Redis call count", f"got {call_count[0]}")
+        if result.get("total_cost_micro") == 3_000_000:
+            ok("cost T-5: multi-day sum → total_cost_micro = 3M (3 × 1M)")
+        else:
+            fail("cost T-5: multi-day total", f"got {result.get('total_cost_micro')}")
+        dr = result.get("date_range", {})
+        if dr.get("start") == "2026-04-26" and dr.get("end") == "2026-04-28":
+            ok("cost T-5: date_range.start/end correct for days=3")
+        else:
+            fail("cost T-5: date_range", f"got {dr}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+def test_cost_invalid_slug() -> None:
+    """T-cost-6: invalid slug (officer or project) returns error dict, not crash."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    r1 = srv.tool_cost_summary({"officer": "BAD_SLUG!"})
+    if r1.get("status") == "error":
+        ok("cost T-6: invalid officer slug → status=error")
+    else:
+        fail("cost T-6: invalid officer slug", f"got {r1}")
+    r2 = srv.tool_cost_summary({"project": "BAD PROJ"})
+    if r2.get("status") == "error":
+        ok("cost T-6: invalid project slug → status=error")
+    else:
+        fail("cost T-6: invalid project slug", f"got {r2}")
+
+
+def test_cost_http_transport() -> None:
+    """T-cost-7: HTTP transport returns same shape as stdio."""
+    _http_server_started.wait(timeout=6.0)
+    code, body = _http_post(
+        "/mcp",
+        rpc("tools/call", {"name": "cost_summary", "arguments": {"date": "2026-04-28"}}),
+    )
+    if code == 200:
+        ok("cost T-7: HTTP cost_summary → 200")
+    else:
+        fail("cost T-7: HTTP cost_summary → 200", f"got {code}: {body}")
+        return
+    content = body.get("result", {}).get("content", [])
+    if content:
+        payload = json.loads(content[0]["text"])
+        required_keys = {"date_range", "total_cost_micro", "total_cost_usd", "by_officer", "by_project", "by_officer_project"}
+        missing = required_keys - set(payload.keys())
+        if not missing:
+            ok("cost T-7: HTTP response shape has all required top-level keys")
+        else:
+            fail("cost T-7: HTTP response shape", f"missing keys: {missing}")
+    else:
+        fail("cost T-7: HTTP response has content", str(body))
+
+
+def test_cost_micro_to_usd() -> None:
+    """T-cost-8: cost_micro / 1_000_000 = total_cost_usd (verify conversion)."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: {
+        "cto_cost_micro": "5000000",
+        "cto_input": "0", "cto_output": "0",
+        "cto_cache_write": "0", "cto_cache_read": "0",
+    }
+    try:
+        result = srv.tool_cost_summary({"date": "2026-04-29"})
+        cost_micro = result.get("total_cost_micro")
+        cost_usd = result.get("total_cost_usd")
+        expected_usd = round(5_000_000 / 1_000_000, 6)
+        if cost_micro == 5_000_000 and abs(cost_usd - expected_usd) < 1e-9:
+            ok(f"cost T-8: cost_micro→USD conversion correct (${expected_usd})")
+        else:
+            fail("cost T-8: USD conversion", f"micro={cost_micro} usd={cost_usd} expected={expected_usd}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+def test_cost_empty_hset() -> None:
+    """T-cost-9: empty HSET (no data for date) → zero rollup, no error raised."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: {}
+    try:
+        result = srv.tool_cost_summary({"date": "2026-01-01"})
+        if result.get("status") != "error":
+            ok("cost T-9: empty HSET → no error status")
+        else:
+            fail("cost T-9: empty HSET", f"got error: {result}")
+            return
+        if result.get("total_cost_micro") == 0 and result.get("total_cost_usd") == 0.0:
+            ok("cost T-9: empty HSET → zero totals")
+        else:
+            fail("cost T-9: zero totals", f"got {result.get('total_cost_micro')}, {result.get('total_cost_usd')}")
+        if result.get("by_officer") == {} and result.get("by_project") == {}:
+            ok("cost T-9: empty HSET → empty by_officer/by_project dicts")
+        else:
+            fail("cost T-9: empty dicts", f"{result.get('by_officer')}, {result.get('by_project')}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+def test_cost_malformed_field() -> None:
+    """T-cost-10: malformed HSET field (bad dim, extra parts) is silently dropped."""
+    sys.path.insert(0, str(SERVER.parent))
+    import server as srv
+    orig = srv._redis_hgetall
+    srv._redis_hgetall = lambda key: {
+        "cto_BAD!_cost_micro": "999999",   # invalid dim name mid-token
+        "cto_sensed_NOTADIM": "777",       # unknown dim
+        "just_one_part": "111",            # too short (only 1 part if split by _)
+        "cto_sensed_cost_micro": "2000000",  # valid pool field
+        "cto_sensed_input": "500",
+        "cto_sensed_output": "200",
+        "cto_sensed_cache_write": "0",
+        "cto_sensed_cache_read": "0",
+    }
+    try:
+        result = srv.tool_cost_summary({"date": "2026-04-28"})
+        # Should only count the valid field, ignoring malformed ones.
+        if result.get("total_cost_micro") == 2_000_000:
+            ok("cost T-10: malformed HSET fields silently dropped, valid field counted")
+        else:
+            fail("cost T-10: only valid field counted", f"got total={result.get('total_cost_micro')}")
+        if result.get("status") != "error":
+            ok("cost T-10: malformed fields do not crash (no error status)")
+        else:
+            fail("cost T-10: no crash on malformed fields", f"got {result}")
+    finally:
+        srv._redis_hgetall = orig
+
+
+# ---------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------
 
@@ -503,10 +799,26 @@ def run_unit_tests() -> None:
     test_capacity_lookup_chain()
 
 
+def run_cost_tests() -> None:
+    print("\n-- cost_summary unit tests (FW-079) --")
+    test_cost_legacy_mode()
+    test_cost_pool_mode()
+    test_cost_officer_filter()
+    test_cost_project_filter()
+    test_cost_date_range()
+    test_cost_invalid_slug()
+    test_cost_micro_to_usd()
+    test_cost_empty_hset()
+    test_cost_malformed_field()
+    print("\n-- cost_summary HTTP transport test --")
+    test_cost_http_transport()
+
+
 if __name__ == "__main__":
     run_stdio_tests()
     run_http_tests()
     run_unit_tests()
+    run_cost_tests()
 
     print(f"\n{'='*50}")
     print(f"Results: {PASS} passed, {FAIL} failed")
