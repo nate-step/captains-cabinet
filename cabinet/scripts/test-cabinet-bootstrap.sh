@@ -338,6 +338,32 @@ out=$(bash "$BOOTSTRAP" "test-peer-slug" --preset work --peer-cabinet "$LONG_PEE
 assert_exit "T8.7 P1-C: 33-char peer slug rejected" "$rc" 1
 
 # ---------------------------------------------------------------------------
+# T9: FW-082 hotfix-4 — build: directive in generated compose (CoS field 2026-04-29)
+# ---------------------------------------------------------------------------
+# Pin: image:-only with no upstream registry causes compose-up to fail with
+# "pull access denied". The bootstrap-emitted compose template must declare a
+# build: directive so first-spawn works without a registry pull. Source-grep
+# style check (matches T6.4/T6.5 pattern) since dry-run skips compose generation.
+echo ""
+echo "T9: FW-082 hotfix-4 — build: directive in generated docker-compose template"
+
+# T9.1: cabinet-mcp service block has build: directive
+grep_build_mcp=$(awk '/^  cabinet-mcp-\${CABINET_SLUG}:/,/^  # ---/{print}' "$BOOTSTRAP" | grep -c "^    build:")
+assert_exit "T9.1 cabinet-mcp service has build: directive" "$([ "$grep_build_mcp" -ge 1 ] && echo 0 || echo 1)" 0
+
+# T9.2: officer template (commented) has build: directive
+grep_build_off=$(awk '/^  # officer-cos-\${CABINET_SLUG}:/,/^  #   depends_on:/{print}' "$BOOTSTRAP" | grep -c "^  #   build:")
+assert_exit "T9.2 officer template (commented) has build: directive" "$([ "$grep_build_off" -ge 1 ] && echo 0 || echo 1)" 0
+
+# T9.3: build context points at framework cabinet/ root
+grep_ctx=$(grep -c "context: /opt/founders-cabinet/cabinet" "$BOOTSTRAP")
+assert_exit "T9.3 build context points at /opt/founders-cabinet/cabinet" "$([ "$grep_ctx" -ge 2 ] && echo 0 || echo 1)" 0
+
+# T9.4: dockerfile points at Dockerfile.officer
+grep_df=$(grep -c "dockerfile: Dockerfile.officer" "$BOOTSTRAP")
+assert_exit "T9.4 dockerfile is Dockerfile.officer" "$([ "$grep_df" -ge 2 ] && echo 0 || echo 1)" 0
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 TOTAL=$((PASS + FAIL))
