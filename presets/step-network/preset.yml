@@ -1,0 +1,61 @@
+# presets/step-network/preset.yml
+# Step Network preset — multi-project POOL architecture for solo founders running
+# a portfolio of related projects under one organizational identity (Step Network).
+#
+# Differs from `work` preset: explicit multi-project pool support, project-router
+# in officer DM flow, per-project workflow packs, optional project-specialized
+# agent archetypes (data-analyst for politiske-annoncer, mcp-publisher for
+# stephie-mcp, etc.).
+#
+# Authored under Spec 034 v3 Phase 3.1 (CPO 2026-04-28).
+
+name: step-network
+description: >
+  Multi-project pool architecture. One Cabinet hosts multiple related projects
+  under a shared officer roster (politiske-annoncer + stephie-mcp + future
+  Step Network projects). Officers maintain pre-warmed tmux windows per
+  (officer, project) pair; switch via tmux select-window for instant
+  context-isolated routing. Project-specialized agent archetypes layered on
+  the standard officer roster as needed.
+
+# Naming convention — same as work preset (functional titles).
+naming_style: functional
+
+# Agent archetypes. Standard officer roster mirrors `work` preset; the cabinet
+# can add project-specialized scaffolds (data-analyst, mcp-publisher) on demand.
+agent_archetypes:
+  - cos    # Chief of Staff — orchestration across projects + pool router
+  - cto    # Chief Technology Officer — engineering, code, deploys per project
+  - cpo    # Chief Product Officer — specs, backlog per project + pool prioritization
+  - cro    # Chief Research Officer — market research scoped per project
+  - coo    # Chief Operating Officer — deployment validation, uptime across pool
+  # Scaffolded (not hired by default — hire per cabinet/scripts/create-officer.sh):
+  # - data-analyst       # politiske-annoncer-specific: ad-data analysis, query primitives
+  # - mcp-publisher      # stephie-mcp-specific: MCP catalog publishing + Monday API ops
+
+# Default terminology for this preset. See terminology.yml for the full mapping.
+terminology:
+  agent_role: officer
+  work_unit: task
+  output_store: shared_interfaces
+  backlog: library_tasks  # /tasks Postgres canonical; per-project tasks_provider override per Spec 034 §2b.1
+  scope_unit: project     # Step Network preset speaks in "projects" (within a cabinet) vs work's single "product"
+
+# Default autonomy level — same as work preset (execution_high).
+# Step Network projects all reversible-default per Captain pool architecture intent.
+autonomy_level: execution_high
+
+# Workspace mount — multi-project; per-project subpaths.
+# Each project's repo lives at /workspace/projects/<project-slug>/
+# Active project resolved per-tmux-window via $CABINET_ACTIVE_PROJECT env.
+workspace_mount: /workspace/projects
+
+# Pool-architecture flag (Spec 034 v3 §2b.4).
+# Indicates this preset expects pre-warmed session pool support from the substrate.
+pool_architecture: true
+
+# Notion deprecated flag (Spec 034 v3 AC #71).
+# When true, cabinet-spawn.sh drops the legacy Notion-IDs founder-action item
+# from the CoS notify message and surfaces Library/tasks/Telegram items instead.
+# Step Network uses Library as knowledge provider (not Notion) per project YAML v2.
+notion_deprecated: true
