@@ -247,18 +247,22 @@ step_preflight() {
     exit 1
   fi
 
-  # Validate Neon URL if provided
+  # Validate Neon URL if provided.
+  # FW-082 hotfix-6 (CoS field report msg 2244): graceful-degrade if psql is
+  # not in PATH. Probe is a CONVENIENCE pre-check (catches typos early) — not
+  # a security gate. Real connection happens at first use (CONNECT-on-real-use
+  # surfaces any issue then). Operator hosts without psql shouldn't be blocked
+  # from spawning cabinets.
   if [ -n "$NEON_DATABASE_URL" ]; then
     if ! command -v psql &>/dev/null; then
-      err "psql not in PATH — cannot probe Neon URL"
-      exit 1
-    fi
-    if ! PGCONNECT_TIMEOUT=10 psql "$NEON_DATABASE_URL" -c "SELECT 1;" > /dev/null 2>&1; then
+      info "psql not in PATH — skipping Neon probe (URL stored as-is; CONNECT-on-real-use will catch any failure)"
+    elif ! PGCONNECT_TIMEOUT=10 psql "$NEON_DATABASE_URL" -c "SELECT 1;" > /dev/null 2>&1; then
       err "Neon URL not reachable (probe failed): $(redact_neon_url "$NEON_DATABASE_URL")"
       err "  Verify the connection string and try again"
       exit 1
+    else
+      info "Neon URL reachable: $(redact_neon_url "$NEON_DATABASE_URL")"
     fi
-    info "Neon URL reachable: $(redact_neon_url "$NEON_DATABASE_URL")"
   fi
 
   # Probe peer cabinets (TCP reachable). NB: this probe runs from the operator
