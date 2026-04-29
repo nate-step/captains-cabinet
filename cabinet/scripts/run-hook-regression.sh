@@ -31,6 +31,7 @@ HARNESSES=(
   "fw056-baseline.sh"
   "fw056-adversary.sh"
   "fw057-notify-officer-argv.sh"
+  "fw076-pool-mode.sh"
 )
 
 OVERALL_FAIL=0

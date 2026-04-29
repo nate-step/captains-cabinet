@@ -1823,6 +1823,111 @@ else
 fi
 
 # ------------------------------------------------------------------
+# EVAL-024: FW-076 pool-mode write-gate — generalized slug regex
+# ------------------------------------------------------------------
+# FW-076 replaced /workspace/product/ literal with /workspace/[a-z0-9][a-z0-9-]*/
+# in the line-870 write-protection regex (and companion case-glob + git guard).
+# This eval pins:
+#   (a) 3 representative pool slugs (sensed, step-network, a1) — non-CTO
+#       officer must be BLOCKED on write attempts to each slug;
+#   (b) CTO bypass — CTO must PASS on the same write commands;
+#   (c) Invalid-slug FP guards — uppercase/leading-hyphen/leading-dot paths
+#       must NOT be blocked (slug guard rejects them, so regex never fires).
+# Keep EVAL-018 using /workspace/product/ fixtures in parallel (legacy
+# regression lock) — this eval adds the generalized slug surface.
+log "EVAL-024: FW-076 pool-mode write-gate — generalized slug regex"
+EV24_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh"
+EV24_FAILURE=""
+
+# ---- Block probes: non-CTO write to each slug must exit 2 ----
+declare -a EV24_BLOCK=(
+  # slug: sensed
+  "echo hello > /workspace/sensed/README.md"
+  "echo x >> /workspace/sensed/log"
+  "sed -i 's/x/y/' /workspace/sensed/file"
+  "tee /workspace/sensed/out"
+  "cp /tmp/src /workspace/sensed/dst"
+  "cp -t /workspace/sensed/ /tmp/src"
+  "cp --target-directory=/workspace/sensed/ /tmp/src"
+  "perl -i -pe 's/x/y/' /workspace/sensed/file"
+  "tar -cf /workspace/sensed/archive.tar /tmp/src"
+  "tar -xf /tmp/a.tar -C /workspace/sensed/"
+  # slug: step-network
+  "echo hello > /workspace/step-network/README.md"
+  "echo x >> /workspace/step-network/log"
+  "sed -i 's/x/y/' /workspace/step-network/file"
+  "tee /workspace/step-network/out"
+  "cp /tmp/src /workspace/step-network/dst"
+  "cp -t /workspace/step-network/ /tmp/src"
+  "cp --target-directory=/workspace/step-network/ /tmp/src"
+  "perl -i -pe 's/x/y/' /workspace/step-network/file"
+  "tar -cf /workspace/step-network/archive.tar /tmp/src"
+  "tar -xf /tmp/a.tar -C /workspace/step-network/"
+  # slug: a1
+  "echo hello > /workspace/a1/README.md"
+  "echo x >> /workspace/a1/log"
+  "sed -i 's/x/y/' /workspace/a1/file"
+  "tee /workspace/a1/out"
+  "cp /tmp/src /workspace/a1/dst"
+  "cp -t /workspace/a1/ /tmp/src"
+  "cp --target-directory=/workspace/a1/ /tmp/src"
+  "perl -i -pe 's/x/y/' /workspace/a1/file"
+  "tar -cf /workspace/a1/archive.tar /tmp/src"
+  "tar -xf /tmp/a.tar -C /workspace/a1/"
+)
+
+for EV24_CMD in "${EV24_BLOCK[@]}"; do
+  EV24_JSON=$(jq -cn --arg cmd "$EV24_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+  echo "$EV24_JSON" | OFFICER_NAME=cpo bash "$EV24_HOOK" >/dev/null 2>&1
+  EV24_EC=$?
+  if [ "$EV24_EC" -ne 2 ]; then
+    EV24_FAILURE="FW-076 pool-mode MISSED block on: '$EV24_CMD' (exit=$EV24_EC, expected=2)"
+    break
+  fi
+done
+
+# ---- CTO bypass: CTO must PASS write to pool slug ----
+if [ -z "$EV24_FAILURE" ]; then
+  for EV24_SLUG in sensed step-network a1; do
+    EV24_CTO_CMD="echo hello > /workspace/${EV24_SLUG}/README.md"
+    EV24_CTO_JSON=$(jq -cn --arg cmd "$EV24_CTO_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    echo "$EV24_CTO_JSON" | OFFICER_NAME=cto bash "$EV24_HOOK" >/dev/null 2>&1
+    EV24_CTO_EC=$?
+    if [ "$EV24_CTO_EC" -ne 0 ]; then
+      EV24_FAILURE="FW-076 CTO bypass broken for slug '${EV24_SLUG}': exit=$EV24_CTO_EC (expected=0)"
+      break
+    fi
+  done
+fi
+
+# ---- FP guards: invalid slugs must NOT block ----
+if [ -z "$EV24_FAILURE" ]; then
+  declare -a EV24_ALLOW=(
+    "echo x > /workspace/PROD/file"         # uppercase — slug guard rejects
+    "echo x > /workspace/-bad/file"         # leading hyphen — slug guard rejects
+    "echo x > /workspace/.git/file"         # leading dot — slug guard rejects
+    "cat /workspace/sensed/x"               # read-only, no write op
+    "cp /workspace/sensed/x /tmp/y"         # read source, write to /tmp — not a slug write
+    "rsync -rt /workspace/sensed/ /tmp/dst" # read source rsync to /tmp
+  )
+  for EV24_CMD in "${EV24_ALLOW[@]}"; do
+    EV24_JSON=$(jq -cn --arg cmd "$EV24_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    echo "$EV24_JSON" | OFFICER_NAME=cpo bash "$EV24_HOOK" >/dev/null 2>&1
+    EV24_EC=$?
+    if [ "$EV24_EC" -eq 2 ]; then
+      EV24_FAILURE="FW-076 pool-mode FALSE-BLOCKED: '$EV24_CMD' (exit=2, expected=0 — invalid slug or read-only op)"
+      break
+    fi
+  done
+fi
+
+if [ -n "$EV24_FAILURE" ]; then
+  fail "$EV24_FAILURE"
+else
+  pass "FW-076 pool-mode write-gate: 30 block probes (3 slugs × 10 attack forms — sensed/step-network/a1) correctly blocked for cpo; CTO bypass preserved for all 3 slugs; 6 FP guards (UPPER/lead-hyphen/lead-dot/read-only/cp-source/rsync-source) correctly allowed"
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 log ""
