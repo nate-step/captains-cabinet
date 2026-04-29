@@ -59,10 +59,7 @@ ok "preset.yml schema valid"
 # 4. Agent role-defs parse (frontmatter + non-empty body)
 agents_dir="$PRESET_DIR/agents"
 if [ -z "$(ls -A "$agents_dir" 2>/dev/null | grep -v README)" ]; then
-<<<<<<< HEAD
   # Empty agents/ directory is allowed if README points to inheritance source.
-=======
->>>>>>> 1334bcf (feat(fw-084): single_ceo bot mode + project YAML schema (Captain msg 2197 / Spec 034 v3 AC #62))
   if [ ! -f "$agents_dir/README.md" ]; then
     fail "agents/ is empty and no README.md describing inheritance source"
   fi
