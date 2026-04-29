@@ -100,13 +100,14 @@ fi
 BOT_MODE="multi_officer"  # safe default — preserves all existing behavior
 CEO_OFFICER="cos"         # canonical default per AC #75
 
+_read_yml_field() {
+  local file="$1" key="$2"
+  grep -E "^[[:space:]]*${key}:[[:space:]]" "$file" 2>/dev/null \
+    | head -1 | sed "s/^[[:space:]]*${key}:[[:space:]]*//" | tr -d '"' | tr -d "'" | awk '{print $1}'
+}
+
 if [ -n "$ACTIVE_SLUG" ] && [ -f "$CABINET_ROOT/instance/config/projects/${ACTIVE_SLUG}.yml" ]; then
   _PROJECT_YML="$CABINET_ROOT/instance/config/projects/${ACTIVE_SLUG}.yml"
-  _read_yml_field() {
-    local file="$1" key="$2"
-    grep -E "^[[:space:]]*${key}:[[:space:]]" "$file" 2>/dev/null \
-      | head -1 | sed "s/^[[:space:]]*${key}:[[:space:]]*//" | tr -d '"' | tr -d "'" | tr -d '[:space:]'
-  }
   _bot_mode_raw=$(_read_yml_field "$_PROJECT_YML" "bot_mode")
   _ceo_officer_raw=$(_read_yml_field "$_PROJECT_YML" "ceo_officer")
   # Validate: only accept known mode values (reject injection attempts)
@@ -116,6 +117,21 @@ if [ -n "$ACTIVE_SLUG" ] && [ -f "$CABINET_ROOT/instance/config/projects/${ACTIV
   # Validate: ceo_officer must match slug allowlist (mirrors FW-073 regex)
   if [[ "$_ceo_officer_raw" =~ ^[a-z0-9][a-z0-9-]*$ ]] && [ "${#_ceo_officer_raw}" -le 32 ]; then
     CEO_OFFICER="$_ceo_officer_raw"
+  fi
+fi
+
+# FW-085 substrate gap #3: when no project YAML exists yet (first-spawn cabinet
+# before any create-project.sh ran), fall back to preset-level bot_mode. Closes
+# the "Step Network single_ceo cabinet first-spawn → start-officer defaults to
+# multi_officer → looks for TELEGRAM_COS_TOKEN → exits" trap.
+if [ "$BOT_MODE" = "multi_officer" ]; then
+  _ACTIVE_PRESET=$(cat "$CABINET_ROOT/instance/config/active-preset" 2>/dev/null | tr -d '[:space:]')
+  if [ -n "$_ACTIVE_PRESET" ] && [ -f "$CABINET_ROOT/presets/$_ACTIVE_PRESET/preset.yml" ]; then
+    _PRESET_YML="$CABINET_ROOT/presets/$_ACTIVE_PRESET/preset.yml"
+    _preset_bot_mode=$(_read_yml_field "$_PRESET_YML" "telegram_bot_mode")
+    if [ "$_preset_bot_mode" = "single_ceo" ]; then
+      BOT_MODE="single_ceo"
+    fi
   fi
 fi
 
@@ -132,20 +148,35 @@ IS_CEO_OFFICER=false
 if [ "$BOT_MODE" = "single_ceo" ]; then
   if [ "$OFFICER" = "$CEO_OFFICER" ]; then
     IS_CEO_OFFICER=true
-    # CEO token var: TELEGRAM_<UPPER_SLUG>_CEO_TOKEN (one bot per project)
-    # If no project slug, fall back to TELEGRAM_CEO_TOKEN
+    # FW-085 substrate gap #3 (token alias resolution): try project-level
+    # token first, then cabinet-level fallback (CABINET_ID env), then plain
+    # TELEGRAM_CEO_TOKEN. The cabinet-level form is the practical "single
+    # project per cabinet" pattern Captain uses (e.g. step-network = stephie).
+    _CEO_TOKEN_CANDIDATES=()
     if [ -n "$ACTIVE_SLUG" ]; then
       _SLUG_UPPER="$(echo "${ACTIVE_SLUG^^}" | tr "-" "_")"
-      CEO_TOKEN_VAR="TELEGRAM_${_SLUG_UPPER}_CEO_TOKEN"
-    else
-      CEO_TOKEN_VAR="TELEGRAM_CEO_TOKEN"
+      _CEO_TOKEN_CANDIDATES+=("TELEGRAM_${_SLUG_UPPER}_CEO_TOKEN")
     fi
-    BOT_TOKEN="${!CEO_TOKEN_VAR:-}"
+    if [ -n "${CABINET_ID:-}" ]; then
+      _CABINET_UPPER="$(echo "${CABINET_ID^^}" | tr "-" "_")"
+      _CEO_TOKEN_CANDIDATES+=("TELEGRAM_${_CABINET_UPPER}_CEO_TOKEN")
+    fi
+    _CEO_TOKEN_CANDIDATES+=("TELEGRAM_CEO_TOKEN")
+
+    BOT_TOKEN=""
+    CEO_TOKEN_VAR=""
+    for _candidate in "${_CEO_TOKEN_CANDIDATES[@]}"; do
+      if [ -n "${!_candidate:-}" ]; then
+        BOT_TOKEN="${!_candidate}"
+        CEO_TOKEN_VAR="$_candidate"
+        break
+      fi
+    done
+
     if [ -z "$BOT_TOKEN" ]; then
-      # Friendly error: tell operator exactly which env var to set
-      echo "start-officer.sh: single_ceo mode — $CEO_TOKEN_VAR not set in environment" >&2
-      echo "  Set this to the CEO bot token (one BotFather bot per project)." >&2
-      echo "  For project '$ACTIVE_SLUG', add $CEO_TOKEN_VAR to cabinet/env/${ACTIVE_SLUG}.env" >&2
+      echo "start-officer.sh: single_ceo mode — no CEO bot token found in env" >&2
+      echo "  Tried (in order): ${_CEO_TOKEN_CANDIDATES[*]}" >&2
+      echo "  Set ONE of these in cabinet/.env or cabinet/env/<slug>.env" >&2
       exit 1
     fi
   else

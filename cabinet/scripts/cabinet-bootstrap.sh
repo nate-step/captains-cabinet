@@ -510,9 +510,12 @@ step_generate_peer_secrets() {
     local _preset_bot_mode="multi_officer"
     local _preset_yml="$CABINET_ROOT/presets/$PRESET_SLUG/preset.yml"
     if [ -f "$_preset_yml" ]; then
+      # FW-085 substrate gap (env-file mis-detected single_ceo): use awk
+      # '{print $1}' to take first word so inline YAML comments
+      # ("single_ceo  # ...") don't concatenate via tr -d '[:space:]'.
       local _raw_mode
       _raw_mode=$(grep -E '^[[:space:]]*telegram_bot_mode:' "$_preset_yml" 2>/dev/null | head -1 \
-        | sed 's/^[[:space:]]*telegram_bot_mode:[[:space:]]*//' | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+        | sed 's/^[[:space:]]*telegram_bot_mode:[[:space:]]*//' | tr -d '"' | tr -d "'" | awk '{print $1}')
       if [ "$_raw_mode" = "single_ceo" ] || [ "$_raw_mode" = "multi_officer" ]; then
         _preset_bot_mode="$_raw_mode"
       fi
