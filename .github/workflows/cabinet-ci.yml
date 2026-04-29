@@ -188,6 +188,18 @@ jobs:
         # sessions, Redis writes, or create-project.sh calls are made in CI.
         run: bash /opt/founders-cabinet/cabinet/scripts/test-cabinet-spawn.sh
 
+      - name: Shell unit tests — cabinet-bootstrap.sh (FW-082)
+        # 38 assertions across 7 test groups: bad slug rejection (charset + length),
+        # missing preset rejection, DRY_RUN=1 plan-only mode (no filesystem side-effects,
+        # no state file, no secrets in output), secret redaction (Neon URL password
+        # stripped to [REDACTED] in all output), validate.sh hard-gate (preset with
+        # failing validate.sh aborts bootstrap + no partial state), re-run resumability
+        # (step_is_done guard present, 'already completed' skip message wired), and
+        # bad --peer-cabinet syntax rejected (colon-count check).
+        # All assertions use DRY_RUN=1 or exit-on-validation — no real filesystem writes,
+        # git clones, Docker ops, Redis writes, or Neon connections are made in CI.
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-cabinet-bootstrap.sh
+
       - name: Shell unit tests — create-project.sh (FW-078)
         # 25 assertions across 8 test groups: bad slug charset/length rejection,
         # missing repo_url rejection, DRY_RUN=1 plan-only mode (no filesystem
