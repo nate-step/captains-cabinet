@@ -188,6 +188,19 @@ jobs:
         # sessions, Redis writes, or create-project.sh calls are made in CI.
         run: bash /opt/founders-cabinet/cabinet/scripts/test-cabinet-spawn.sh
 
+      - name: Shell unit tests — create-project.sh (FW-078)
+        # 25 assertions across 8 test groups: bad slug charset/length rejection,
+        # missing repo_url rejection, DRY_RUN=1 plan-only mode (no filesystem
+        # side-effects, no state file), idempotency (re-run finds completed steps,
+        # state file cleaned up on full success), mid-run failure leaves state file
+        # for resumability, output yml is structurally valid YAML with correct
+        # mount_path and repo URL, output env file has all required fields (no
+        # GITHUB_PAT leak). Uses pre-seeded state files + invalid git URLs so no
+        # real clone, Redis write, or Telegram call is made during CI.
+        env:
+          GITHUB_PAT: ci-stub-token
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-create-project.sh
+
       - name: Shell unit tests — pre-push hook (FW-007 + FW-025)
         # 14 scenarios / 31 assertions covering the safety-critical pre-push hook:
         # non-master fast-paths, legit fast-forward + first-create, force-overwrite
