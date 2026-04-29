@@ -178,6 +178,16 @@ jobs:
         # contract so downstream dashboard/retro queries can rely on it.
         run: bash /opt/founders-cabinet/cabinet/scripts/test-post-tool-use-jsonl.sh
 
+      - name: Shell unit tests — cabinet-spawn.sh (FW-080)
+        # 38 assertions across 8 test groups: bad slug rejection (charset + length),
+        # missing/bad repo_url rejection, DRY_RUN=1 dry-run plan (no side effects,
+        # no state file), --skip-create with provisioned + unprovisioned slugs,
+        # --officers restriction to a subset, idempotency (re-run safe), secret
+        # non-echo (GITHUB_PAT), and hyphenated slug validation.
+        # All assertions use DRY_RUN=1 or pre-flight rejections — no real tmux
+        # sessions, Redis writes, or create-project.sh calls are made in CI.
+        run: bash /opt/founders-cabinet/cabinet/scripts/test-cabinet-spawn.sh
+
       - name: Shell unit tests — pre-push hook (FW-007 + FW-025)
         # 14 scenarios / 31 assertions covering the safety-critical pre-push hook:
         # non-master fast-paths, legit fast-forward + first-create, force-overwrite
