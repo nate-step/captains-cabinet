@@ -189,7 +189,7 @@ step_create_project_yml() {
     | sed \
         -e "s|name: \"\"|name: \"${display_name}\"|" \
         -e "s|repo: \"\"|repo: \"${REPO_URL}\"|" \
-        -e "s|mount_path: /workspace/product|mount_path: /workspace/${SLUG}|"
+        -e "s|mount_path: /workspace/product|mount_path: ${WORKSPACE_ROOT}/${SLUG}|"
   } > "$tmpf"
   mv "$tmpf" "$dest"
 
@@ -203,7 +203,7 @@ step_create_env_file() {
   local dest="$CABINET_ROOT/cabinet/env/${SLUG}.env"
 
   if [ "$DRY_RUN" = "1" ]; then
-    dry "Would create $dest from _template.env with CABINET_PREFIX=${SLUG}, PRODUCT_REPO_PATH=/opt/${SLUG}"
+    dry "Would create $dest from _template.env with CABINET_PREFIX=${SLUG}, PRODUCT_REPO_PATH=${PRODUCT_REPO_ROOT}/${SLUG}"
     return 0
   fi
 
@@ -268,7 +268,7 @@ step_create_env_file() {
     echo "NEON_CONNECTION_STRING="
     echo ""
     echo "# Product repo path on the server"
-    echo "PRODUCT_REPO_PATH=/opt/${SLUG}"
+    echo "PRODUCT_REPO_PATH=${PRODUCT_REPO_ROOT}/${SLUG}"
     echo ""
     echo "# Container naming prefix"
     echo "CABINET_PREFIX=${SLUG}"
@@ -281,7 +281,7 @@ step_create_env_file() {
 # Step 6 — Clone repo to /opt/<slug>
 # ---------------------------------------------------------------------------
 step_clone_repo() {
-  local dest="/opt/${SLUG}"
+  local dest="${PRODUCT_REPO_ROOT}/${SLUG}"
 
   if [ "$DRY_RUN" = "1" ]; then
     dry "Would clone $REPO_URL to $dest (GITHUB_PAT auth, skip if dir exists)"
@@ -289,13 +289,13 @@ step_clone_repo() {
   fi
 
   if [ -d "$dest/.git" ]; then
-    info "/opt/${SLUG} already cloned — skipping"
+    info "${PRODUCT_REPO_ROOT}/${SLUG} already cloned — skipping"
     return 0
   fi
 
   if [ -d "$dest" ]; then
     # Dir exists but no .git — partial clone or stale directory
-    echo "create-project.sh: /opt/${SLUG} exists but has no .git — removing and re-cloning" >&2
+    echo "create-project.sh: ${PRODUCT_REPO_ROOT}/${SLUG} exists but has no .git — removing and re-cloning" >&2
     rm -rf "$dest"
   fi
 
@@ -332,27 +332,27 @@ step_clone_repo() {
 # Step 7 — Mount path: symlink /workspace/<slug> -> /opt/<slug>
 # ---------------------------------------------------------------------------
 step_mount_path() {
-  local src="/opt/${SLUG}"
-  local link="/workspace/${SLUG}"
+  local src="${PRODUCT_REPO_ROOT}/${SLUG}"
+  local link="${WORKSPACE_ROOT}/${SLUG}"
 
   if [ "$DRY_RUN" = "1" ]; then
     dry "Would mkdir -p /workspace and ln -sfn $src $link"
     dry "NOTE: In production Docker deployments, replace symlink with a bind-mount"
-    dry "      in docker-compose.yml: - /opt/${SLUG}:/workspace/${SLUG}"
+    dry "      in docker-compose.yml: - ${PRODUCT_REPO_ROOT}/${SLUG}:${WORKSPACE_ROOT}/${SLUG}"
     return 0
   fi
 
-  mkdir -p /workspace
+  mkdir -p "$WORKSPACE_ROOT"
 
   if [ -L "$link" ] && [ "$(readlink "$link")" = "$src" ]; then
-    info "/workspace/${SLUG} -> $src already correct — skipping"
+    info "${WORKSPACE_ROOT}/${SLUG} -> $src already correct — skipping"
     return 0
   fi
 
   ln -sfn "$src" "$link"
   info "Symlinked $link -> $src"
   info "NOTE: For production, add bind-mount to docker-compose.yml:"
-  info "      - /opt/${SLUG}:/workspace/${SLUG}"
+  info "      - ${PRODUCT_REPO_ROOT}/${SLUG}:${WORKSPACE_ROOT}/${SLUG}"
 }
 
 # ---------------------------------------------------------------------------
@@ -504,6 +504,14 @@ acquire_lock() {
 # Main
 # ---------------------------------------------------------------------------
 CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
+
+# FW-082 hotfix-3 (CoS field report 2026-04-29 07:33): /opt/<slug>/ + /workspace/<slug>/
+# are root-owned (officer container can't write). Default these to cabinet-user-writable
+# subpaths under CABINET_ROOT (which cabinet-bootstrap.sh creates as cabinet:cabinet 775).
+# Operator can override to /opt + /workspace via env var when host-agent ships
+# (FW-018 phase B+ for /opt/<slug>/ standard layout, FW-085 follow-up).
+PRODUCT_REPO_ROOT="${PRODUCT_REPO_ROOT:-$CABINET_ROOT/projects}"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$CABINET_ROOT/workspace}"
 
 if [ "$DRY_RUN" = "1" ]; then
   log "=== DRY RUN MODE — no filesystem or network changes will be made ==="

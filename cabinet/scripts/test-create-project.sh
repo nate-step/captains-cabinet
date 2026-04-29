@@ -359,7 +359,11 @@ if [ -f "$env_path" ]; then
   env_content=$(cat "$env_path")
   assert_contains "T8: env has TELEGRAM_HQ_CHAT_ID"          "$env_content" "TELEGRAM_HQ_CHAT_ID"
   assert_contains "T8: env has NEON_CONNECTION_STRING"        "$env_content" "NEON_CONNECTION_STRING"
-  assert_contains "T8: env has PRODUCT_REPO_PATH for slug"   "$env_content" "PRODUCT_REPO_PATH=/opt/${ENV_SLUG}"
+  # FW-082 hotfix-3: PRODUCT_REPO_PATH default now $CABINET_ROOT/projects/<slug>
+  # (was /opt/<slug>). Assert the path field is set + ends with the slug — the
+  # exact root is operator-overridable via PRODUCT_REPO_ROOT env var.
+  assert_contains "T8: env has PRODUCT_REPO_PATH for slug"   "$env_content" "PRODUCT_REPO_PATH="
+  assert_contains "T8: PRODUCT_REPO_PATH ends in /<slug>"    "$env_content" "/${ENV_SLUG}"
   assert_contains "T8: env has CABINET_PREFIX for slug"       "$env_content" "CABINET_PREFIX=${ENV_SLUG}"
   # Secret discipline: GITHUB_PAT must never appear in env file
   if grep -q "GITHUB_PAT=" "$env_path" 2>/dev/null; then
