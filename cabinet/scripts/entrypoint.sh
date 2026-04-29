@@ -76,6 +76,47 @@ exec su cabinet -s /bin/bash -c '
     >> /opt/founders-cabinet/memory/logs/supervisor.log 2>&1 &
   echo "Officer supervisor started (PID $!)."
 
+  # FW-082 hotfix-5: AUTO_START_OFFICERS env (set per cabinet by
+  # cabinet-bootstrap.sh in spawned compose) auto-launches each officer in
+  # its own tmux window. Format: comma-separated "officer[:project]".
+  # Examples: "cos" / "cos:stephie" / "cos,cto,cpo,cro,coo".
+  # Unset/empty = legacy behavior (officers started manually via start-officer.sh).
+  if [ -n "${AUTO_START_OFFICERS:-}" ]; then
+    echo ""
+    echo "AUTO_START_OFFICERS detected: $AUTO_START_OFFICERS"
+    _START_SCRIPT_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}/cabinet/scripts/start-officer.sh"
+    [ -x "$_START_SCRIPT_ROOT" ] || _START_SCRIPT_ROOT="/opt/founders-cabinet/cabinet/scripts/start-officer.sh"
+    echo "$AUTO_START_OFFICERS" | tr "," "\n" | while IFS= read -r entry; do
+      entry=$(echo "$entry" | tr -d "[:space:]")
+      [ -z "$entry" ] && continue
+      officer="${entry%%:*}"
+      project="${entry#*:}"
+      [ "$officer" = "$project" ] && project=""
+      # Slug allowlists (FW-073 + FW-074 + FW-082 conventions)
+      if ! echo "$officer" | grep -qE "^[a-z][a-z0-9-]*$" || [ "${#officer}" -gt 32 ]; then
+        echo "  Skipping invalid officer slug: $officer"
+        continue
+      fi
+      if [ -n "$project" ]; then
+        if ! echo "$project" | grep -qE "^[a-z0-9][a-z0-9-]*$" || [ "${#project}" -gt 32 ]; then
+          echo "  Skipping invalid project slug: $project"
+          continue
+        fi
+      fi
+      echo "  Starting officer $officer${project:+ (project: $project)}"
+      if [ -n "$project" ]; then
+        tmux new-window -t cabinet -n "officer-${officer}" -d \
+          "bash \"$_START_SCRIPT_ROOT\" $officer --project $project; exec bash" 2>/dev/null || \
+          echo "  WARN: tmux window create failed for officer-$officer"
+      else
+        tmux new-window -t cabinet -n "officer-${officer}" -d \
+          "bash \"$_START_SCRIPT_ROOT\" $officer; exec bash" 2>/dev/null || \
+          echo "  WARN: tmux window create failed for officer-$officer"
+      fi
+    done
+    echo ""
+  fi
+
   # Keep container alive
   exec tail -f /dev/null
 '
