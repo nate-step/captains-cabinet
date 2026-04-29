@@ -224,9 +224,44 @@ step_create_env_file() {
     echo "#      for this project's database."
     echo "# ============================================================="
     echo ""
+    # FW-084: Read bot_mode from the active preset (via preset.yml) to emit
+    # the right token comment. Falls back to multi_officer if not set.
+    local _active_preset_file="$CABINET_ROOT/instance/config/active-preset"
+    local _active_preset=""
+    local _preset_bot_mode_proj="multi_officer"
+    if [ -f "$_active_preset_file" ]; then
+      _active_preset=$(cat "$_active_preset_file" 2>/dev/null | tr -d '[:space:]')
+    fi
+    if [ -n "$_active_preset" ] && [ -f "$CABINET_ROOT/presets/$_active_preset/preset.yml" ]; then
+      local _raw_mode_proj
+      _raw_mode_proj=$(grep -E '^[[:space:]]*telegram_bot_mode:' \
+        "$CABINET_ROOT/presets/$_active_preset/preset.yml" 2>/dev/null | head -1 \
+        | sed 's/^[[:space:]]*telegram_bot_mode:[[:space:]]*//' \
+        | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+      if [ "$_raw_mode_proj" = "single_ceo" ] || [ "$_raw_mode_proj" = "multi_officer" ]; then
+        _preset_bot_mode_proj="$_raw_mode_proj"
+      fi
+    fi
+
     echo "# Telegram group chat for this project's warroom"
-    echo "# (Create a new Telegram group, add your officer bots, get the chat ID)"
+    echo "# (Create a new Telegram group, add the CEO bot, get the chat ID)"
     echo "TELEGRAM_HQ_CHAT_ID="
+    echo ""
+    if [ "$_preset_bot_mode_proj" = "single_ceo" ]; then
+      local _slug_upper
+      _slug_upper=$(echo "${SLUG^^}" | tr "-" "_")
+      echo "# single_ceo mode: ONE bot token per project"
+      echo "# CAPTAIN ACTION: create one bot via @BotFather, set the token below"
+      echo "TELEGRAM_${_slug_upper}_CEO_TOKEN="
+    else
+      echo "# multi_officer mode: one bot token per officer"
+      echo "# CAPTAIN ACTION: add tokens for each officer below"
+      echo "# TELEGRAM_COS_TOKEN="
+      echo "# TELEGRAM_CTO_TOKEN="
+      echo "# TELEGRAM_CRO_TOKEN="
+      echo "# TELEGRAM_CPO_TOKEN="
+      echo "# TELEGRAM_COO_TOKEN="
+    fi
     echo ""
     echo "# Product database (Neon connection string for this project)"
     echo "# CAPTAIN: provision via https://console.neon.tech and paste here"

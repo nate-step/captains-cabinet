@@ -467,9 +467,33 @@ step_generate_peer_secrets() {
       echo "NEON_CONNECTION_STRING="
       echo ""
     fi
-    echo "# CAPTAIN ACTION REQUIRED: Add officer Telegram bot tokens"
-    echo "# Pattern: TELEGRAM_<UPPER>_TOKEN=<token>"
-    echo ""
+    # FW-084: Telegram bot token wiring depends on the preset's bot_mode_default.
+    # step-network preset defaults to single_ceo: ONE bot per project.
+    # work preset defaults to multi_officer: 5 bots per project (legacy).
+    local _preset_bot_mode="multi_officer"
+    local _preset_yml="$CABINET_ROOT/presets/$PRESET_SLUG/preset.yml"
+    if [ -f "$_preset_yml" ]; then
+      local _raw_mode
+      _raw_mode=$(grep -E '^[[:space:]]*telegram_bot_mode:' "$_preset_yml" 2>/dev/null | head -1 \
+        | sed 's/^[[:space:]]*telegram_bot_mode:[[:space:]]*//' | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+      if [ "$_raw_mode" = "single_ceo" ] || [ "$_raw_mode" = "multi_officer" ]; then
+        _preset_bot_mode="$_raw_mode"
+      fi
+    fi
+
+    if [ "$_preset_bot_mode" = "single_ceo" ]; then
+      echo "# TELEGRAM BOT MODE: single_ceo (one bot per project)"
+      echo "# Captain action: create ONE bot per project via @BotFather"
+      echo "# Pattern: TELEGRAM_<UPPER_PROJECT_SLUG>_CEO_TOKEN=<token>"
+      echo "# Example for project 'step-network':"
+      echo "#   TELEGRAM_STEP_NETWORK_CEO_TOKEN=<token from BotFather>"
+      echo ""
+    else
+      echo "# CAPTAIN ACTION REQUIRED: Add officer Telegram bot tokens"
+      echo "# Pattern: TELEGRAM_<UPPER_OFFICER>_TOKEN=<token>"
+      echo "# Example: TELEGRAM_COS_TOKEN=<token from BotFather>"
+      echo ""
+    fi
   } > "$env_file"
 
   # Generate a fresh random hex secret per peer cabinet

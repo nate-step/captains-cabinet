@@ -24,7 +24,9 @@ naming_style: functional
 # Agent archetypes. Standard officer roster mirrors `work` preset; the cabinet
 # can add project-specialized scaffolds (data-analyst, mcp-publisher) on demand.
 agent_archetypes:
-  - cos    # Chief of Staff — orchestration across projects + pool router
+  - cos    # Chief of Staff — orchestration across projects + pool router. In
+           # single_ceo bot mode (Captain msg 2197), CoS is the Captain-facing
+           # archetype per project (CEO-mode mapping).
   - cto    # Chief Technology Officer — engineering, code, deploys per project
   - cpo    # Chief Product Officer — specs, backlog per project + pool prioritization
   - cro    # Chief Research Officer — market research scoped per project
@@ -59,3 +61,14 @@ pool_architecture: true
 # from the CoS notify message and surfaces Library/tasks/Telegram items instead.
 # Step Network uses Library as knowledge provider (not Notion) per project YAML v2.
 notion_deprecated: true
+
+# Telegram bot mode (Captain msg 2197 — single-CEO bot collapse).
+# Default for new Step Network projects: ONE Telegram bot per project (CoS-as-CEO archetype only).
+# Other officers (CTO, CPO, CRO, COO) operate inside cabinet without direct Telegram bots.
+# Non-CEO officers route Captain-attention requests via CEO escalation pipeline
+# (Spec 034 v3 AC #74). Driver: BotFather rate limit + 20-bot Telegram ceiling.
+#
+# Override per project in instance/config/projects/<slug>.yml `telegram.bot_mode` if a
+# project genuinely needs multi_officer (e.g., Sensed-style 5-bot roster). Default stays
+# single_ceo for Step Network projects.
+telegram_bot_mode: single_ceo  # single_ceo (default) | multi_officer

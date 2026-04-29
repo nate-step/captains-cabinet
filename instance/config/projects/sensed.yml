@@ -79,6 +79,7 @@ neon:
 # Telegram — Project Group Chat
 # =============================================================
 telegram:
+  bot_mode: multi_officer          # Legacy: 5-bot roster (Sensed predates single_ceo default)
   officers:
     cos: sensed_cos_bot
     cto: sensed_cto_bot
