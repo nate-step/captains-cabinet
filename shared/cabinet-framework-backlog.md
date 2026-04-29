@@ -1205,16 +1205,6 @@ _(none)_
 
 ---
 
-### FW-066 — Voice Flow Parity (Spec 046) (P1)
-- **Status:** Spec 046 v1 LANDED 2026-04-27. CTO build-approved with 3 notes folded in (curl-direct-Telegram for download not MCP, latency budget documented, single-string additionalContext concat ordering). CTO claims build per A1.
-- **Spec:** `shared/interfaces/product-specs/046-voice-flow-parity.md`.
-- **Problem:** Captain voice DMs deliver `(voice message)` placeholder; pre-captain-dm retrieval (Spec 042) + warn hooks (Spec 043 H1/H2) operate against placeholder, not words. CoS has been transcribing manually.
-- **Build:** Extend `pre-captain-dm.sh` to detect voice attachment → curl Telegram getFile + download → transcribe via existing Scribe wrapper → cache by message_id (24h TTL) → inject transcript as system-reminder concat'd with retrieval block. 12 ACs, single phase ~3-4h.
-- **Owner:** CTO build, CPO spec.
-- **Source:** Captain msg 2013.
-
----
-
 ### FW-068 — Pre-Reply Draft + Review Subagent Flow (Spec 047) (P1)
 - **Status:** Spec 047 v1 LANDED 2026-04-27. CTO build-approved with 4 notes folded in (PostToolUse(Bash) entry pattern for warroom matcher, ACTIVE orchestrator over passive PreToolUse, 50-char trivial-skip, reviewer-prompt.md pinned). CTO claims build per A1.
 - **Spec:** `shared/interfaces/product-specs/047-pre-reply-draft-review.md`.
