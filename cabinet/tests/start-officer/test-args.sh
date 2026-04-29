@@ -190,6 +190,120 @@ else
   fail "T8b: 32-char slug error path unexpected — $output"
 fi
 
+# ----------------------------------------------------------------------------
+# T9: FW-082 hotfix-7 — single_ceo preset fallback + CEO_TOKEN candidate list.
+# ----------------------------------------------------------------------------
+# Pin: when no project YAML exists (first-spawn cabinet), start-officer must
+# read telegram_bot_mode from preset.yml. CEO mode then resolves CEO_TOKEN
+# via project → cabinet (CABINET_ID) → plain TELEGRAM_CEO_TOKEN.
+echo
+echo "T9: FW-082 hotfix-7 — single_ceo preset fallback + CEO_TOKEN candidates"
+
+# Build a minimal fixture cabinet root mirroring spawned-cabinet shape.
+T9_FIXTURE=$(mktemp -d)
+mkdir -p "$T9_FIXTURE/instance/config/projects" \
+         "$T9_FIXTURE/cabinet/scripts" \
+         "$T9_FIXTURE/cabinet/env" \
+         "$T9_FIXTURE/presets/test-single-ceo"
+
+# active-preset points at our fixture preset (single_ceo)
+echo "test-single-ceo" > "$T9_FIXTURE/instance/config/active-preset"
+
+# Minimal preset.yml that declares single_ceo
+cat > "$T9_FIXTURE/presets/test-single-ceo/preset.yml" <<'PYML'
+name: test-single-ceo
+description: Single-CEO test preset for hotfix-7 regression pin
+naming_style: functional
+agent_archetypes:
+  - cos
+terminology:
+  agent_role: officer
+  work_unit: task
+  output_store: shared_interfaces
+  backlog: tasks
+  scope_unit: project
+workspace_mount: /workspace
+telegram_bot_mode: single_ceo
+PYML
+
+# Symlink load-preset.sh + .env so start-officer.sh's bootstrap sourcing works
+ln -sf "$ROOT/cabinet/scripts/load-preset.sh" "$T9_FIXTURE/cabinet/scripts/load-preset.sh"
+echo "" > "$T9_FIXTURE/cabinet/.env"
+echo "" > "$T9_FIXTURE/instance/config/active-project.txt"
+
+# T9.1: single_ceo preset fallback — no project YAML, BOT_MODE→single_ceo
+output=$(CABINET_ROOT="$T9_FIXTURE" CABINET_ID="test-cab" \
+  TELEGRAM_TEST_CAB_CEO_TOKEN="x-fixture-cab-ceo-token" \
+  bash "$SCRIPT" cos 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  fail "T9.1: single_ceo preset fallback exited rc=$rc — $output"
+elif echo "$output" | grep -q '^BOT_MODE=single_ceo$'; then
+  pass "T9.1: BOT_MODE=single_ceo via preset fallback (no project YAML)"
+else
+  fail "T9.1: expected BOT_MODE=single_ceo, got: $(echo "$output" | grep '^BOT_MODE=')"
+fi
+
+# T9.2: IS_CEO_OFFICER=true since OFFICER=cos = CEO_OFFICER default
+if echo "$output" | grep -q '^IS_CEO_OFFICER=true$'; then
+  pass "T9.2: IS_CEO_OFFICER=true (cos is default CEO_OFFICER)"
+else
+  fail "T9.2: expected IS_CEO_OFFICER=true, got: $(echo "$output" | grep '^IS_CEO_OFFICER=')"
+fi
+
+# T9.3: CEO_TOKEN candidate fallback — when no project, falls to CABINET_ID-derived var
+# Negative test: if cabinet-level token is unset, exit non-zero with friendly error.
+output_no_token=$(CABINET_ROOT="$T9_FIXTURE" CABINET_ID="test-cab" \
+  bash "$SCRIPT" cos 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  fail "T9.3: missing CEO token should fail-loud, got rc=0"
+elif echo "$output_no_token" | grep -q 'TELEGRAM_TEST_CAB_CEO_TOKEN'; then
+  pass "T9.3: friendly error mentions cabinet-level token candidate"
+else
+  fail "T9.3: error doesn't mention TELEGRAM_TEST_CAB_CEO_TOKEN candidate — $output_no_token"
+fi
+
+# T9.4: legacy multi_officer regression — no project YAML, preset.yml says multi_officer.
+T9B_FIXTURE=$(mktemp -d)
+mkdir -p "$T9B_FIXTURE/instance/config/projects" \
+         "$T9B_FIXTURE/cabinet/scripts" \
+         "$T9B_FIXTURE/cabinet/env" \
+         "$T9B_FIXTURE/presets/test-multi"
+echo "test-multi" > "$T9B_FIXTURE/instance/config/active-preset"
+cat > "$T9B_FIXTURE/presets/test-multi/preset.yml" <<'PYML'
+name: test-multi
+description: Multi-officer test preset for hotfix-7 regression pin
+naming_style: functional
+agent_archetypes:
+  - cto
+terminology:
+  agent_role: officer
+  work_unit: task
+  output_store: shared_interfaces
+  backlog: tasks
+  scope_unit: project
+workspace_mount: /workspace
+telegram_bot_mode: multi_officer
+PYML
+ln -sf "$ROOT/cabinet/scripts/load-preset.sh" "$T9B_FIXTURE/cabinet/scripts/load-preset.sh"
+echo "" > "$T9B_FIXTURE/cabinet/.env"
+echo "" > "$T9B_FIXTURE/instance/config/active-project.txt"
+
+output_multi=$(CABINET_ROOT="$T9B_FIXTURE" CABINET_ID="test-cab" \
+  TELEGRAM_CTO_TOKEN="x-fixture-cto-token" \
+  bash "$SCRIPT" cto 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  fail "T9.4: multi_officer preset exited rc=$rc — $output_multi"
+elif echo "$output_multi" | grep -q '^BOT_MODE=multi_officer$'; then
+  pass "T9.4: BOT_MODE=multi_officer preserved (preset says multi_officer)"
+else
+  fail "T9.4: expected BOT_MODE=multi_officer, got: $(echo "$output_multi" | grep '^BOT_MODE=')"
+fi
+
+rm -rf "$T9_FIXTURE" "$T9B_FIXTURE"
+
 echo
 echo "=========================================="
 echo "FW-073 start-officer.sh: PASS=$PASS  FAIL=$FAIL"
