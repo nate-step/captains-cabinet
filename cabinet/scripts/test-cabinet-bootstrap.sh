@@ -351,17 +351,79 @@ echo "T9: FW-082 hotfix-4 — build: directive in generated docker-compose templ
 grep_build_mcp=$(awk '/^  cabinet-mcp-\${CABINET_SLUG}:/,/^  # ---/{print}' "$BOOTSTRAP" | grep -c "^    build:")
 assert_exit "T9.1 cabinet-mcp service has build: directive" "$([ "$grep_build_mcp" -ge 1 ] && echo 0 || echo 1)" 0
 
-# T9.2: officer template (commented) has build: directive
-grep_build_off=$(awk '/^  # officer-cos-\${CABINET_SLUG}:/,/^  #   depends_on:/{print}' "$BOOTSTRAP" | grep -c "^  #   build:")
-assert_exit "T9.2 officer template (commented) has build: directive" "$([ "$grep_build_off" -ge 1 ] && echo 0 || echo 1)" 0
+# T9.2: officers-${CABINET_SLUG} service has build: directive (hotfix-5: replaced
+# the commented officer-cos template with a live officers service block)
+grep_build_off=$(awk '/^  officers-\${CABINET_SLUG}:/,/^volumes:/{print}' "$BOOTSTRAP" | grep -c "^    build:")
+assert_exit "T9.2 officers service has build: directive" "$([ "$grep_build_off" -ge 1 ] && echo 0 || echo 1)" 0
 
-# T9.3: build context points at framework cabinet/ root
+# T9.3: build context points at framework cabinet/ root (≥2 occurrences: cabinet-mcp + officers)
 grep_ctx=$(grep -c "context: /opt/founders-cabinet/cabinet" "$BOOTSTRAP")
-assert_exit "T9.3 build context points at /opt/founders-cabinet/cabinet" "$([ "$grep_ctx" -ge 2 ] && echo 0 || echo 1)" 0
+assert_exit "T9.3 build context points at /opt/founders-cabinet/cabinet (≥2 services)" "$([ "$grep_ctx" -ge 2 ] && echo 0 || echo 1)" 0
 
-# T9.4: dockerfile points at Dockerfile.officer
+# T9.4: dockerfile points at Dockerfile.officer (≥2 occurrences)
 grep_df=$(grep -c "dockerfile: Dockerfile.officer" "$BOOTSTRAP")
-assert_exit "T9.4 dockerfile is Dockerfile.officer" "$([ "$grep_df" -ge 2 ] && echo 0 || echo 1)" 0
+assert_exit "T9.4 dockerfile is Dockerfile.officer (≥2 services)" "$([ "$grep_df" -ge 2 ] && echo 0 || echo 1)" 0
+
+# ---------------------------------------------------------------------------
+# T10: FW-082 hotfix-5 — auto-emitted officers service + path fixes (CoS msg 2232)
+# ---------------------------------------------------------------------------
+# Pin: compose template must emit officers-${CABINET_SLUG} as an UNCOMMENTED
+# service (was a commented template through hotfix-4), AUTO_START_OFFICERS env
+# determines which officers tmux-launch on container boot, and cabinet-mcp +
+# officers volumes use the actual ${cabinet_dir} path (was incorrectly
+# hardcoded /opt/<slug>-cabinet which doesn't exist on host).
+echo ""
+echo "T10: FW-082 hotfix-5 — officers service auto-emit + path fixes"
+
+# T10.1: officers-${CABINET_SLUG} service emitted (not just a commented template)
+grep_officers=$(grep -c "^  officers-\${CABINET_SLUG}:" "$BOOTSTRAP")
+assert_exit "T10.1 officers-\${CABINET_SLUG} service emitted (uncommented)" "$([ "$grep_officers" -ge 1 ] && echo 0 || echo 1)" 0
+
+# T10.2: AUTO_START_OFFICERS env var emitted in officers service block
+grep_auto=$(grep -c "AUTO_START_OFFICERS=\${_auto_start}" "$BOOTSTRAP")
+assert_exit "T10.2 AUTO_START_OFFICERS env emitted" "$([ "$grep_auto" -ge 1 ] && echo 0 || echo 1)" 0
+
+# T10.3: cabinet-mcp service uses \${cabinet_dir} for CABINET_ROOT (not hardcoded /opt/<slug>-cabinet)
+grep_cab_root=$(grep -c "CABINET_ROOT=\${cabinet_dir}" "$BOOTSTRAP")
+assert_exit "T10.3 cabinet-mcp + officers use \${cabinet_dir} for CABINET_ROOT" "$([ "$grep_cab_root" -ge 2 ] && echo 0 || echo 1)" 0
+
+# T10.4: cabinet-mcp command path uses \${cabinet_dir} (was hardcoded /opt/<slug>-cabinet/...)
+grep_cmd=$(grep -c "python3.*\${cabinet_dir}/cabinet/mcp-server/server.py" "$BOOTSTRAP")
+assert_exit "T10.4 cabinet-mcp command uses \${cabinet_dir} path" "$([ "$grep_cmd" -ge 1 ] && echo 0 || echo 1)" 0
+
+# T10.5: NO leftover hardcoded /opt/\${CABINET_SLUG}-cabinet pattern in service blocks
+# (the commented hotfix-4 reference + Captain action comment can mention it but
+# no live config line should hardcode it as a path)
+grep_bad_volume=$(grep -E "^[[:space:]]+- /opt/\\\${CABINET_SLUG}-cabinet" "$BOOTSTRAP" | wc -l)
+assert_exit "T10.5 no live volume mounts hardcoded to /opt/\${CABINET_SLUG}-cabinet" "$([ "$grep_bad_volume" -eq 0 ] && echo 0 || echo 1)" 0
+
+# T10.6: docker-compose force-regen logic present (re-run regenerates compose)
+grep_regen=$(grep -c 'docker-compose entry stripped from state' "$BOOTSTRAP")
+assert_exit "T10.6 docker-compose state-strip force-regen logic present" "$([ "$grep_regen" -ge 1 ] && echo 0 || echo 1)" 0
+
+# ---------------------------------------------------------------------------
+# T11: FW-082 hotfix-5 — entrypoint.sh AUTO_START_OFFICERS support
+# ---------------------------------------------------------------------------
+echo ""
+echo "T11: FW-082 hotfix-5 — entrypoint.sh AUTO_START_OFFICERS handling"
+
+ENTRY="$CABINET_ROOT/cabinet/scripts/entrypoint.sh"
+
+# T11.1: entrypoint reads AUTO_START_OFFICERS env
+grep_entry_auto=$(grep -c 'AUTO_START_OFFICERS' "$ENTRY")
+assert_exit "T11.1 entrypoint.sh references AUTO_START_OFFICERS" "$([ "$grep_entry_auto" -ge 2 ] && echo 0 || echo 1)" 0
+
+# T11.2: entrypoint validates officer slug (mirrors FW-073/074 pattern)
+grep_entry_validate=$(grep -c 'Skipping invalid officer slug\|Skipping invalid project slug' "$ENTRY")
+assert_exit "T11.2 entrypoint validates officer/project slugs (injection guard)" "$([ "$grep_entry_validate" -ge 2 ] && echo 0 || echo 1)" 0
+
+# T11.3: entrypoint tmux new-window invocation
+grep_entry_tmux=$(grep -c 'tmux new-window -t cabinet -n "officer-' "$ENTRY")
+assert_exit "T11.3 entrypoint creates tmux windows for auto-started officers" "$([ "$grep_entry_tmux" -ge 1 ] && echo 0 || echo 1)" 0
+
+# T11.4: bash syntax intact after edit (regression pin against shell-quote bugs)
+bash -n "$ENTRY" 2>&1
+assert_exit "T11.4 entrypoint.sh bash -n syntax check" "$?" 0
 
 # ---------------------------------------------------------------------------
 # Summary
