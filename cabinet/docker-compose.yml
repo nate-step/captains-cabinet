@@ -32,6 +32,8 @@ services:
       - channels-state:/home/cabinet/.claude-channels
       # Spec 035 Phase A: host-agent socket (read-only mount).
       - /run/cabinet:/run/cabinet:ro
+      # FW-085: container socket for Cabinet-driven compose ops (msg 2212)
+      - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /opt/founders-cabinet
     stdin_open: true
     tty: true

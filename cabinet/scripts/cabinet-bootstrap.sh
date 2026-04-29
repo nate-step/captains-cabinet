@@ -724,6 +724,14 @@ services:
   # Cabinet MCP server — FW-005 HTTP transport for peer communication
   # ----------------------------------------------------------------
   cabinet-mcp-${CABINET_SLUG}:
+    # FW-082 hotfix-4 (CoS field report 2026-04-29 12:29): image:-only with
+    # no registry-published tag fails compose-up with "pull access denied".
+    # Build locally from the framework Dockerfile so first-spawn works
+    # without an upstream registry. Operator can pre-tag for cache hit:
+    #   docker tag <existing-cabinet>-officers:latest officers-${CABINET_SLUG}:latest
+    build:
+      context: /opt/founders-cabinet/cabinet
+      dockerfile: Dockerfile.officer
     image: officers-${CABINET_SLUG}:latest
     container_name: cabinet-mcp-${CABINET_SLUG}
     restart: unless-stopped
@@ -753,6 +761,9 @@ services:
   # Template (copy + rename for each officer):
   # ----------------------------------------------------------------
   # officer-cos-${CABINET_SLUG}:
+  #   build:
+  #     context: /opt/founders-cabinet/cabinet
+  #     dockerfile: Dockerfile.officer
   #   image: officers-${CABINET_SLUG}:latest
   #   container_name: officer-cos-${CABINET_SLUG}
   #   restart: unless-stopped
