@@ -23,6 +23,15 @@
 #   - Redis keys never receive raw env var values that could be secrets
 #
 # DRY_RUN=1: print planned actions, no side effects (tmux, Redis, filesystem).
+#
+# FW-083 additions (Spec 034 v3 ACs #49 + #61 + #71):
+#   - step_validate_preset: runs presets/<active>/validate.sh BEFORE officer start;
+#     non-zero exit aborts spawn (AC #49).
+#   - step_library_auto_populate: dispatches CRO discovery-sweep trigger post-spawn;
+#     actual seed logic lives in CRO-side helper (AC #61).
+#   - step_notify_cos: preset-aware CAPTAIN ACTION REQUIRED copy; notion_deprecated
+#     presets suppress legacy Notion-IDs item + surface Library/tasks/Telegram items
+#     instead (AC #71).
 
 set -uo pipefail
 
@@ -74,6 +83,17 @@ CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
 STATE_FILE="/tmp/cabinet-spawn.${SLUG}.state"
 LOCK_FD=9
 DEFAULT_OFFICERS="cos,cto,cpo,coo,cro"
+
+# Active preset — read once here; individual steps reference $ACTIVE_PRESET.
+# Supports ACTIVE_PRESET env override (used in test harness to mock preset.yml).
+if [ -z "${ACTIVE_PRESET:-}" ]; then
+  _preset_file="$CABINET_ROOT/instance/config/active-preset"
+  if [ -f "$_preset_file" ]; then
+    ACTIVE_PRESET=$(cat "$_preset_file" | tr -d '[:space:]')
+  else
+    ACTIVE_PRESET="work"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Slug validation (step 1)
@@ -173,6 +193,29 @@ step_preflight() {
   fi
 
   info "Preflight checks passed"
+}
+
+# ---------------------------------------------------------------------------
+# Preset validation hard-gate (Spec 034 v3 AC #49 — CRO H3 fix)
+# Runs presets/<active>/validate.sh BEFORE any officer starts.
+# Non-zero exit aborts spawn with surfaced error.
+# ---------------------------------------------------------------------------
+step_validate_preset() {
+  if [ "$DRY_RUN" = "1" ]; then
+    dry "Would run: bash presets/$ACTIVE_PRESET/validate.sh"
+    return 0
+  fi
+  local validate="$CABINET_ROOT/presets/$ACTIVE_PRESET/validate.sh"
+  if [ ! -x "$validate" ]; then
+    err "preset validate.sh missing or not executable at $validate"
+    err "  Create and chmod +x presets/$ACTIVE_PRESET/validate.sh (Spec 034 v3 AC #49)"
+    exit 1
+  fi
+  if ! bash "$validate"; then
+    err "preset validate.sh failed (exit non-zero) — aborting spawn"
+    exit 1
+  fi
+  info "preset validate.sh PASS"
 }
 
 # ---------------------------------------------------------------------------
@@ -447,8 +490,26 @@ step_verify_triggers() {
 }
 
 # ---------------------------------------------------------------------------
-# Notify CoS (step 10)
+# Preset-aware notify CoS (step 10)
+# Spec 034 v3 AC #71: notion_deprecated presets drop the legacy Notion-IDs
+# founder-action item and surface preset-specific items instead.
 # ---------------------------------------------------------------------------
+
+# Read notion_deprecated from preset.yml.
+# Supports CABINET_SPAWN_PRESET_YML env override for test harness injection.
+_preset_notion_deprecated() {
+  local yml="${CABINET_SPAWN_PRESET_YML:-$CABINET_ROOT/presets/$ACTIVE_PRESET/preset.yml}"
+  if [ ! -f "$yml" ]; then
+    echo "false"
+    return
+  fi
+  if grep -q "^notion_deprecated:[[:space:]]*true" "$yml" 2>/dev/null; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
 step_notify_cos() {
   local officers_list
   officers_list=$(enumerate_officers)
@@ -462,20 +523,43 @@ step_notify_cos() {
   local officer_count
   officer_count=$(echo "$officers_list" | wc -w | tr -d ' ')
 
+  # Preset-aware action-items list (AC #71)
+  local notion_deprecated
+  notion_deprecated=$(_preset_notion_deprecated)
+
+  local action_items
+  if [ "$notion_deprecated" = "true" ]; then
+    # Preset deprecates Notion — surface Library/tasks/Telegram items instead.
+    action_items="  1. Library scope ratification — run wizard panel 2 (Knowledge) to ratify
+     which project briefs, decision logs, and playbooks CRO seeds into the
+     Library for ${SLUG}. Auto-populate awaits your ratification.
+  2. Tasks provider connection — configure tasks_provider in
+     instance/config/projects/${SLUG}.yml (Linear / Asana / Monday / Sensed-tasks
+     per preset). Default: Sensed-tasks (/tasks Postgres).
+  3. Telegram bot adoption — add officer bots to a group chat for ${SLUG}
+     and fill TELEGRAM_HQ_CHAT_ID in cabinet/env/${SLUG}.env.
+     Non-blocking: Cabinet is active; adopt bots when convenient (morning to-do).
+  4. Per-project repo cloning — ensure each project repo is cloned at
+     /workspace/projects/${SLUG}/ (or per project-slug sub-path)."
+  else
+    # Legacy Notion-first presets (work, personal).
+    action_items="  1. Telegram bot tokens — create a group chat for ${SLUG}, add officer bots,
+     fill TELEGRAM_HQ_CHAT_ID in cabinet/env/${SLUG}.env.
+  2. Notion IDs — provision Cabinet HQ DB pages for ${SLUG},
+     fill in instance/config/projects/${SLUG}.yml (notion section).
+  3. Neon DB — provision a Neon project for ${SLUG}'s product database,
+     fill NEON_CONNECTION_STRING in cabinet/env/${SLUG}.env."
+  fi
+
   local message
   message="CABINET SPAWNED: ${SLUG} live with ${officer_count} officers in pool mode.
 
 Officers started:
 $(printf '%b' "$officer_summary")
 CAPTAIN ACTION REQUIRED (founder-action items):
-  1. Telegram bot tokens — create a group chat for ${SLUG}, add officer bots,
-     fill TELEGRAM_HQ_CHAT_ID in cabinet/env/${SLUG}.env.
-  2. Notion IDs — provision Cabinet HQ DB pages for ${SLUG},
-     fill in instance/config/projects/${SLUG}.yml (notion section).
-  3. Neon DB — provision a Neon project for ${SLUG}'s product database,
-     fill NEON_CONNECTION_STRING in cabinet/env/${SLUG}.env.
+${action_items}
 
-These three items are blocking for full officer functionality.
+These items are blocking for full officer functionality.
 Repo: ${REPO_URL}"
 
   if [ "$DRY_RUN" = "1" ]; then
@@ -497,6 +581,56 @@ Repo: ${REPO_URL}"
     OFFICER_NAME="cabinet-spawn" bash "$notify_script" cos "$message" 2>/dev/null || true
     info "CoS notified via notify-officer.sh"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# CRO Library auto-populate trigger (Spec 034 v3 AC #61)
+#
+# Contract:
+#   - cabinet-spawn.sh fires a fire-and-forget trigger to CRO on the default
+#     Redis stream; CRO-side helper script (cro-library-auto-populate.sh,
+#     deferred) performs the actual discovery sweep + Library seed.
+#   - Auto-populate is opt-in: Captain ratifies seed scope at wizard panel 2
+#     (Knowledge) before the sweep runs. The trigger carries project metadata
+#     so CRO can check Captain ratification state before executing.
+#   - CABINET_HOOK_TEST_MODE=1 suppresses real Redis XADD + prints trigger
+#     text to stdout for test harness assertion.
+#
+# CRO-side contract (implemented in CRO helper — not in this script):
+#   - Read CABINET_ACTIVE_PROJECT from trigger payload to scope the sweep.
+#   - Check captain ratification key: cabinet:library:auto-pop:approved:<slug>
+#     (set by wizard panel 2 on ratify). If absent, abort sweep + surface
+#     "awaiting Captain ratification" status; retry on next post-heartbeat check.
+#   - On approved: sweep /workspace/<slug>/ for project briefs, decision logs,
+#     and playbooks; create Library Spaces scoped to context_slug=<slug>.
+# ---------------------------------------------------------------------------
+step_library_auto_populate() {
+  if [ "$DRY_RUN" = "1" ]; then
+    dry "Would notify CRO: 'LIBRARY AUTO-POP REQUESTED for project $SLUG'"
+    return 0
+  fi
+
+  local triggers_lib="$CABINET_ROOT/cabinet/scripts/lib/triggers.sh"
+  if [ ! -f "$triggers_lib" ]; then
+    info "triggers.sh not found — skipping Library auto-populate trigger"
+    return 0
+  fi
+
+  # shellcheck disable=SC1090
+  source "$triggers_lib" 2>/dev/null || true
+
+  local msg="LIBRARY AUTO-POP REQUESTED for project $SLUG (mount=/workspace/$SLUG/). Captain ratifies seed scope at wizard panel 2 (Knowledge) if not already approved. Spec 034 v3 AC #61."
+
+  if [ "${CABINET_HOOK_TEST_MODE:-0}" = "1" ]; then
+    # Test-harness mode: print trigger text instead of real XADD.
+    echo "[TEST-TRIGGER] cro: $msg"
+    info "CRO Library auto-populate trigger dispatched (test mode)"
+    return 0
+  fi
+
+  CABINET_ACTIVE_PROJECT="$SLUG" OFFICER_NAME=cabinet-spawn \
+    trigger_send cro "$msg" 2>/dev/null || true
+  info "CRO Library auto-populate trigger dispatched"
 }
 
 # ---------------------------------------------------------------------------
@@ -550,9 +684,11 @@ step_validate_repo_url
 
 if [ "$DRY_RUN" = "1" ]; then
   step_preflight
+  step_validate_preset
   step_provision_project
   step_bootstrap_tier2
   step_spin_up_officers
+  step_library_auto_populate
   step_first_heartbeat
   step_verify_triggers
   step_notify_cos
@@ -575,13 +711,15 @@ run_step() {
   step_done "$name"
 }
 
-run_step "preflight"          step_preflight
-run_step "provision"          step_provision_project
-run_step "tier2-dirs"         step_bootstrap_tier2
-run_step "spin-up-officers"   step_spin_up_officers
-run_step "heartbeats"         step_first_heartbeat
-run_step "trigger-verify"     step_verify_triggers
-run_step "notify-cos"         step_notify_cos
+run_step "preflight"            step_preflight
+run_step "validate-preset"      step_validate_preset
+run_step "provision"            step_provision_project
+run_step "tier2-dirs"           step_bootstrap_tier2
+run_step "spin-up-officers"     step_spin_up_officers
+run_step "library-auto-pop"     step_library_auto_populate
+run_step "heartbeats"           step_first_heartbeat
+run_step "trigger-verify"       step_verify_triggers
+run_step "notify-cos"           step_notify_cos
 
 # All steps complete — clean up state file (holds the flock; release on exit)
 exec 9>&-
