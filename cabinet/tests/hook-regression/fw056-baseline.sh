@@ -46,7 +46,7 @@ probe "9a-L2 -xf -C /tmp/dest no-slash"    'tar -xf /tmp/a.tar -C /tmp/dest'    
 probe "9a-L3 -xf no -C"                    'tar -xf /tmp/a.tar'                                  ALLOW
 probe "9a-L4 -tf list"                     'tar -tf /tmp/a.tar'                                  ALLOW
 probe "9a-L5 --version"                    'tar --version'                                       ALLOW
-probe "9a-L6 -xf prefix-name productx"     'tar -xf /tmp/a.tar -C /workspace/productx/'          ALLOW
+probe "9a-L6 -xf UPPER slug (not a slug)"   'tar -xf /tmp/a.tar -C /workspace/PROD/'              ALLOW
 
 echo ""
 echo "=== Pattern 9b — ATTACK FORMS (write archive TO product path, must BLOCK) ==="
