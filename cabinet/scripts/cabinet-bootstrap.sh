@@ -422,6 +422,17 @@ step_init_instance_dirs() {
     return 0
   fi
 
+  # FW-082 hotfix-7 (CoS field report msg 2274 substrate-gap fold #5): when
+  # the framework is cloned, it includes the source cabinet's existing
+  # instance/config/projects/ (e.g. Sensed's sensed.yml). New cabinet must
+  # start with NO inherited projects — Captain creates them via
+  # create-project.sh fresh per cabinet. Wipe before mkdir to guarantee
+  # clean state on first init (idempotent: safe if dir doesn't exist yet).
+  if [ -d "$cabinet_dir/instance/config/projects" ]; then
+    info "Wiping inherited instance/config/projects/ — new cabinets start clean (gap #5)"
+    rm -f "$cabinet_dir/instance/config/projects"/*.yml 2>/dev/null || true
+  fi
+
   # Core directories
   mkdir -p \
     "$cabinet_dir/instance/memory/tier2" \
@@ -502,6 +513,16 @@ step_generate_peer_secrets() {
     else
       echo "# CAPTAIN ACTION REQUIRED: set NEON_CONNECTION_STRING"
       echo "NEON_CONNECTION_STRING="
+      echo ""
+    fi
+
+    # FW-082 hotfix-7 (CoS field report msg 2274 substrate-gap fold #2):
+    # propagate GITHUB_PAT from operator env to new cabinet's .env so its
+    # officers can git push without Captain manually copying. Strip newlines
+    # mirroring P1-B treatment (env-injection guard).
+    if [ -n "${GITHUB_PAT:-}" ]; then
+      echo "# Inherited from operator environment (cabinet-bootstrap propagated)"
+      printf 'GITHUB_PAT=%s\n' "${GITHUB_PAT//$'\n'/}"
       echo ""
     fi
     # FW-084: Telegram bot token wiring depends on the preset's bot_mode_default.

@@ -233,11 +233,14 @@ step_create_env_file() {
       _active_preset=$(cat "$_active_preset_file" 2>/dev/null | tr -d '[:space:]')
     fi
     if [ -n "$_active_preset" ] && [ -f "$CABINET_ROOT/presets/$_active_preset/preset.yml" ]; then
+      # FW-082 hotfix-7: awk '{print $1}' instead of tr -d '[:space:]' to
+      # avoid concatenating YAML inline comments ("single_ceo  # ...") into
+      # single_ceo#... which then fails the value-match validator.
       local _raw_mode_proj
       _raw_mode_proj=$(grep -E '^[[:space:]]*telegram_bot_mode:' \
         "$CABINET_ROOT/presets/$_active_preset/preset.yml" 2>/dev/null | head -1 \
         | sed 's/^[[:space:]]*telegram_bot_mode:[[:space:]]*//' \
-        | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+        | tr -d '"' | tr -d "'" | awk '{print $1}')
       if [ "$_raw_mode_proj" = "single_ceo" ] || [ "$_raw_mode_proj" = "multi_officer" ]; then
         _preset_bot_mode_proj="$_raw_mode_proj"
       fi
@@ -503,7 +506,22 @@ acquire_lock() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
+# FW-082 hotfix-7 (CoS field report msg 2274 substrate-gap fold #1): hardcoded
+# /opt/founders-cabinet default broke create-project when run from inside a
+# spawned cabinet (e.g. /opt/founders-cabinet/spawned-cabinets/step-network-
+# cabinet/cabinet/scripts/). Detect CABINET_ROOT from script location: this
+# file lives at <CABINET_ROOT>/cabinet/scripts/create-project.sh, so walk up
+# 2 levels. Explicit env var still overrides.
+if [ -z "${CABINET_ROOT:-}" ]; then
+  _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  CABINET_ROOT="$(cd "$_SCRIPT_DIR/../.." && pwd)"
+fi
+# Sanity-check: CABINET_ROOT must contain cabinet/ + instance/config/ tree
+if [ ! -d "$CABINET_ROOT/cabinet" ] || [ ! -d "$CABINET_ROOT/instance/config" ]; then
+  echo "create-project.sh: CABINET_ROOT='$CABINET_ROOT' missing cabinet/ or instance/config/ — aborting" >&2
+  echo "  Override with: CABINET_ROOT=/path/to/cabinet bash $0 ..." >&2
+  exit 1
+fi
 
 # FW-082 hotfix-3 (CoS field report 2026-04-29 07:33): /opt/<slug>/ + /workspace/<slug>/
 # are root-owned (officer container can't write). Default these to cabinet-user-writable
