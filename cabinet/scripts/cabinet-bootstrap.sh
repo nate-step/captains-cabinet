@@ -147,7 +147,13 @@ redact_neon_url() {
 # Constants
 # ---------------------------------------------------------------------------
 CABINET_ROOT="${CABINET_ROOT:-/opt/founders-cabinet}"
-CABINET_BOOTSTRAP_ROOT="${CABINET_BOOTSTRAP_ROOT:-/opt}"
+# FW-082 hotfix-2 (CoS field report 2026-04-29 07:30): /opt is root-owned;
+# officer container runs as `cabinet` (uid 60001) and can't write there.
+# Default to a path inside the existing cabinet tree so officer-side bootstrap
+# works without host-agent socket access. Operator can override via env var
+# when host-agent is available (FW-018 phase B+) for a true /opt/<slug>-cabinet/
+# layout.
+CABINET_BOOTSTRAP_ROOT="${CABINET_BOOTSTRAP_ROOT:-/opt/founders-cabinet/spawned-cabinets}"
 STATE_FILE="/tmp/cabinet-bootstrap.${CABINET_SLUG:-_noname}.state"
 LOCK_FD=9
 FRAMEWORK_REPO_URL="https://github.com/nate-step/founders-cabinet"
@@ -264,7 +270,9 @@ step_preflight() {
   # alive). Use --skip-peer-reachability when the caller can't reach peers
   # itself.
   if [ "$SKIP_PEER_REACHABILITY" = "1" ]; then
-    if [ "${#PEER_CABINETS[@]:-0}" -gt 0 ]; then
+    # FW-082 hotfix-2 (CoS field report): bash bad substitution. ${#array[@]}
+    # already returns 0 for empty arrays — :-0 is invalid here.
+    if [ "${#PEER_CABINETS[@]}" -gt 0 ]; then
       info "Peer-reachability check SKIPPED (--skip-peer-reachability) — FW-005 will validate live"
     fi
   else
