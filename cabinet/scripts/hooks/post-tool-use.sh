@@ -229,6 +229,38 @@ if [ "$SIGNIFICANT_ACTION" = true ]; then
 fi
 
 # ============================================================
+# 3b. CAPTAIN-ATTENTION QUEUE SCAN (FW-084 / Spec 034 v3 AC #74)
+# ============================================================
+# In single_ceo mode, the CEO officer scans the captain-attention queue
+# each session tick (parallel to trigger delivery, before it).
+# Non-CEO officers and multi_officer deployments: skip (no-op).
+#
+# Guard: CABINET_BOT_MODE=single_ceo AND OFFICER_NAME == CABINET_CEO_OFFICER AND
+#        CABINET_ACTIVE_PROJECT set (pool mode only — queue is per-project).
+# Safe to leave no-op if library not present (degraded-mode resilience).
+
+_CATN_BOT_MODE="${CABINET_BOT_MODE:-multi_officer}"
+_CATN_CEO_OFFICER="${CABINET_CEO_OFFICER:-cos}"
+_CATN_PROJECT="${CABINET_ACTIVE_PROJECT:-}"
+
+if [ "$_CATN_BOT_MODE" = "single_ceo" ] \
+   && [ "$OFFICER" = "$_CATN_CEO_OFFICER" ] \
+   && [ -n "$_CATN_PROJECT" ]; then
+  # FW-084 adversary: validate _CATN_PROJECT slug before use in Redis key
+  if [[ "$_CATN_PROJECT" =~ ^[a-z0-9][a-z0-9-]*$ ]] && [ "${#_CATN_PROJECT}" -le 32 ]; then
+    _CATN_LIB="/opt/founders-cabinet/cabinet/scripts/lib/captain-attention.sh"
+    if [ -f "$_CATN_LIB" ]; then
+      # Source the library and scan (outputs formatted triage block if entries pending)
+      # Errors in the library must not brick the hook — redirect to stderr only
+      (
+        . "$_CATN_LIB" 2>/dev/null
+        captain_attention_scan "$_CATN_PROJECT" 2>/dev/null
+      ) || true
+    fi
+  fi
+fi
+
+# ============================================================
 # 4. TRIGGER DELIVERY — deliver pending triggers via Redis Streams
 # ============================================================
 # Reads NEW messages from the officer's stream. Messages stay "pending"
