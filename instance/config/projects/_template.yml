@@ -78,12 +78,24 @@ neon:
   project: ""                      # Neon project name
 
 # =============================================================
-# Telegram — Same bots, different group chat
+# Telegram — Bot mode + group chat
 # =============================================================
-# Create a new Telegram group for this project and add your officer bots.
-# The bot usernames stay the same — only the group chat ID changes.
+# bot_mode: single_ceo (default for new projects) | multi_officer (legacy 5-bot roster)
+#   single_ceo:   ONE bot per project (CEO archetype only). Non-CEO officers route
+#                 Captain-attention via cabinet:captain-attention:<project> queue (AC #74).
+#   multi_officer: Full 5-bot roster — one bot per officer. Legacy behavior (Sensed, Personal).
+#
+# ceo_officer:  Which officer slug acts as CEO when bot_mode=single_ceo. Default: cos.
+#               The CEO officer polls Telegram; all others are Telegram-dark in single_ceo mode.
+#
+# ceo_bot:      Bot username for the CEO bot (single_ceo mode only — one BotFather tap).
+#
+# In multi_officer mode, populate the officers block with each bot username.
 telegram:
-  officers:
+  bot_mode: single_ceo             # single_ceo (default) | multi_officer (legacy)
+  ceo_officer: cos                 # officer slug that acts as CEO (single_ceo mode only)
+  ceo_bot: ""                      # CEO bot username (single_ceo mode); one BotFather tap
+  officers:                        # Populated in multi_officer mode only
     cos: ""                        # Same bot username as other projects
     cto: ""
     cro: ""

@@ -1,0 +1,35 @@
+# presets/step-network/terminology.yml
+# Term mappings for the Step Network preset.
+# Differs from `work` preset by speaking in "projects within a cabinet" instead of
+# "the product" — the cabinet hosts a portfolio.
+
+agent_role: officer
+agents: officers
+
+captain_title: Captain
+captain_context: leadership
+
+crew_title: Crew
+crew_context: agent team
+
+work_unit: task
+work_units: tasks
+
+# Step Network speaks in "projects" — multiple under one cabinet roof.
+work_body: project
+alternate_work_bodies:
+  - initiative
+  - product line
+  - portfolio item
+
+# Authoritative backlog: Library /tasks Postgres (Spec 039 cutover).
+backlog: Library /tasks (Postgres officer_tasks; per-project tasks_provider override per Spec 034 §2b.1)
+
+# Authoritative business-context surface: Library Business Brain space, scoped
+# per project via context_slug (Spec 034 v3 §2b.2).
+business_brain: Library Business Brain Space (per-project scoped via context_slug)
+
+# Pool-specific terminology
+pool_window: project window     # tmux window holding a (officer, project) session
+pool_router: project router     # the dispatch surface that routes Captain DMs to active project window
+project_focus: active project   # the currently-focused project per officer (per-tmux-window)

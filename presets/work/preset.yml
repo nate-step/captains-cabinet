@@ -48,3 +48,9 @@ autonomy_level: execution_high
 
 # Where this preset expects the workspace (instance config overrides).
 workspace_mount: /workspace/product
+
+# Telegram bot mode default for projects provisioned under this preset.
+# work preset preserves the legacy multi_officer setup (Sensed + Personal predates
+# the single_ceo collapse in AC #62). Step Network preset uses single_ceo.
+# Override per-project in instance/config/projects/<slug>.yml `telegram.bot_mode`.
+telegram_bot_mode: multi_officer  # multi_officer (legacy) | single_ceo (step-network default)
