@@ -134,7 +134,7 @@ rm -f "$STATE"
 out=$(bash "$BOOTSTRAP" "test-dry-bootstrap" --preset "step-network" --dry-run 2>&1); rc=$?
 assert_exit "T3.1 dry-run exits 0" "$rc" 0
 assert_contains "T3.1 dry-run emits DRY RUN banner" "$out" "DRY RUN"
-assert_contains "T3.1 dry-run emits plan steps" "$out" "Would validate cabinet slug"
+assert_contains "T3.1 dry-run emits plan steps (slug validate runs unconditionally per FW-082 P0-A; assert downstream plan emit)" "$out" "Would mkdir -p"
 assert_contains "T3.1 dry-run emits DRY RUN COMPLETE" "$out" "DRY RUN COMPLETE"
 assert_file_absent "T3.2 no state file created by dry-run" "$STATE"
 
@@ -297,6 +297,45 @@ assert_exit "T7.2 three-field peer-cabinet exits non-zero" "$rc" 1
 out=$(bash "$BOOTSTRAP" "test-good-peer" --preset work --peer-cabinet "peer:host:7471:SECRET_REF" --dry-run 2>&1); rc=$?
 assert_exit "T7.3 valid peer-cabinet syntax in dry-run exits 0" "$rc" 0
 assert_contains "T7.3 dry-run mentions peer cabinet" "$out" "peer"
+
+# ---------------------------------------------------------------------------
+# T8: FW-082 adversary fixes verification
+# ---------------------------------------------------------------------------
+echo ""
+echo "T8: FW-082 adversary P0/P1 fix verification"
+
+# T8.1 (P0-A): bad slug rejected EVEN IN dry-run mode (was bypassed pre-fix)
+out=$(bash "$BOOTSTRAP" "../etc" --preset work --dry-run 2>&1); rc=$?
+assert_exit "T8.1 P0-A: path-traversal slug rejected in dry-run" "$rc" 1
+assert_contains "T8.1 P0-A: error message mentions slug regex" "$out" "must match"
+
+# T8.2 (P0-A): command-injection slug rejected in dry-run
+out=$(bash "$BOOTSTRAP" 'a$(id)b' --preset work --dry-run 2>&1); rc=$?
+assert_exit "T8.2 P0-A: command-injection slug rejected in dry-run" "$rc" 1
+
+# T8.3 (P0-A): 33-char slug rejected in dry-run
+LONG_SLUG=$(printf 'a%.0s' {1..33})
+out=$(bash "$BOOTSTRAP" "$LONG_SLUG" --preset work --dry-run 2>&1); rc=$?
+assert_exit "T8.3 P0-A: 33-char slug rejected in dry-run" "$rc" 1
+assert_contains "T8.3 P0-A: error message mentions length" "$out" "32"
+
+# T8.4 (P1-C): bad peer slug (spaces) rejected at parse
+out=$(bash "$BOOTSTRAP" "test-peer-slug" --preset work --peer-cabinet "evil slug:host:7471:SECRET" --dry-run 2>&1); rc=$?
+assert_exit "T8.4 P1-C: spaces in peer slug rejected" "$rc" 1
+assert_contains "T8.4 P1-C: error mentions peer slug constraint" "$out" "peer-cabinet slug"
+
+# T8.5 (P1-C): bad peer slug (uppercase) rejected at parse
+out=$(bash "$BOOTSTRAP" "test-peer-slug" --preset work --peer-cabinet "UPPER:host:7471:SECRET" --dry-run 2>&1); rc=$?
+assert_exit "T8.5 P1-C: uppercase peer slug rejected" "$rc" 1
+
+# T8.6 (P1-C): leading-hyphen peer slug rejected at parse
+out=$(bash "$BOOTSTRAP" "test-peer-slug" --preset work --peer-cabinet "-bad:host:7471:SECRET" --dry-run 2>&1); rc=$?
+assert_exit "T8.6 P1-C: leading-hyphen peer slug rejected" "$rc" 1
+
+# T8.7 (P1-C): 33-char peer slug rejected at parse
+LONG_PEER=$(printf 'p%.0s' {1..33})
+out=$(bash "$BOOTSTRAP" "test-peer-slug" --preset work --peer-cabinet "$LONG_PEER:host:7471:SECRET" --dry-run 2>&1); rc=$?
+assert_exit "T8.7 P1-C: 33-char peer slug rejected" "$rc" 1
 
 # ---------------------------------------------------------------------------
 # Summary

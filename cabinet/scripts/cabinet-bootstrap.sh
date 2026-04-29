@@ -91,6 +91,14 @@ while [ $# -gt 0 ]; do
         echo "cabinet-bootstrap.sh: --peer-cabinet requires format slug:host:port:secret-ref (got '$peer_arg')" >&2
         exit 1
       fi
+      # FW-082 adversary P1-C: validate peer slug at parse time so malformed
+      # slugs (spaces, special chars, length>32, leading hyphen) never reach
+      # YAML/env-var/state-file path contexts.
+      peer_slug_validate=$(echo "$peer_arg" | cut -d: -f1)
+      if ! [[ "$peer_slug_validate" =~ ^[a-z0-9][a-z0-9-]*$ ]] || [ "${#peer_slug_validate}" -gt 32 ]; then
+        echo "cabinet-bootstrap.sh: --peer-cabinet slug must match [a-z0-9][a-z0-9-]* and be <=32 chars (got '$peer_slug_validate')" >&2
+        exit 1
+      fi
       PEER_CABINETS+=("$peer_arg")
       shift 2
       ;;
@@ -149,11 +157,25 @@ fi
 # ---------------------------------------------------------------------------
 # Step 1 — Validate slug (AC #65)
 # ---------------------------------------------------------------------------
-step_validate_slug() {
-  if [ "$DRY_RUN" = "1" ]; then
-    dry "Would validate cabinet slug '$CABINET_SLUG' against ^[a-z0-9][a-z0-9-]*\$ + 32-char cap"
-    return 0
+# FW-082 adversary P1-C: peer slug validation (charset + 32-char cap + leading
+# hyphen rejection). Same regex as cabinet slug. Used everywhere peer_slug is
+# parsed from a --peer-cabinet entry.
+_validate_peer_slug() {
+  local peer_slug="$1"
+  if ! [[ "$peer_slug" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    err "Peer slug '$peer_slug' must match [a-z0-9][a-z0-9-]*"
+    exit 1
   fi
+  if [ "${#peer_slug}" -gt 32 ]; then
+    err "Peer slug '$peer_slug' must be <=32 chars (got ${#peer_slug})"
+    exit 1
+  fi
+}
+
+step_validate_slug() {
+  # FW-082 adversary P0-A fix: validate slug UNCONDITIONALLY (including dry-run)
+  # so the dry-run plan can't be tricked into reflecting malformed slugs in path
+  # contexts. Only filesystem/network side-effects are dry-run-gated downstream.
   if [ -z "$CABINET_SLUG" ]; then
     err "cabinet-slug is required"
     usage
@@ -383,6 +405,25 @@ step_init_instance_dirs() {
     fi
   done
 
+  # FW-082 adversary P1-D: write CAPTAIN_NAME (and other product seeds) to
+  # instance/config/product.yml so addressing-by-name works on first session
+  # per CLAUDE.md "Addressing the Captain" rule. If --captain-name was not
+  # provided, leave the field empty — officer fallback to "Captain" applies.
+  local product_yml="$cabinet_dir/instance/config/product.yml"
+  if [ ! -f "$product_yml" ]; then
+    {
+      echo "# Auto-seeded by cabinet-bootstrap.sh — extend per preset's product surface"
+      echo "product:"
+      if [ -n "$CAPTAIN_NAME" ]; then
+        # Strip any newline injection just in case (defense-in-depth alongside P1-B)
+        printf '  captain_name: %s\n' "${CAPTAIN_NAME//$'\n'/}"
+      else
+        echo "  captain_name: \"\"  # CAPTAIN ACTION REQUIRED: set captain name"
+      fi
+    } > "$product_yml"
+    info "Initialized $product_yml${CAPTAIN_NAME:+ (captain_name=$CAPTAIN_NAME)}"
+  fi
+
   info "Instance directories initialized"
 }
 
@@ -417,7 +458,9 @@ step_generate_peer_secrets() {
     echo ""
     if [ -n "$NEON_DATABASE_URL" ]; then
       echo "# Cabinet management DB (schema + officer state)"
-      echo "NEON_CONNECTION_STRING=${NEON_DATABASE_URL}"
+      # FW-082 adversary P1-B: strip newlines from URL to prevent .env injection
+      # (a crafted URL with embedded \n could inject GITHUB_PAT=stolen_token).
+      printf 'NEON_CONNECTION_STRING=%s\n' "${NEON_DATABASE_URL//$'\n'/}"
       echo ""
     else
       echo "# CAPTAIN ACTION REQUIRED: set NEON_CONNECTION_STRING"
@@ -479,7 +522,11 @@ step_queue_peer_env_updates() {
     fi
 
     # Staged update file: operator applies to peer cabinet's .env
+    # FW-082 adversary P1-A: chmod 600 BEFORE writing the secret so a TOCTOU
+    # window can't leak the value to a world-readable file.
     local staged_file="/tmp/cabinet-bootstrap.${CABINET_SLUG}.peer-env.${peer_slug}"
+    : > "$staged_file"
+    chmod 600 "$staged_file"
     {
       echo "# Staged env update for peer cabinet: $peer_slug"
       echo "# Apply to: /opt/${peer_slug}-cabinet/cabinet/.env"
