@@ -14,7 +14,9 @@
 
 set -u
 
-REGRESSION_DIR="/opt/founders-cabinet/cabinet/tests/hook-regression"
+# Resolve test dir relative to this script (works in main repo or any worktree)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REGRESSION_DIR="$(cd "$SCRIPT_DIR/../tests/hook-regression" && pwd)"
 LOG_DIR="${REGRESSION_DIR}/.last-run"
 mkdir -p "$LOG_DIR"
 
@@ -31,6 +33,7 @@ HARNESSES=(
   "fw056-baseline.sh"
   "fw056-adversary.sh"
   "fw057-notify-officer-argv.sh"
+  "fw076-pool-mode.sh"
 )
 
 OVERALL_FAIL=0

@@ -8,7 +8,8 @@
 # IMPORTANT: Do NOT use set -e — we test for non-zero exit codes intentionally.
 set -uo pipefail
 
-CABINET_ROOT="/opt/founders-cabinet"
+# Resolve repo root relative to this script (works in main repo or any worktree)
+CABINET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 REDIS_HOST="${REDIS_HOST:-redis}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
@@ -1820,6 +1821,102 @@ if [ -n "$EV23_FAILURE" ]; then
   fail "$EV23_FAILURE"
 else
   pass "FW-047 invariant: 6 deploy-matching hook probes (4 Bash + 2 Write) with CABINET_HOOK_TEST_MODE=1 produced 0 net change in CPO/COO queue depth (storm risk sealed)"
+fi
+
+# ------------------------------------------------------------------
+# EVAL-024: FW-076 pool-mode write-gate — generalized /workspace/<slug>/ regex
+# ------------------------------------------------------------------
+# FW-076 (2026-04-29): replaced /workspace/product/ literal with
+# /workspace/[a-z0-9][a-z0-9-]*/ in all 3 write-protection positions.
+# This EVAL pins 3 representative pool slugs (sensed, step-network, a1)
+# across the 9 write-operator families to catch any future narrowing that
+# accidentally reverts pool-mode coverage. EVAL-018 still pins the product
+# slug behavior (both must stay GREEN simultaneously).
+log "EVAL-024: pre-tool-use.sh FW-076 pool-mode write-gate — /workspace/<slug>/ generalization"
+EV24_HOOK="$CABINET_ROOT/cabinet/scripts/hooks/pre-tool-use.sh"
+EV24_FAILURE=""
+
+# Positive cases — must BLOCK (exit 2) for each pool slug
+declare -a EV24_POS=(
+  # sensed slug
+  "echo x > /workspace/sensed/README.md"
+  "sed -i 's/x/y/' /workspace/sensed/src/app.ts"
+  "tee /workspace/sensed/log.md"
+  "cp /tmp/src /workspace/sensed/dst"
+  "cp -t /workspace/sensed/ /tmp/src"
+  "cp --target-directory=/workspace/sensed/ /tmp/src"
+  "patch /workspace/sensed/foo < fix.patch"
+  "perl -i -pe 's/x/y/' /workspace/sensed/file.ts"
+  "tar -xf archive.tar -C /workspace/sensed/"
+  # step-network slug (hyphenated — validates [a-z0-9-]* class)
+  "echo x > /workspace/step-network/README.md"
+  "sed -i 's/x/y/' /workspace/step-network/src/app.ts"
+  "tee /workspace/step-network/log.md"
+  "cp /tmp/src /workspace/step-network/dst"
+  "cp -t /workspace/step-network/ /tmp/src"
+  "cp --target-directory=/workspace/step-network/ /tmp/src"
+  "patch /workspace/step-network/foo < fix.patch"
+  "perl -i -pe 's/x/y/' /workspace/step-network/file.ts"
+  "tar -xf archive.tar -C /workspace/step-network/"
+  # a1 slug (minimal — validates [a-z0-9] first-char + short slug)
+  "echo x > /workspace/a1/README.md"
+  "sed -i 's/x/y/' /workspace/a1/src/app.ts"
+  "tee /workspace/a1/log.md"
+  "cp /tmp/src /workspace/a1/dst"
+  "cp -t /workspace/a1/ /tmp/src"
+  "cp --target-directory=/workspace/a1/ /tmp/src"
+  "patch /workspace/a1/foo < fix.patch"
+  "perl -i -pe 's/x/y/' /workspace/a1/file.ts"
+  "tar -xf archive.tar -C /workspace/a1/"
+)
+for EV24_CMD in "${EV24_POS[@]}"; do
+  EV24_JSON=$(jq -cn --arg cmd "$EV24_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+  echo "$EV24_JSON" | OFFICER_NAME=cpo bash "$EV24_HOOK" >/dev/null 2>&1
+  EV24_EC=$?
+  if [ "$EV24_EC" -ne 2 ]; then
+    EV24_FAILURE="FW-076 pool-mode MISSED block on: '$EV24_CMD' (exit=$EV24_EC, expected=2)"
+    break
+  fi
+done
+
+# Negative cases — must PASS (exit 0): invalid slugs + read ops + CTO bypass
+if [ -z "$EV24_FAILURE" ]; then
+  declare -a EV24_NEG=(
+    "echo x > /workspace/PROD/README.md"
+    "echo x > /workspace/-bad/README.md"
+    "echo x > /workspace/.hidden/README.md"
+    "cat /workspace/sensed/src/app.ts"
+    "grep foo /workspace/sensed/src/app.ts"
+    "cat /workspace/sensed/x | tee /tmp/y"
+    "cp /workspace/sensed/x /tmp/y"
+    "rsync -rt /workspace/sensed/ /tmp/dst"
+  )
+  for EV24_CMD in "${EV24_NEG[@]}"; do
+    EV24_JSON=$(jq -cn --arg cmd "$EV24_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+    echo "$EV24_JSON" | OFFICER_NAME=cpo bash "$EV24_HOOK" >/dev/null 2>&1
+    EV24_EC=$?
+    if [ "$EV24_EC" -eq 2 ]; then
+      EV24_FAILURE="FW-076 pool-mode FALSE-BLOCKED: '$EV24_CMD' (exit=2, expected=0)"
+      break
+    fi
+  done
+fi
+
+# CTO bypass — CTO must pass on any pool slug
+if [ -z "$EV24_FAILURE" ]; then
+  EV24_CTO_CMD="echo x > /workspace/sensed/README.md"
+  EV24_CTO_JSON=$(jq -cn --arg cmd "$EV24_CTO_CMD" '{tool_name:"Bash",tool_input:{command:$cmd}}')
+  echo "$EV24_CTO_JSON" | OFFICER_NAME=cto bash "$EV24_HOOK" >/dev/null 2>&1
+  EV24_CTO_EC=$?
+  if [ "$EV24_CTO_EC" -ne 0 ]; then
+    EV24_FAILURE="FW-076 CTO bypass broken on pool slug: '$EV24_CTO_CMD' (exit=$EV24_CTO_EC, expected=0)"
+  fi
+fi
+
+if [ -n "$EV24_FAILURE" ]; then
+  fail "$EV24_FAILURE"
+else
+  pass "FW-076 pool-mode write-gate: 27 positive (3 slugs x 9 operator families all BLOCK) + 8 negative (invalid-slug UPPER/-bad/.hidden + read-only ops ALLOW) + CTO bypass preserved"
 fi
 
 # ------------------------------------------------------------------
