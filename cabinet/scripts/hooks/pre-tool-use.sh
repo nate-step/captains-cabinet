@@ -722,8 +722,8 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
   if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
     FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // .path // empty' 2>/dev/null)
     case "$FILE_PATH" in
-      /workspace/product/*)
-        echo "BLOCKED: Only CTO can modify the product codebase. Write a spec to shared/interfaces/product-specs/ and notify CTO." >&2
+      /workspace/[a-z0-9][a-z0-9-]*/*)
+        echo "BLOCKED: Only CTO can modify the active project codebase. Write a spec to shared/interfaces/product-specs/ and notify CTO." >&2
         exit 2
         ;;
     esac
@@ -733,17 +733,20 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     case "$CMD" in
       *"git commit"*|*"git push"*|*"git add"*)
         case "$CMD" in
-          *"/workspace/product"*|*"cd /workspace/product"*)
-            echo "BLOCKED: Only CTO can commit/push to the product codebase. Write a spec and notify CTO." >&2
+          *"/workspace/"*)
+            echo "BLOCKED: Only CTO can commit/push to the active project codebase. Write a spec and notify CTO." >&2
             exit 2
             ;;
         esac
         ;;
     esac
-    # Block Bash write patterns whose TARGET is /workspace/product/ (FW-034 fix).
+    # Block Bash write patterns whose TARGET is /workspace/<slug>/ (FW-034 fix).
+    # FW-076 (2026-04-29): generalized from /workspace/product/ literal to
+    # /workspace/[a-z0-9][a-z0-9-]*/ per-project pattern for pool-mode (FW-073).
+    # Slug class matches start-officer.sh guard exactly; preserves product/ (legacy).
     # Pre-FW-034 used two independent substring checks (mentions-product AND has-write-op),
-    # which false-blocked `cat /workspace/product/x | tee /tmp/y` (read source is product,
-    # write target is /tmp). Regex requires product path in the write-operator's TARGET
+    # which false-blocked `cat /workspace/<slug>/x | tee /tmp/y` (read source is project,
+    # write target is /tmp). Regex requires project path in the write-operator's TARGET
     # position: redirect stdout target, sed -i/--in-place file arg, tee trailing file,
     # cp/mv/rsync last arg (dest) OR -t/--target-directory=, patch filename arg.
     # Hotfix 2026-04-22 (COO + Sonnet empirical adversary on b6c7cf2): narrowed sed
@@ -779,13 +782,13 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # fallbacks absorb orphan quotes (escape-out idioms, unmatched
     # trailing quotes); `&[^&]` still consumes sed-literal `&`; outside
     # quotes, none of the alternatives accept `&&` so the match still
-    # halts at shell chain boundaries. Plus `/workspace/product/` anchor
+    # halts at shell chain boundaries. Plus `/workspace/<slug>/` anchor
     # now accepts optional `["']?` opening quote to catch quoted path
     # forms (`sed -i ... '/workspace/product/x'`). Verified: `sed -i
     # 's/x/y/' /tmp/f && cat /workspace/product/log` still correctly
-    # PASSES (the `&&` halts the unquoted class before the product
-    # anchor can be reached). The downstream `[[:space:]]+/workspace/product/` anchor keeps
-    # the product-path write requirement (so false-pos from `sed -i /tmp/f; echo
+    # PASSES (the `&&` halts the unquoted class before the project
+    # anchor can be reached). The downstream `[[:space:]]+/workspace/<slug>/` anchor keeps
+    # the project-path write requirement (so false-pos from `sed -i /tmp/f; echo
     # /workspace/product/` is a known pre-existing greedy-match FP, not a
     # delta-3 regression). Pattern 5a `-[a-zA-Z]*t[[:space:]]+` → `[[:space:]]*`
     # — GNU cp/mv accept `-t/DIR` no-space form (bundle-flag + attached-arg),
@@ -864,8 +867,8 @@ if [ "$OFFICER" != "cto" ] && [ "$OFFICER" != "unknown" ]; then
     # FW-040 scope gap for future read-op vs write-op differentiation.
     # Blocks `tar -cf /workspace/product/archive.tar /some/src` (archive written
     # TO product path — correct BLOCK). Pattern 9b gates on archive -f path position.
-    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/product/|sed[[:space:]]+(([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]]([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*)?[[:space:]]+["'\'']?/workspace/product/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/product/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/product/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/product/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/product/|perl[[:space:]]+([^;&|]*[[:space:]])?(-[^[:space:]Ii]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)(([[:space:]]([^;&|]*[[:space:]])?)|([[:space:]]([^;&|]*[[:space:]])?)?)[[:space:]]*["'\'']?/workspace/product/|tar[[:space:]]+([^;&|]*[[:space:]]+)?(-[a-zA-Z]*C[a-zA-Z]*[[:space:]]*|-[a-zA-Z]*f[a-zA-Z]*C[a-zA-Z]*[[:space:]]+[^;&|[:space:]]+[[:space:]]+|--directory[=[:space:]]+)["'\'']?/workspace/product(/|[[:space:];&|<>"'\'']|$)|tar[[:space:]]+([^;&|]*[[:space:]]+)?(-[^[:space:]]*f[[:space:]]*|--file[=[:space:]]+)["'\'']?/workspace/product(/|[[:space:];&|<>"'\'']|$))'; then
-      echo "BLOCKED: Only CTO can modify the product codebase via Bash. Write a spec and notify CTO." >&2
+    if echo "$CMD" | grep -qE '(>[>|]?[[:space:]]*["'\'']?/workspace/[a-z0-9][a-z0-9-]*/|sed[[:space:]]+(([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*[[:space:]])?(-[a-zA-Z]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)([[:space:]]([^&'\''"]|'\''[^'\'']*'\''|"[^"]*"|'\''|"|&[^&])*)?[[:space:]]+["'\'']?/workspace/[a-z0-9][a-z0-9-]*/|tee[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*([^;|&<]+[[:space:]]+)?["'\'']?/workspace/[a-z0-9][a-z0-9-]*/|(cp|mv|rsync)[[:space:]]+(-[-a-zA-Z]+[[:space:]]+)*[^;|&]+[[:space:]]+["'\'']?/workspace/[a-z0-9][a-z0-9-]*/[^[:space:];|&"'\'']*["'\'']?([[:space:]]*($|[;&|<>])|[[:space:]]+[0-9]+[<>])|(cp|mv)[[:space:]]+([^;|&]*[[:space:]])?-[a-zA-Z]*t[[:space:]]*["'\'']?/workspace/[a-z0-9][a-z0-9-]*/|(cp|mv|rsync)[[:space:]]+([^;|&]*[[:space:]])?--target-directory(=|[[:space:]]+)["'\'']?/workspace/[a-z0-9][a-z0-9-]*/|patch[[:space:]]+([^;|&<]+[[:space:]]+)?["'\'']?/workspace/[a-z0-9][a-z0-9-]*/|perl[[:space:]]+([^;&|]*[[:space:]])?(-[^[:space:]Ii]*i[^[:space:]]*|--in-place(=[^[:space:]]*)?)(([[:space:]]([^;&|]*[[:space:]])?)|([[:space:]]([^;&|]*[[:space:]])?)?)[[:space:]]*["'\'']?/workspace/[a-z0-9][a-z0-9-]*/|tar[[:space:]]+([^;&|]*[[:space:]]+)?(-[a-zA-Z]*C[a-zA-Z]*[[:space:]]*|-[a-zA-Z]*f[a-zA-Z]*C[a-zA-Z]*[[:space:]]+[^;&|[:space:]]+[[:space:]]+|--directory[=[:space:]]+)["'\'']?/workspace/[a-z0-9][a-z0-9-]*(/|[[:space:];&|<>"'\'']|$)|tar[[:space:]]+([^;&|]*[[:space:]]+)?(-[^[:space:]]*f[[:space:]]*|--file[=[:space:]]+)["'\'']?/workspace/[a-z0-9][a-z0-9-]*(/|[[:space:];&|<>"'\'']|$))'; then
+      echo "BLOCKED: Only CTO can modify the active project codebase via Bash. Write a spec and notify CTO." >&2
       exit 2
     fi
   fi

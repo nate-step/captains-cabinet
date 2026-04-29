@@ -44,7 +44,7 @@ probe "9b-meta-gt"        'tar -cf /workspace/product>backup'                   
 echo ""
 echo "=== fC-bundle legit FP sanity (must ALLOW) ==="
 probe "fC-L1 -xfC /tmp/dest"               'tar -xfC /tmp/a.tar /tmp/dest'                       ALLOW
-probe "fC-L2 -xfC productx prefix"         'tar -xfC /tmp/a.tar /workspace/productx/'            ALLOW
+probe "fC-L2 -xfC UPPER slug (not a slug)"  'tar -xfC /tmp/a.tar /workspace/PROD/'                ALLOW
 probe "fC-L3 -xfC no dir"                  'tar -xfC /tmp/a.tar'                                 ALLOW
 probe "fC-L4 -fC /var/dest legit"          'tar -fC /tmp/a.tar /var/dest'                        ALLOW
 
