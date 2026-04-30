@@ -234,6 +234,61 @@ step_validate_preset() {
 }
 
 # ---------------------------------------------------------------------------
+# FW-085 Path A — Re-exec into bootstrap-runner if docker-cli missing
+# ---------------------------------------------------------------------------
+# Captain msg 2281 ratified Path A: bootstrap-runner is a privileged ephemeral
+# container with docker-cli + psql, used ONLY when cabinet-bootstrap.sh is
+# invoked from a context that lacks docker (e.g. inside an officer container).
+# Officer image stays clean (no docker-cli, no socket mount, no privileged).
+#
+# Skip re-exec if:
+#   - Already running inside bootstrap-runner (CABINET_BOOTSTRAP_RUNNER_ACTIVE=1)
+#   - Dry-run mode (host-side preview, no container ops)
+#   - docker is in PATH (host context — Captain's host has docker installed)
+#   - bootstrap-runner Dockerfile not present (graceful-degrade — Captain hasn't
+#     applied the artifact yet; current behavior preserved)
+maybe_reexec_in_runner() {
+  [ "${CABINET_BOOTSTRAP_RUNNER_ACTIVE:-0}" = "1" ] && return 0
+  [ "$DRY_RUN" = "1" ] && return 0
+  if command -v docker >/dev/null 2>&1; then return 0; fi
+
+  local runner_dockerfile="$CABINET_ROOT/cabinet/Dockerfile.bootstrap-runner"
+  if [ ! -f "$runner_dockerfile" ]; then
+    info "FW-085 Path A: bootstrap-runner Dockerfile not present at $runner_dockerfile"
+    info "  Skipping re-exec — current behavior (host-side or no container ops needed) preserved."
+    info "  Captain action: apply /tmp/fw085-bootstrap-runner.dockerfile-content to that path."
+    return 0
+  fi
+
+  info "docker CLI not in PATH — re-execing into cabinet-bootstrap-runner image (FW-085 Path A)"
+  if ! docker image inspect cabinet-bootstrap-runner:latest >/dev/null 2>&1; then
+    info "  bootstrap-runner image missing — building"
+    bash "$CABINET_ROOT/cabinet/scripts/build-bootstrap-runner.sh"
+  fi
+
+  # Audit re-exec invocation (allowlist enforcement happens inside the runner).
+  local audit_log="${AUDIT_LOG:-$CABINET_ROOT/memory/logs/bootstrap-runner-audit.jsonl}"
+  mkdir -p "$(dirname "$audit_log")"
+  printf '{"ts":"%s","event":"reexec","cabinet_slug":"%s","preset":"%s","args":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "${CABINET_SLUG:-?}" \
+    "${PRESET_SLUG:-?}" \
+    "$(printf '%s\n' "$@" | jq -R . | jq -s .)" \
+    >> "$audit_log" 2>/dev/null || true
+
+  exec docker run --rm \
+    --privileged \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /opt/founders-cabinet:/opt/founders-cabinet \
+    -e CABINET_BOOTSTRAP_RUNNER_ACTIVE=1 \
+    -e GITHUB_PAT="${GITHUB_PAT:-}" \
+    -e NEON_DATABASE_URL="${NEON_DATABASE_URL:-}" \
+    -e DRY_RUN="${DRY_RUN:-0}" \
+    cabinet-bootstrap-runner:latest \
+    "$@"
+}
+
+# ---------------------------------------------------------------------------
 # Step 3 — Preflight (AC #65: GITHUB_PAT, Neon probe)
 # ---------------------------------------------------------------------------
 step_preflight() {
@@ -1157,6 +1212,10 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 acquire_lock
+
+# FW-085 Path A: re-exec into bootstrap-runner if docker missing (graceful no-op
+# if bootstrap-runner Dockerfile not yet applied — current behavior preserved).
+maybe_reexec_in_runner "$@"
 
 run_step() {
   local name="$1"
